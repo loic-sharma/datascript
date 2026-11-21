@@ -18,4 +18,7 @@
 - [ ] In-process LSP tests: open/change/close produce the expected diagnostics.
 - [ ] Re-check latency < 100 ms for a 500-line script with warm schemas (measured).
 
+## Carried over
+- [ ] (from M0-02) Diagnostic lines split on `\n` only; a lone `\r` is not a line break, while LSP treats it as one. Align the two.
+
 ## Follow-ups

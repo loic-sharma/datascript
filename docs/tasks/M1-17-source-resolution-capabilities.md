@@ -33,4 +33,7 @@ M1-05. Split out of M1-05 so each task fits one session.
 - [ ] A source used in two places with a missing file gives DS3001 at both spans.
 - [ ] Golden DS4001 case with a mock `Capabilities` missing one function.
 
+## Carried over
+- [ ] (from M1-15) A table name as a source works (DS9001 in the skeleton); columns with no DataScript type give DS2008 instead of a silent error type; `caps` is consulted.
+
 ## Follow-ups

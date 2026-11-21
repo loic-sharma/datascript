@@ -31,4 +31,11 @@ diagnostics. Operator schemas and joins are M1-16; sources and capabilities are 
 - [ ] Multi-error case: unknown column in one statement and a type error in another both reported.
 - [ ] `int` arithmetic cases show a `long` result type.
 
+## Carried over
+- [ ] (from M1-04) Golden `check` cases for the type-error builders (`BinaryTypeError`, `ArityError`, `ArgTypeError`, `operators::untyped_null`: DS2002/DS2003/DS2006/DS2009), with labels saying where each type came from.
+- [ ] (from M1-04) Turn `UnknownFunction` into DS1004, using its did-you-mean and foreign-name equivalents.
+- [ ] (from M1-15) Replace `Analysis::hir: Vec<BoundQuery>` (plans built directly by the binder) with a typed HIR.
+- [ ] (from M1-15) A non-`bool` `where` predicate gives DS2001, not DS9001. Bind all operators, functions, `let`, `null`, and timespan/datetime literals (all DS9001 in the skeleton).
+- [ ] (from M0-03) Replace the stand-in DataScript ↔ Arrow type-name mapping in `datascript-tests::schema` with M1-04's mapping (`arrow.rs`).
+
 ## Follow-ups

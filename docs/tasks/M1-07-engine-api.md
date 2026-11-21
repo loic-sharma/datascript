@@ -33,4 +33,8 @@ Extends the skeleton from M1-15 rather than starting from nothing.
 - [ ] No DataFusion dependency in this crate.
 - [ ] A compile-time test (`fn assert_send<T: Send>()`) for the native `Session` and its futures.
 
+## Carried over
+- [ ] (from M1-15) The session caches failed schema lookups correctly and invalidates the cache; `run` keeps warnings when there are no errors; add the panic boundary, the CSV/JSON writer and the `render` field.
+- [ ] (from M0-03) Replace the stand-in DataScript type-name mapping in `datascript-engine::table` with M1-04's mapping (`arrow.rs`).
+
 ## Follow-ups

@@ -30,4 +30,8 @@ Source resolution and the capability pass (M1-17). `render` (M1-10).
 - [ ] The README example's `join` yields one `customerId` column and no DS1007.
 - [ ] Golden cases for each join kind's key column, including `fullouter` with nulls on both sides.
 
+## Carried over
+- [ ] (from M1-15) `project` takes expressions and renames, with DS1005 for duplicate names (the skeleton takes bare columns, and DataFusion then fails with DS4002).
+- [ ] (from M1-15) Un-skip `tests/cases/harness/check.dstest` (needs `summarize` and aggregates) and `harness/run.dstest` once M1-09 can run it.
+
 ## Follow-ups

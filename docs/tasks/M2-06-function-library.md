@@ -13,4 +13,7 @@ datetime, and math functions that aren't there yet (keep a checklist in this fil
 - [ ] Functions we deliberately do not support are listed with the reason, and calling one gives a
       tailored error instead of "unknown function".
 
+## Carried over
+- [ ] (from M1-02) `*` as a function argument (`arg_max(x, *)`) is not parsed yet.
+
 ## Follow-ups

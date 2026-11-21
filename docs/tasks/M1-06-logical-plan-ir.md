@@ -25,4 +25,8 @@ Lower the typed HIR into the engine-neutral relational IR (D-002) and pretty-pri
 - [ ] Serde serialization of the IR (useful for debugging and future remote engines).
 - [ ] Builds for wasm32.
 
+## Carried over
+- [ ] (from M1-15) Move planning out of `binder.rs` into the IR builder.
+- [ ] (from M0-03) Un-skip and bless `tests/cases/harness/explain.dstest` (needs host tables from M1-17) and confirm `harness/syntax.dstest` is blessed.
+
 ## Follow-ups

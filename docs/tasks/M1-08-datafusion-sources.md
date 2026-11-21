@@ -47,4 +47,9 @@ Design-review additions:
       `check` of the merged schema here).
 - [ ] The wasm32 check of this crate runs in CI.
 
+## Carried over
+- [ ] (from M1-15) Replace the temporary `SourceError::Unreadable { reason }` (reported as DS9001) with specific cases and DS3008.
+- [ ] (from M1-15) Read all supported extensions (not only `.csv`), globs, reader options and host tables; the scan reuses the schema read during checking instead of reading it again.
+- [ ] (from M0-04) Confirm DataFusion's CSV inference reads `2024-02-29T23:59:59Z` timestamps as UTC timestamps, not strings, with a golden case.
+
 ## Follow-ups

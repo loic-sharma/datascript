@@ -20,4 +20,8 @@ Close out M1 against the "done when" list in [ROADMAP.md](../ROADMAP.md).
 - [ ] All ROADMAP M1 criteria checked off.
 - [ ] No `skip:` golden cases without a linked task.
 
+## Carried over
+- [ ] (from M1-03) Targeted help for uppercase `NULLS FIRST` / `NULLS LAST` and for SQL's `LEFT JOIN` written as an operator.
+- [ ] (from M0-02) Carets count characters, so lines with CJK, emoji or combining marks are misaligned in a terminal; use `unicode-width` (and grapheme clusters).
+
 ## Follow-ups

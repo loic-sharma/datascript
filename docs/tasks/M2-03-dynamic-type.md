@@ -17,4 +17,8 @@ should become usable through this type. Result fields carry the matching canonic
 - [ ] Golden cases over `tests/data/events/*.ndjson`.
 - [ ] Type errors when using dynamic values in typed contexts suggest the right conversion.
 
+## Carried over
+- [ ] (from M1-01) Inside `dynamic(...)`, read a `QUOTED_IDENT` token such as `["a"]` as a one-element array (D-028).
+- [ ] (from M1-02) `a['key']` lexes the index as a `QUOTED_IDENT`, so it does not parse as indexing yet; `dynamic([...])` bodies are not parsed; `mv-expand` parses as a planned unknown operator.
+
 ## Follow-ups

@@ -41,4 +41,8 @@ Design-review additions:
 - [ ] `now()`/`ago()` honor the injected clock (golden header `now:`).
 - [ ] A division-by-zero or cast failure produces a readable DS4002 pointing at the expression.
 
+## Carried over
+- [ ] (from M1-15) `lower_op` lowers every operator and expression faithfully (the skeleton maps only comparisons).
+- [ ] (from M1-15) DataFusion runtime errors are traced to the node that caused them, not reported as DS4002 on the query's last node.
+
 ## Follow-ups

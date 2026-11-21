@@ -41,6 +41,11 @@ targeting the CLI, a local web UI, the browser (WASM), and VS Code (LSP). Read
   `cargo check -p datascript-syntax -p datascript-compiler --target wasm32-unknown-unknown`.
 - Every acceptance criterion in the task file is met, or the gap is written down in the task file
   under "Follow-ups".
+- **Hand every follow-up to an owner.** A follow-up must never live only in the finished task's
+  file, because agents only read the task they pick. For each one, either add a checkbox to the
+  owning task's "Carried over" section (create it above "Follow-ups"), formatted as
+  `- [ ] (from M1-04) …`, or create a new task file with an index row. Purely informational notes
+  (decisions taken, things verified) need no owner.
 - Set status to `done` in the task file and the index, with a one-line summary of what landed.
 
 ## Commands (once M0-01 lands)

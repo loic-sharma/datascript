@@ -6,7 +6,9 @@ One file per unit of work. Each task should fit in a single focused agent sessio
 
 1. Pick a `todo` task whose dependencies are all `done`.
 2. Set it to `in-progress` here *and* in the task file. Work on branch `task/<id>-<slug>`.
-3. When finished, set it to `done` with a one-line summary in the task file.
+3. When finished, set it to `done` with a one-line summary in the task file. Copy every follow-up
+   that another task should do into that task's "Carried over" section (`- [ ] (from <id>) …`).
+   The "Carried over" items in your own task file are part of your scope.
 4. Found extra work? Add a new task file with the next free id in that milestone and a row below.
    Don't grow the current task.
 

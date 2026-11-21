@@ -31,4 +31,7 @@ Design-review additions — several query statements in machine formats:
 - [ ] `ds run examples/top_customers.ds` works.
 - [ ] `ds --help` and each subcommand's help have examples.
 
+## Carried over
+- [ ] (from M1-15) The CLI accepts more than one file, `-e`, stdin, `--format`, `--color` and `--table` (the skeleton takes one file per command).
+
 ## Follow-ups
