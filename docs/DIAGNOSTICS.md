@@ -95,7 +95,8 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS0001–DS0019 | M1-01 lexer |
 | DS0100–DS0101 | M1-02 parser (generic errors) |
 | DS0102–DS0149 | M1-03 syntax diagnostics |
-| DS0150–DS0159 | M1-24 `from` keyword |
+| DS0150–DS0151 | M1-24 `from` keyword |
+| DS0152–DS0159 | M1-25 `from` mistakes and statement starts |
 | DS1001–DS1029, DS2001–DS2029 | M1-05 binder core (and M1-04 for DS2002, DS2003, DS2006, DS2009) |
 | DS1030–DS1049, DS2030–DS2039 | M1-16 operator schemas and joins (also implements the registered DS1005, DS1007) |
 | DS2040–DS2049 | M1-17 source resolution and capability pass (also implements the registered DS2008, DS3006, DS4001) |
