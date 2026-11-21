@@ -1,8 +1,25 @@
-//! Property tests: the lexer never panics, and its tokens reproduce the input exactly.
+//! Property tests: the lexer never panics, its tokens reproduce the input exactly, and every span
+//! in its diagnostics (primary, secondary, and suggestion edits) lies on char boundaries.
 
-use datascript_diagnostics::FileId;
+use datascript_diagnostics::{FileId, Span};
 use datascript_syntax::lex;
 use proptest::prelude::*;
+
+fn check_span(text: &str, span: Span, what: &str) -> Result<(), TestCaseError> {
+    prop_assert!(span.start <= span.end, "{} span is reversed", what);
+    prop_assert!(
+        span.end as usize <= text.len(),
+        "{} span is past the end",
+        what
+    );
+    prop_assert!(
+        text.is_char_boundary(span.start as usize) && text.is_char_boundary(span.end as usize),
+        "{} span {:?} splits a character",
+        what,
+        span.range()
+    );
+    Ok(())
+}
 
 fn check_round_trip(text: &str) -> Result<(), TestCaseError> {
     let lexed = lex(text, FileId(0));
@@ -20,9 +37,15 @@ fn check_round_trip(text: &str) -> Result<(), TestCaseError> {
             .primary
             .as_ref()
             .expect("lexer diagnostics have a span");
-        prop_assert!(primary.span.end as usize <= text.len());
-        prop_assert!(text.is_char_boundary(primary.span.start as usize));
-        prop_assert!(text.is_char_boundary(primary.span.end as usize));
+        check_span(text, primary.span, "primary")?;
+        for label in &diagnostic.secondary {
+            check_span(text, label.span, "secondary")?;
+        }
+        for help in &diagnostic.help {
+            for edit in help.suggestion.iter().flat_map(|s| &s.edits) {
+                check_span(text, edit.span, "suggestion edit")?;
+            }
+        }
     }
     Ok(())
 }
@@ -43,6 +66,15 @@ fn fragment() -> impl Strategy<Value = String> {
         Just("\n".to_string()),
         Just("datetime(".to_string()),
         Just("timespan(".to_string()),
+        Just("datetime(2024-".to_string()),
+        Just("datetime(2024-01-".to_string()),
+        Just("é".to_string()),
+        Just("\u{0308}".to_string()),
+        Just("μs".to_string()),
+        Just("0x".to_string()),
+        Just("`".to_string()),
+        Just(":\\".to_string()),
+        Just("😀".to_string()),
         Just(")".to_string()),
         Just("!".to_string()),
         Just("in~".to_string()),

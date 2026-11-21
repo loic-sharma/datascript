@@ -1,0 +1,27 @@
+# A decomposed accent (i + U+0308 combining diaeresis) stays in one word, so there is one DS0001.
+mode: syntax
+---- query
+t | project naïve
+---- expected
+PROGRAM@0..20
+  PIPELINE@0..19
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    PROJECT_OP@4..11
+      IDENT@4..11 "project"
+    WHITESPACE@11..12 " "
+    ERROR@12..19
+      ERROR@12..19 "nai\u{308}ve"
+  WHITESPACE@19..20 "\n"
+
+error[DS0001]: names with non-ASCII characters must be quoted: `naïve`
+  --> query:1:13
+  |
+1 | t | project naïve
+  |             ^^^^^^ unquoted name with non-ASCII characters
+  |
+  = help: quote the name: `['naïve']`
+  = note: unquoted names use only the letters A-Z and a-z, digits and `_`

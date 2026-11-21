@@ -28,8 +28,8 @@ is marked **≠ KQL**. Where this document and the function catalog are silent, 
   the name `has_error`. A `!` that does not start one of these forms (`!x`, `!has_error`) is `DS0111`
   with a suggestion to use `not(...)`.
 - **Unexpected characters** (`#`, `` ` ``, `?`, `\` outside a string, invisible characters such as
-  U+200B) are `DS0001`. A word with non-ASCII letters (`naïve`) is one `DS0001` suggesting
-  `['naïve']`; `` `name` `` is one `DS0001` suggesting `['name']`. Unicode white space (no-break
+  U+200B) are `DS0001`. A word with non-ASCII letters (`naïve`, also when the accent is a
+  combining mark after the letter) is one `DS0001` suggesting `['naïve']`; `` `name` `` is one `DS0001` suggesting `['name']`. Unicode white space (no-break
   space, BOM) counts as white space.
 - **Literals**
 
@@ -37,10 +37,10 @@ is marked **≠ KQL**. Where this document and the function catalog are silent, 
 |---|---|---|
 | long | `42`, `1_000_000` | 64-bit signed. There are no negative literals: `-7` is unary minus applied to `7` (the binder folds it, so `-9223372036854775808` is accepted) |
 | real | `3.14`, `1e-3`, `.5` | 64-bit float. A real needs a digit after the point (`1.` is not a real), and a `.` followed by another `.` never belongs to a number: `1..10` is `1` `..` `10` |
-| string | `"text"`, `'text'`, `@"C:\raw"` | Escapes in normal strings: `\\` `\"` `\'` `\n` `\r` `\t` `\0` `\u{1F600}`. Any other `\x` is `DS0005`, with help suggesting `@"..."` or `/` for Windows paths. `@` = verbatim (no escapes) |
+| string | `"text"`, `'text'`, `@"C:\raw"` | Escapes in normal strings: `\\` `\"` `\'` `\n` `\r` `\t` `\0` `\u{1F600}`. Any other `\x` is `DS0005`, with help suggesting `@"..."` or `/` when the string looks like a Windows path (it contains `:\`, starts with `\\` and a name, or has several bad escapes). `@` = verbatim (no escapes) |
 | bool | `true`, `false` | |
 | null | `null` | ≠ KQL: an untyped `null` literal, coerced by context |
-| timespan | `1d`, `2h`, `30m`, `10s`, `250ms`, `1.5h`, `timespan(1.02:03:04)` | Units: `d`, `h`, `m` (minutes), `s`, `ms`, `us`/`µs`, `tick` (100 ns, truncated to µs) |
+| timespan | `1d`, `2h`, `30m`, `10s`, `250ms`, `1.5h`, `timespan(1.02:03:04)` | Units: `d`, `h`, `m` (minutes), `s`, `ms`, `us`/`µs`, `tick` (100 ns, truncated to µs). `µs` may use the micro sign (U+00B5) or the Greek mu (U+03BC) |
 | datetime | `datetime(2024-01-31)`, `datetime(2024-01-31T12:00:00Z)` | ISO 8601. No offset means UTC |
 | dynamic | `dynamic([1, 2])`, `dynamic({"a": 1})` | M2 |
 | typed null | `long(null)`, `string(null)`, `datetime(null)` | Any type name from §5 |
@@ -57,22 +57,25 @@ expressions (`datetime(2024-01-31)` is not a subtraction). The type names stay u
     `:ss` and a fraction (truncated to µs), and an optional `Z` or `±hh:mm` offset. Month, day,
     hour, minute and second may have one or two digits.
   - `timespan` bodies: `[-][d.]hh:mm[:ss[.fffffff]]` (hours 0–23, minutes and seconds 0–59), or a
-    short-form timespan such as `90m`.
+    short-form timespan such as `90m`, which may also take a leading `-` (`timespan(-90m)`).
 - `<type>(null)` for the other type names (`bool`, `int`, `long`, `real`, `decimal`, `string`,
   `guid`, `dynamic`): the parser recognizes the type name, `(`, `null`, `)` sequence as a typed-null
   literal.
 - `dynamic(...)` (M2): the parser reads a JSON-like literal body (arrays, objects, scalar literals).
 
-**Lexical details** (D-028):
+**Lexical details** (D-028, D-034):
 
 - `_` in a number must sit between two digits (`1_000`, not `1_` or `1__0`).
 - A timespan is a number directly followed by a unit; the number cannot have an exponent (`1e3s`
-  is `DS0003`). An unknown unit (`1x`, `10min`) is `DS0003` listing the valid units.
+  is `DS0003`). An unknown unit (`1x`, `10min`) is `DS0003` listing the valid units. Fraction
+  digits past nanosecond precision are ignored, so `0.0000000001s` is zero.
+- There are no hexadecimal literals: `0x1F` is `DS0003` with help giving the decimal value.
 - Strings, including verbatim ones, end at the end of their line. An unterminated string
   (`DS0002`) covers the opening quote to the end of the line, and the next line lexes normally.
 - `\u{...}` takes 1 to 6 hex digits naming a Unicode scalar value; anything else is `DS0005`.
 - A quoted name `['x']` / `["x"]` is one token only when there is no trivia between the brackets
-  and the string. `[ 'x' ]` and `['a', 'b']` are a bracket, strings and a bracket.
+  and the string. `[ 'x' ]` and `['a', 'b']` are a bracket, strings and a bracket. An empty
+  quoted name (`['']`) is `DS0007`.
 
 ### 1.1 Keywords
 

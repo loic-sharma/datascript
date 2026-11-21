@@ -1,0 +1,33 @@
+# An unterminated string ending in `\`: just adding a quote would leave it open, so the help doubles the backslash.
+mode: syntax
+---- query
+t | where p == 'abc\
+---- expected
+PROGRAM@0..21
+  PIPELINE@0..20
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..20
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..20
+        NAME_REF@10..11
+          IDENT@10..11 "p"
+        WHITESPACE@11..12 " "
+        EQ2@12..14 "=="
+        WHITESPACE@14..15 " "
+        LITERAL@15..20
+          STRING@15..20 "'abc\\"
+  WHITESPACE@20..21 "\n"
+
+error[DS0002]: unterminated string
+  --> query:1:16
+  |
+1 | t | where p == 'abc\
+  |                ^^^^^ this string is never closed
+  |
+  = help: the `\` at the end escapes a quote; to end the string with a backslash, double it and add a closing `'`
+  = note: a string ends at the end of its line

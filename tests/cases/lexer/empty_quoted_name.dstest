@@ -1,0 +1,27 @@
+# An empty quoted name is DS0007.
+mode: syntax
+---- query
+t | project ['']
+---- expected
+PROGRAM@0..17
+  PIPELINE@0..16
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    PROJECT_OP@4..16
+      IDENT@4..11 "project"
+      WHITESPACE@11..12 " "
+      NAMED_EXPR@12..16
+        NAME_REF@12..16
+          QUOTED_IDENT@12..16 "['']"
+  WHITESPACE@16..17 "\n"
+
+error[DS0007]: a name cannot be empty
+  --> query:1:13
+  |
+1 | t | project ['']
+  |             ^^^^ empty quoted name
+  |
+  = help: write the name between the quotes: `['order id']`

@@ -1,0 +1,60 @@
+# Number and timespan literal edge cases, one statement each.
+mode: syntax
+---- query
+1e3s;
+1_;
+timespan(1.25:00);
+timespan(:)
+---- expected
+PROGRAM@0..41
+  PIPELINE@0..4
+    LITERAL@0..4
+      TIMESPAN@0..4 "1e3s"
+  SEMICOLON@4..5 ";"
+  WHITESPACE@5..6 "\n"
+  PIPELINE@6..8
+    LITERAL@6..8
+      LONG@6..8 "1_"
+  SEMICOLON@8..9 ";"
+  WHITESPACE@9..10 "\n"
+  PIPELINE@10..27
+    LITERAL@10..27
+      TIMESPAN@10..27 "timespan(1.25:00)"
+  SEMICOLON@27..28 ";"
+  WHITESPACE@28..29 "\n"
+  PIPELINE@29..40
+    LITERAL@29..40
+      TIMESPAN@29..40 "timespan(:)"
+  WHITESPACE@40..41 "\n"
+
+error[DS0003]: a timespan cannot use an exponent
+  --> query:1:1
+  |
+1 | 1e3s;
+  | ^^^^ exponent used in a timespan
+  |
+  = help: write the number out in full, or use a larger unit
+
+error[DS0003]: invalid number `1_`
+  --> query:2:2
+  |
+2 | 1_;
+  |  ^ `_` must be between two digits
+  |
+  = help: remove it: `1`
+
+error[DS0003]: invalid timespan `1.25:00`
+  --> query:3:12
+  |
+3 | timespan(1.25:00);
+  |            ^^ hours must be 0 to 23
+  |
+  = help: write `[days.]hours:minutes[:seconds]`, e.g. `timespan(1.02:03:04)`
+
+error[DS0003]: invalid timespan `:`
+  --> query:4:10
+  |
+4 | timespan(:)
+  |          ^ expected hours
+  |
+  = help: write `[days.]hours:minutes[:seconds]`, e.g. `timespan(1.02:03:04)`

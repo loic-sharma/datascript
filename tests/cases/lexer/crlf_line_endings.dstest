@@ -1,0 +1,70 @@
+# CRLF line endings: an unterminated string, a line comment and an unclosed `datetime(` each end
+# before the `\r\n`.
+mode: syntax
+eol: crlf
+---- query
+t | where s == 'abc
+// a comment
+| where d > datetime(2024-01-01
+| take 1
+---- expected
+PROGRAM@0..78
+  PIPELINE@0..76
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..19
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..19
+        NAME_REF@10..11
+          IDENT@10..11 "s"
+        WHITESPACE@11..12 " "
+        EQ2@12..14 "=="
+        WHITESPACE@14..15 " "
+        LITERAL@15..19
+          STRING@15..19 "'abc"
+    WHITESPACE@19..21 "\r\n"
+    LINE_COMMENT@21..33 "// a comment"
+    WHITESPACE@33..35 "\r\n"
+    PIPE@35..36 "|"
+    WHITESPACE@36..37 " "
+    WHERE_OP@37..66
+      IDENT@37..42 "where"
+      WHITESPACE@42..43 " "
+      BIN_EXPR@43..66
+        NAME_REF@43..44
+          IDENT@43..44 "d"
+        WHITESPACE@44..45 " "
+        GT@45..46 ">"
+        WHITESPACE@46..47 " "
+        LITERAL@47..66
+          DATETIME@47..66 "datetime(2024-01-01"
+    WHITESPACE@66..68 "\r\n"
+    PIPE@68..69 "|"
+    WHITESPACE@69..70 " "
+    TAKE_OP@70..76
+      IDENT@70..74 "take"
+      WHITESPACE@74..75 " "
+      LITERAL@75..76
+        LONG@75..76 "1"
+  WHITESPACE@76..78 "\r\n"
+
+error[DS0002]: unterminated string
+  --> query:1:16
+  |
+1 | t | where s == 'abc
+  |                ^^^^ this string is never closed
+  |
+  = help: add a closing `'` at the end of the string
+  = note: a string ends at the end of its line
+
+error[DS0003]: `datetime(` is never closed
+  --> query:3:13
+  |
+3 | | where d > datetime(2024-01-01
+  |             ^^^^^^^^^ this literal has no closing `)` on this line
+  |
+  = help: close it with `)`: `datetime(2024-01-01)`

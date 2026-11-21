@@ -16,7 +16,9 @@ pub const DEFAULT_NOW: &str = "2024-06-01T00:00:00Z";
 /// The engine used when a case has no `engine:` header.
 pub const DEFAULT_ENGINE: &str = "datafusion";
 
-const HEADER_KEYS: &[&str] = &["mode", "order", "now", "engine", "tables", "schema", "skip"];
+const HEADER_KEYS: &[&str] = &[
+    "mode", "order", "now", "engine", "tables", "schema", "skip", "eol",
+];
 const SECTION_NAMES: &[&str] = &["query", "expected"];
 
 /// How far the pipeline goes for a case.
@@ -119,6 +121,7 @@ pub struct TestCase {
     /// Reason from `skip:`.
     pub skip: Option<String>,
     /// The query text: `\r\n` normalized, trailing blank lines removed, ending with one `\n`.
+    /// With `eol: crlf`, every line then ends with `\r\n` instead.
     pub query: String,
     /// Line of the first query line.
     pub query_line: usize,
@@ -320,6 +323,20 @@ impl Parser {
             Some(v) => Some(schema::parse(&v.value).map_err(|m| err(v.line, m))?),
         };
         let skip = header("skip").map(|v| v.value.clone());
+        // `.gitattributes` keeps `.dstest` files LF, so CRLF input is asked for explicitly.
+        let crlf = match header("eol") {
+            None => false,
+            Some(v) => match v.value.as_str() {
+                "lf" => false,
+                "crlf" => true,
+                other => {
+                    return Err(err(
+                        v.line,
+                        format!("unknown eol `{other}`{}", hint(other, &["lf", "crlf"])),
+                    ));
+                }
+            },
+        };
 
         let mut query = None;
         let mut expected = Vec::new();
@@ -367,7 +384,11 @@ impl Parser {
             tables,
             schema,
             skip,
-            query: format!("{query}\n"),
+            query: if crlf {
+                format!("{}\r\n", query.replace('\n', "\r\n"))
+            } else {
+                format!("{query}\n")
+            },
             query_line,
             expected,
         })
@@ -595,6 +616,14 @@ mod tests {
         assert_eq!(case.engines.value, [DEFAULT_ENGINE]);
         assert_eq!(case.query, "x\n");
         assert_eq!(case.expected[0].body, "a\nb");
+    }
+
+    #[test]
+    fn eol_crlf_converts_the_query() {
+        let case = TestCase::parse("eol: crlf\n---- query\na\nb\n\n---- expected\nx\n").unwrap();
+        assert_eq!(case.query, "a\r\nb\r\n");
+        let error = TestCase::parse("eol: cr\n---- query\na\n").unwrap_err();
+        assert!(error.to_string().contains("unknown eol `cr`"), "{error}");
     }
 
     #[test]

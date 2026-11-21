@@ -41,5 +41,6 @@ Style fixes:
 - [ ] A golden case with tabs in the source and in help text.
 
 ## Carried over
+- [ ] (from M1-20) `x !in ~ ('a')` gives a bare DS0101 ("expected `(` ... found `~`") with no help. Recognize `!in ~` / `in ~` with a space and suggest `!in~` / `in~` (machine-applicable). Golden: `tests/cases/lexer/negated_in_tilde_with_space.dstest`.
 
 ## Follow-ups

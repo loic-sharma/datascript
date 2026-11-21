@@ -1,0 +1,41 @@
+# Backtick names with `\` or quotes get a quoted name that lexes back to the same name.
+mode: syntax
+---- query
+t | project `a\b`, `it's "x"`
+---- expected
+PROGRAM@0..30
+  PIPELINE@0..29
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    PROJECT_OP@4..11
+      IDENT@4..11 "project"
+    WHITESPACE@11..12 " "
+    ERROR@12..29
+      ERROR@12..17 "`a\\b`"
+      COMMA@17..18 ","
+      WHITESPACE@18..19 " "
+      ERROR@19..29 "`it's \"x\"`"
+  WHITESPACE@29..30 "\n"
+
+error[DS0001]: names are not quoted with backticks
+  --> query:1:13
+  |
+1 | t | project `a\b`, `it's "x"`
+  |             ^^^^^ backticks are not a quote
+  |
+  = help: quote the name with brackets: `['a\\b']`
+
+error[DS0001]: names are not quoted with backticks
+  --> query:1:20
+  |
+1 | t | project `a\b`, `it's "x"`
+  |                    ^^^^^^^^^^ backticks are not a quote
+  |
+  = help: quote the name with brackets: `['it\'s "x"']`
+
+with the machine-applicable fixes applied:
+    t | project ['a\\b'], ['it\'s "x"']
+which parses without errors

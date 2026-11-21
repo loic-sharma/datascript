@@ -1,6 +1,9 @@
 # M1-20 — Lexer and literal fixes
 
-**Status:** todo
+**Status:** done — UTF-8-safe datetime spans, stray text blamed before range checks, tiny
+timespans truncated, combining marks in words, escaped quoting fixes, trailing-`\` and Windows-path
+help, `μs`, `timespan(-90m)`, hex hint, empty `['']` (DS0007), sorted string diagnostics, `eol: crlf`
+harness key; spec in LANGUAGE.md §1 and D-034.
 **Depends on:** M1-03
 **Crates:** `datascript-syntax` (`lexer.rs`, `literal.rs`)
 **Diagnostic codes:** DS0001–DS0019 (D-018)
@@ -47,16 +50,26 @@ Nits:
   (coordinate with whatever limit M1-18 adds).
 
 ## Acceptance criteria
-- [ ] Golden cases for every bug and suggestion above; each fix is applied and re-parsed by
+- [x] Golden cases for every bug and suggestion above; each fix is applied and re-parsed by
       `mode: syntax`.
-- [ ] A golden case with CRLF line endings covering an unterminated string, a line comment and an
+- [x] A golden case with CRLF line endings covering an unterminated string, a line comment and an
       unclosed `datetime(`.
-- [ ] Golden cases for: unclosed `datetime(`/`timespan(`, `1e3s`, `1_`, `$foo`, a lone `&`, `@x`,
+- [x] Golden cases for: unclosed `datetime(`/`timespan(`, `1e3s`, `1_`, `$foo`, a lone `&`, `@x`,
       a BOM or no-break space, U+200B, typographic quotes, `timespan(1.25:00)`, `timespan(:)`,
       `['a\'b']`, `[ 'x' ]`, `!in ~`.
-- [ ] `tests/lexer_props.rs` checks secondary spans and suggestion edit spans for char
+- [x] `tests/lexer_props.rs` checks secondary spans and suggestion edit spans for char
       boundaries too, and its fragments include `datetime(2024-` + a multi-byte character.
 
 ## Carried over
 
 ## Follow-ups
+- Informational: the trailing-`\` and Windows-path suggestions stay `MaybeIncorrect`, so golden
+  `mode: syntax` cases do not apply them (only machine-applicable fixes are applied). Unit tests in
+  `literal.rs` apply them and re-parse the result instead. The backtick fix is machine-applicable
+  and is re-parsed by `backtick_name_escapes.dstest`.
+- Informational: a CRLF golden case needs the new `eol: crlf` header (TESTING.md), because
+  `.gitattributes` stores `.dstest` files with LF.
+- Informational: `lex` now asserts the input is under 4 GiB (documented under `# Panics`); M1-18
+  added no input limit to coordinate with.
+- Carets under a decomposed accent are one column too wide; already owned by M1-13 (from M0-02).
+- `!in ~` diagnostic: carried over to M1-22.

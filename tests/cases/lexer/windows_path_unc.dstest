@@ -1,0 +1,29 @@
+# A UNC path (starting with `\`) gets the path help.
+mode: syntax
+---- query
+'\\server\share\x.csv' | take 1
+---- expected
+PROGRAM@0..32
+  PIPELINE@0..31
+    LITERAL@0..22
+      STRING@0..22 "'\\\\server\\share\\x.csv'"
+    WHITESPACE@22..23 " "
+    PIPE@23..24 "|"
+    WHITESPACE@24..25 " "
+    TAKE_OP@25..31
+      IDENT@25..29 "take"
+      WHITESPACE@29..30 " "
+      LITERAL@30..31
+        LONG@30..31 "1"
+  WHITESPACE@31..32 "\n"
+
+error[DS0005]: unknown escape sequence `\s`
+  --> query:1:10
+  |
+1 | '\\server\share\x.csv' | take 1
+  |          ^^    -- `\x` is not valid either
+  |          |
+  |          not a valid escape
+  |
+  = help: if this is a Windows path, use a verbatim string `@'\\server\share\x.csv'` or forward slashes `'//server/share/x.csv'`
+  = note: valid escapes are `\\`, `\"`, `\'`, `\n`, `\r`, `\t`, `\0` and `\u{...}`

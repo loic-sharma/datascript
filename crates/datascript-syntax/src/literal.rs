@@ -30,6 +30,9 @@ const TIMESPAN_UNITS: &[(&str, i128)] = &[
     ("ms", 1_000_000),
     ("us", 1_000),
     ("µs", 1_000),
+    // Greek small mu (U+03BC) looks the same as the micro sign (U+00B5) and is what many
+    // keyboards type.
+    ("μs", 1_000),
     ("tick", 100),
 ];
 
@@ -119,9 +122,12 @@ pub fn timespan(text: &str, span: Span) -> LiteralResult<Option<i64>> {
         if body == "null" {
             return Ok(None);
         }
+        let unsigned = body.strip_prefix('-');
         let result = if body.contains(':') {
             clock_timespan(body, body_range.start, span)
-        } else if body.starts_with(|c: char| c.is_ascii_digit() || c == '.') {
+        } else if let Some(short) = unsigned.filter(|b| b.starts_with(is_number_start)) {
+            short_timespan(short, body_range.start + 1, span).map(|v| -v)
+        } else if body.starts_with(is_number_start) {
             short_timespan(body, body_range.start, span)
         } else {
             Err(vec![bad_timespan_body(body, body_range, span)])
@@ -129,6 +135,10 @@ pub fn timespan(text: &str, span: Span) -> LiteralResult<Option<i64>> {
         return result.map(Some);
     }
     short_timespan(text, 0, span).map(Some)
+}
+
+fn is_number_start(c: char) -> bool {
+    c.is_ascii_digit() || c == '.'
 }
 
 fn bad_timespan_body(body: &str, range: Range<usize>, span: Span) -> Diagnostic {
@@ -208,6 +218,9 @@ fn short_timespan(text: &str, offset: usize, span: Span) -> LiteralResult<i64> {
         ]);
     }
     let Some(&(_, unit_ns)) = TIMESPAN_UNITS.iter().find(|(name, _)| *name == unit) else {
+        if let Some(d) = hex_number(number, unit, sub(span, offset..offset + text.len())) {
+            return Err(vec![d]);
+        }
         let mut d = invalid(format!("unknown timespan unit `{unit}`"))
             .primary(sub(span, unit_range), "not a timespan unit")
             .help(UNITS_HELP);
@@ -217,12 +230,15 @@ fn short_timespan(text: &str, offset: usize, span: Span) -> LiteralResult<i64> {
         return Err(vec![d]);
     };
     let (int_part, frac_part) = number.split_once('.').unwrap_or((number, ""));
+    // Digits past nanosecond precision cannot change the value (it is truncated to µs), and
+    // keeping them would overflow `10^scale`.
+    let frac_digits: String = frac_part.chars().filter(|c| *c != '_').take(9).collect();
     let digits: String = int_part
         .chars()
-        .chain(frac_part.chars())
         .filter(|c| *c != '_')
+        .chain(frac_digits.chars())
         .collect();
-    let scale = frac_part.chars().filter(|c| *c != '_').count() as u32;
+    let scale = frac_digits.len() as u32;
     let too_large = || {
         vec![invalid("timespan is too large").primary(
             sub(span, offset..offset + text.len()),
@@ -235,6 +251,21 @@ fn short_timespan(text: &str, offset: usize, span: Span) -> LiteralResult<i64> {
         .and_then(|v| v.checked_div(10i128.checked_pow(scale)?))
         .ok_or_else(too_large)?;
     i64::try_from(ns / 1_000).map_err(|_| too_large())
+}
+
+/// `0x1F` lexes as the number `0` with the unit `x1F`: say that hexadecimal is not supported.
+fn hex_number(number: &str, unit: &str, at: Span) -> Option<Diagnostic> {
+    let hex = unit.strip_prefix(['x', 'X'])?;
+    if number != "0" || hex.is_empty() || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let d = invalid("hexadecimal numbers are not supported").primary(at, "hexadecimal number");
+    Some(match u64::from_str_radix(hex, 16) {
+        Ok(value) if value <= i64::MAX as u64 => {
+            d.help(format!("write the number in decimal: `{value}`"))
+        }
+        _ => d.help("write the number in decimal"),
+    })
 }
 
 /// Common spellings of units people try first.
@@ -408,6 +439,7 @@ impl DateTimeParser<'_> {
                 .map_or(self.body.len(), |i| start + i)
                 .max(start + 1)
                 .min(self.body.len());
+            let end = self.body.ceil_char_boundary_compat(end);
             let digits = if min == max {
                 format!("{min} digits")
             } else {
@@ -430,46 +462,28 @@ impl DateTimeParser<'_> {
         }
     }
 
+    /// Reads the whole body first and checks field ranges only afterwards, so that text that
+    /// does not belong (`2024-01-0é`) is blamed rather than a field it happens to cut short.
     fn parse(mut self) -> LiteralResult<i64> {
-        let (year, year_range) = self.number(4, 4, "a year")?;
+        let year = self.number(4, 4, "a year")?;
         self.expect(b'-', "`-` after the year")?;
-        let (month, month_range) = self.number(1, 2, "a month")?;
+        let month = self.number(1, 2, "a month")?;
         self.expect(b'-', "`-` after the month")?;
-        let (day, day_range) = self.number(1, 2, "a day")?;
-        if year == 0 {
-            return Err(self.error(year_range, "years start at 0001"));
-        }
-        if !(1..=12).contains(&month) {
-            return Err(self.error(month_range, "months are 01 to 12"));
-        }
-        let last_day = days_in_month(year, month);
-        if day < 1 || day > last_day {
-            return Err(self.error(
-                day_range,
-                format!("{} has {last_day} days", month_name(year, month)),
-            ));
-        }
-        let mut micros = days_from_civil(year, month, day) * 86_400_000_000;
+        let day = self.number(1, 2, "a day")?;
+        let mut time = None;
+        let mut second = None;
+        let mut fraction = 0;
+        let mut offset = None;
 
         if matches!(self.peek(), Some(b'T' | b't' | b' ')) {
             self.pos += 1;
-            let (hour, hour_range) = self.number(1, 2, "an hour")?;
+            let hour = self.number(1, 2, "an hour")?;
             self.expect(b':', "`:` after the hour")?;
-            let (minute, minute_range) = self.number(1, 2, "minutes")?;
-            if hour > 23 {
-                return Err(self.error(hour_range, "hours are 00 to 23"));
-            }
-            if minute > 59 {
-                return Err(self.error(minute_range, "minutes are 00 to 59"));
-            }
-            micros += hour * 3_600_000_000 + minute * 60_000_000;
+            let minute = self.number(1, 2, "minutes")?;
+            time = Some((hour, minute));
             if self.peek() == Some(b':') {
                 self.pos += 1;
-                let (second, second_range) = self.number(1, 2, "seconds")?;
-                if second > 59 {
-                    return Err(self.error(second_range, "seconds are 00 to 59"));
-                }
-                micros += second * 1_000_000;
+                second = Some(self.number(1, 2, "seconds")?);
                 if self.peek() == Some(b'.') {
                     self.pos += 1;
                     let start = self.pos;
@@ -479,28 +493,17 @@ impl DateTimeParser<'_> {
                     if self.pos == start {
                         return Err(self.error(start - 1..start, "expected digits after `.`"));
                     }
-                    micros += fraction_micros(&self.body[start..self.pos]) as i64;
+                    fraction = fraction_micros(&self.body[start..self.pos]) as i64;
                 }
             }
             match self.peek() {
                 Some(b'Z' | b'z') => self.pos += 1,
                 Some(sign @ (b'+' | b'-')) => {
                     self.pos += 1;
-                    let (oh, oh_range) = self.number(2, 2, "an offset hour")?;
+                    let oh = self.number(2, 2, "an offset hour")?;
                     self.expect(b':', "`:` in the offset")?;
-                    let (om, om_range) = self.number(2, 2, "offset minutes")?;
-                    if oh > 23 {
-                        return Err(self.error(oh_range, "offset hours are 00 to 23"));
-                    }
-                    if om > 59 {
-                        return Err(self.error(om_range, "offset minutes are 00 to 59"));
-                    }
-                    let offset = oh * 3_600_000_000 + om * 60_000_000;
-                    if sign == b'+' {
-                        micros -= offset;
-                    } else {
-                        micros += offset;
-                    }
+                    let om = self.number(2, 2, "offset minutes")?;
+                    offset = Some((sign, oh, om));
                 }
                 _ => {}
             }
@@ -508,6 +511,47 @@ impl DateTimeParser<'_> {
         if self.pos < self.body.len() {
             let range = self.pos..self.body.len();
             return Err(self.error(range, "unexpected text after the date"));
+        }
+
+        let check = |(value, range): &(i64, Range<usize>), max: i64, label: &str| {
+            if *value > max {
+                Err(self.error(range.clone(), label.to_string()))
+            } else {
+                Ok(*value)
+            }
+        };
+        if year.0 == 0 {
+            return Err(self.error(year.1, "years start at 0001"));
+        }
+        let year = year.0;
+        if !(1..=12).contains(&month.0) {
+            return Err(self.error(month.1, "months are 01 to 12"));
+        }
+        let month = month.0;
+        let last_day = days_in_month(year, month);
+        if day.0 < 1 || day.0 > last_day {
+            return Err(self.error(
+                day.1,
+                format!("{} has {last_day} days", month_name(year, month)),
+            ));
+        }
+        let mut micros = days_from_civil(year, month, day.0) * 86_400_000_000;
+        if let Some((hour, minute)) = &time {
+            micros += check(hour, 23, "hours are 00 to 23")? * 3_600_000_000;
+            micros += check(minute, 59, "minutes are 00 to 59")? * 60_000_000;
+        }
+        if let Some(second) = &second {
+            micros += check(second, 59, "seconds are 00 to 59")? * 1_000_000 + fraction;
+        }
+        if let Some((sign, oh, om)) = &offset {
+            let oh = check(oh, 23, "offset hours are 00 to 23")?;
+            let om = check(om, 59, "offset minutes are 00 to 59")?;
+            let offset = oh * 3_600_000_000 + om * 60_000_000;
+            if *sign == b'+' {
+                micros -= offset;
+            } else {
+                micros += offset;
+            }
         }
         Ok(micros)
     }
@@ -577,12 +621,16 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
 /// verbatim `@"..."` / `@'...'` without.
 ///
 /// Escapes: `\\` `\"` `\'` `\n` `\r` `\t` `\0` `\u{1F600}`. Any other escape is DS0005; a string
-/// with no closing quote is DS0002.
+/// with no closing quote is DS0002. Text that does not start with a quote (or `@` and a quote)
+/// is not a string token; it gets a DS0002 rather than a panic.
 pub fn string(text: &str, span: Span) -> LiteralResult<String> {
     let verbatim = text.starts_with('@');
     let open_len = if verbatim { 2 } else { 1 };
-    let Some(quote) = text[open_len - 1..].chars().next() else {
-        return Err(vec![unterminated(text, span, '"')]);
+    let Some(quote @ ('"' | '\'')) = text.get(open_len - 1..).and_then(|t| t.chars().next()) else {
+        return Err(vec![
+            Diagnostic::error(codes::DS0002, "expected a string")
+                .primary(span, "a string starts with `\"` or `'`"),
+        ]);
     };
     let content = &text[open_len..];
     let mut errors = Vec::new();
@@ -590,15 +638,15 @@ pub fn string(text: &str, span: Span) -> LiteralResult<String> {
     if verbatim {
         return match content.find(quote) {
             Some(i) if open_len + i + 1 == text.len() => Ok(content[..i].to_string()),
-            _ => Err(vec![unterminated(text, span, quote)]),
+            _ => Err(vec![unterminated(span, quote, false)]),
         };
     }
 
     let mut value = String::new();
     let mut bad_escapes: Vec<(Range<usize>, String)> = Vec::new();
-    let mut has_valid_escape = false;
     let mut chars = content.char_indices().peekable();
     let mut closed = false;
+    let mut trailing_backslash = false;
     while let Some((i, c)) = chars.next() {
         let at = open_len + i;
         if c == quote {
@@ -610,6 +658,7 @@ pub fn string(text: &str, span: Span) -> LiteralResult<String> {
             continue;
         }
         let Some(&(_, e)) = chars.peek() else {
+            trailing_backslash = true;
             break;
         };
         chars.next();
@@ -625,14 +674,12 @@ pub fn string(text: &str, span: Span) -> LiteralResult<String> {
         };
         if let Some(ch) = simple {
             value.push(ch);
-            has_valid_escape = true;
             continue;
         }
         if e == 'u' {
             match unicode_escape(content, i + 2) {
                 Ok((ch, len)) => {
                     value.push(ch);
-                    has_valid_escape = true;
                     for _ in 0..len {
                         chars.next();
                     }
@@ -658,17 +705,14 @@ pub fn string(text: &str, span: Span) -> LiteralResult<String> {
     }
 
     if !closed {
-        errors.insert(0, unterminated(text, span, quote));
+        errors.push(unterminated(span, quote, trailing_backslash));
     }
     if !bad_escapes.is_empty() {
-        errors.push(unknown_escapes(
-            text,
-            span,
-            &bad_escapes,
-            has_valid_escape,
-            closed,
-        ));
+        errors.push(unknown_escapes(text, span, &bad_escapes, closed));
     }
+    // Source order (the promise on `Lexed`): the unterminated string covers the whole token, so
+    // it sorts first; the escapes follow by position.
+    errors.sort_by_key(|d| d.primary.as_ref().map(|l| l.span.start));
     if errors.is_empty() {
         Ok(value)
     } else {
@@ -705,29 +749,47 @@ fn bad_unicode_escape(escape: &str, at: Span) -> Diagnostic {
         .help("write `\\u{` followed by 1 to 6 hex digits and `}`, e.g. `\\u{1F600}`")
 }
 
-fn unterminated(text: &str, span: Span, quote: char) -> Diagnostic {
+fn unterminated(span: Span, quote: char, trailing_backslash: bool) -> Diagnostic {
     let end = Span::empty(span.file, span.end);
-    Diagnostic::error(codes::DS0002, "unterminated string")
-        .primary(span, "this string is never closed")
-        .help_with(
+    let d = Diagnostic::error(codes::DS0002, "unterminated string")
+        .primary(span, "this string is never closed");
+    // `'abc\` + `'` would be `'abc\'`, still open: the `\` escapes the new quote.
+    let d = if trailing_backslash {
+        d.help_with(
+            format!(
+                "the `\\` at the end escapes a quote; to end the string with a backslash, \
+                 double it and add a closing `{quote}`"
+            ),
+            Suggestion::new(
+                vec![TextEdit::new(end, format!("\\{quote}"))],
+                Applicability::MaybeIncorrect,
+            ),
+        )
+    } else {
+        d.help_with(
             format!("add a closing `{quote}` at the end of the string"),
             Suggestion::new(
                 vec![TextEdit::new(end, quote.to_string())],
                 Applicability::MaybeIncorrect,
             ),
         )
-        .note(if text.contains('\n') {
-            "strings cannot span lines"
-        } else {
-            "a string ends at the end of its line"
-        })
+    };
+    d.note("a string ends at the end of its line")
+}
+
+/// Whether a string reads like a Windows path: a drive (`C:\`) or a UNC path (`\\server`). A
+/// rooted path (`\data\x.csv`) has several bad escapes, which counts too (see the caller).
+fn looks_like_path(text: &str) -> bool {
+    let unc = text[1..]
+        .strip_prefix("\\\\")
+        .is_some_and(|rest| rest.starts_with(|c: char| c.is_alphanumeric()));
+    text.contains(":\\") || unc
 }
 
 fn unknown_escapes(
     text: &str,
     span: Span,
     bad: &[(Range<usize>, String)],
-    has_valid_escape: bool,
     closed: bool,
 ) -> Diagnostic {
     let (first_range, first) = &bad[0];
@@ -739,18 +801,24 @@ fn unknown_escapes(
             format!("`{escape}` is not valid either"),
         );
     }
-    let looks_like_path = text.contains(":\\") || bad.len() > 1;
-    if looks_like_path && !has_valid_escape && closed {
+    // A path is checked before anything else: doubling only the bad escapes of
+    // `'C:\data\new.csv'` would leave `\n`, a newline.
+    if looks_like_path(text) || bad.len() > 1 {
         let slashed = text.replace('\\', "/");
-        d = d.help_with(
-            format!(
-                "if this is a Windows path, use a verbatim string `@{text}` or forward slashes `{slashed}`"
-            ),
-            Suggestion::new(
-                vec![TextEdit::new(Span::empty(span.file, span.start), "@")],
-                Applicability::MaybeIncorrect,
-            ),
+        let help = format!(
+            "if this is a Windows path, use a verbatim string `@{text}` or forward slashes `{slashed}`"
         );
+        d = if closed {
+            d.help_with(
+                help,
+                Suggestion::new(
+                    vec![TextEdit::new(Span::empty(span.file, span.start), "@")],
+                    Applicability::MaybeIncorrect,
+                ),
+            )
+        } else {
+            d.help(help)
+        };
     } else {
         let mut doubled = String::new();
         let mut last = 0;
@@ -779,12 +847,22 @@ fn unknown_escapes(
 
 /// The name in a [`QUOTED_IDENT`](crate::SyntaxKind::QUOTED_IDENT) token: `['order id']` is
 /// `order id`. The quoted part follows the [`string`] rules.
+///
+/// An empty name (`['']`) is DS0007: no column, table or `let` can be called that.
 pub fn quoted_ident(text: &str, span: Span) -> LiteralResult<String> {
     let inner = text
         .strip_prefix('[')
         .and_then(|t| t.strip_suffix(']'))
         .unwrap_or(text);
-    string(inner, sub(span, 1..1 + inner.len()))
+    let name = string(inner, sub(span, 1..1 + inner.len()))?;
+    if name.is_empty() {
+        return Err(vec![
+            Diagnostic::error(codes::DS0007, "a name cannot be empty")
+                .primary(span, "empty quoted name")
+                .help("write the name between the quotes: `['order id']`"),
+        ]);
+    }
+    Ok(name)
 }
 
 #[cfg(test)]
@@ -973,5 +1051,151 @@ mod tests {
         let q = |t: &str| quoted_ident(t, span(t));
         assert_eq!(q("['order id']").unwrap(), "order id");
         assert_eq!(q(r#"["x"]"#).unwrap(), "x");
+    }
+
+    /// Applies a suggestion's edits to `text` (which starts at offset 0).
+    fn apply(text: &str, d: &Diagnostic, help: usize) -> String {
+        let mut out = text.to_string();
+        let mut edits = d.help[help].suggestion.as_ref().unwrap().edits.clone();
+        edits.sort_by_key(|e| std::cmp::Reverse(e.span.start));
+        for e in edits {
+            out.replace_range(e.span.range(), &e.replacement);
+        }
+        out
+    }
+
+    #[test]
+    fn tiny_timespan_fractions_are_truncated() {
+        let text = "0.0000000000000000000000000000000000000001s";
+        assert_eq!(ts(text), Some(0));
+        assert_eq!(ts("1.0000019999999999999999999999999s"), Some(1_000_001));
+        assert_eq!(ts("0.000_000_5s"), Some(0));
+    }
+
+    #[test]
+    fn greek_mu_and_negative_short_form() {
+        assert_eq!(ts("7μs"), Some(7));
+        assert_eq!(ts("timespan(-90m)"), Some(-5_400_000_000));
+        assert_eq!(ts("timespan( -1.5h )"), Some(-5_400_000_000));
+        let text = "timespan(-x)";
+        assert_eq!(&text[primary(&ts_err(text))], "-x");
+    }
+
+    #[test]
+    fn hex_numbers() {
+        let d = ts_err("0x1F");
+        assert_eq!(d.message, "hexadecimal numbers are not supported");
+        assert_eq!(primary(&d), 0..4);
+        assert!(d.help[0].message.contains("`31`"), "{}", d.help[0].message);
+        let d = ts_err("0xFFFFFFFFFFFFFFFFFF");
+        assert_eq!(d.help[0].message, "write the number in decimal");
+        // Not hex: a bad unit.
+        assert_eq!(ts_err("0xg").message, "unknown timespan unit `xg`");
+        assert_eq!(ts_err("1x1F").message, "unknown timespan unit `x1F`");
+    }
+
+    #[test]
+    fn datetime_spans_stay_on_char_boundaries() {
+        let text = "datetime(2024-é1-01)";
+        let d = dt_err(text);
+        assert_eq!(&text[primary(&d)], "é");
+        let text = "datetime(é)";
+        assert!(text.is_char_boundary(primary(&dt_err(text)).end));
+    }
+
+    #[test]
+    fn datetime_blames_the_stray_text() {
+        let text = "datetime(2024-01-0é)";
+        let d = dt_err(text);
+        assert_eq!(&text[primary(&d)], "é");
+        assert_eq!(d.primary.unwrap().message, "unexpected text after the date");
+        let text = "datetime(2024-01-31T12:99x)";
+        assert_eq!(&text[primary(&dt_err(text))], "x");
+        // Ranges are still checked, in source order.
+        let text = "datetime(2024-13-01T25:00)";
+        assert_eq!(&text[primary(&dt_err(text))], "13");
+        let text = "datetime(2024-01-01T10:00+24:00)";
+        assert_eq!(&text[primary(&dt_err(text))], "24");
+    }
+
+    #[test]
+    fn unterminated_string_with_trailing_backslash() {
+        let text = r"'abc\";
+        let d = string(text, span(text)).unwrap_err().remove(0);
+        assert_eq!(d.code, codes::DS0002);
+        let fixed = apply(text, &d, 0);
+        assert_eq!(fixed, r"'abc\\'");
+        assert_eq!(string(&fixed, span(&fixed)).unwrap(), r"abc\");
+        // Two backslashes are an escaped backslash: just close the string.
+        let text = r"'abc\\";
+        let d = string(text, span(text)).unwrap_err().remove(0);
+        assert_eq!(apply(text, &d, 0), r"'abc\\'");
+        // Verbatim strings have no escapes.
+        let text = r"@'abc\";
+        let d = string(text, span(text)).unwrap_err().remove(0);
+        assert_eq!(apply(text, &d, 0), r"@'abc\'");
+    }
+
+    #[test]
+    fn windows_paths_with_a_valid_escape() {
+        let text = r"'C:\data\new.csv'";
+        let errors = string(text, span(text)).unwrap_err();
+        assert_eq!(errors.len(), 1);
+        let d = &errors[0];
+        assert!(
+            d.help[0].message.contains(r"@'C:\data\new.csv'"),
+            "{}",
+            d.help[0].message
+        );
+        assert!(d.help[0].message.contains("'C:/data/new.csv'"));
+        let fixed = apply(text, d, 0);
+        assert_eq!(string(&fixed, span(&fixed)).unwrap(), r"C:\data\new.csv");
+        // A rooted or UNC path.
+        let text = r"'\\server\share'";
+        let d = &string(text, span(text)).unwrap_err()[0];
+        assert!(d.help[0].message.contains("forward slashes"));
+        // A string that merely starts with an escape is not a path.
+        let text = r"'\qx'";
+        let d = &string(text, span(text)).unwrap_err()[0];
+        assert!(
+            d.help[0].message.contains("double it"),
+            "{}",
+            d.help[0].message
+        );
+        // Not a path: one bad escape is doubled.
+        let text = r"'a\qb'";
+        let d = &string(text, span(text)).unwrap_err()[0];
+        assert!(d.help[0].message.contains(r"double it: `'a\\qb'`"));
+    }
+
+    #[test]
+    fn string_diagnostics_are_in_source_order() {
+        let text = r"'\q\u{zz}'";
+        let errors = string(text, span(text)).unwrap_err();
+        let starts: Vec<_> = errors.iter().map(|d| primary(d).start).collect();
+        assert_eq!(starts, [1, 3]);
+        let text = r"'\u{zz}\q";
+        let errors = string(text, span(text)).unwrap_err();
+        assert_eq!(errors[0].code, codes::DS0002);
+        let starts: Vec<_> = errors.iter().map(|d| primary(d).start).collect();
+        assert!(starts.is_sorted(), "{starts:?}");
+    }
+
+    #[test]
+    fn string_without_a_quote_does_not_panic() {
+        for text in ["é", "", "@", "@é", "x"] {
+            let d = &string(text, span(text)).unwrap_err()[0];
+            assert_eq!(d.code, codes::DS0002, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn empty_quoted_name() {
+        let q = |t: &str| quoted_ident(t, span(t));
+        let d = &q("['']").unwrap_err()[0];
+        assert_eq!(d.code, codes::DS0007);
+        assert_eq!(primary(d), 0..4);
+        assert_eq!(q(r#"[""]"#).unwrap_err()[0].code, codes::DS0007);
+        assert_eq!(q("[' ']").unwrap(), " ");
     }
 }

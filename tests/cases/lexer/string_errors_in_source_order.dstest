@@ -1,0 +1,41 @@
+# Two errors inside one string are reported in source order.
+mode: syntax
+---- query
+t | where s == '\q\u{zz}'
+---- expected
+PROGRAM@0..26
+  PIPELINE@0..25
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..25
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..25
+        NAME_REF@10..11
+          IDENT@10..11 "s"
+        WHITESPACE@11..12 " "
+        EQ2@12..14 "=="
+        WHITESPACE@14..15 " "
+        LITERAL@15..25
+          STRING@15..25 "'\\q\\u{zz}'"
+  WHITESPACE@25..26 "\n"
+
+error[DS0005]: unknown escape sequence `\q`
+  --> query:1:17
+  |
+1 | t | where s == '\q\u{zz}'
+  |                 ^^ not a valid escape
+  |
+  = help: to write a backslash, double it: `'\\q\u{zz}'`
+  = note: valid escapes are `\\`, `\"`, `\'`, `\n`, `\r`, `\t`, `\0` and `\u{...}`
+
+error[DS0005]: invalid unicode escape `\u{zz}`
+  --> query:1:19
+  |
+1 | t | where s == '\q\u{zz}'
+  |                   ^^^^^^ not a valid unicode escape
+  |
+  = help: write `\u{` followed by 1 to 6 hex digits and `}`, e.g. `\u{1F600}`

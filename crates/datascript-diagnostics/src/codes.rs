@@ -51,6 +51,8 @@ pub const DS0004: Code = Code::new(4);
 pub const DS0005: Code = Code::new(5);
 /// unterminated block comment
 pub const DS0006: Code = Code::new(6);
+/// empty quoted name `['']`
+pub const DS0007: Code = Code::new(7);
 /// expression nested too deeply for the parser
 pub const DS0100: Code = Code::new(100);
 /// expected X, found Y (generic parse error, used as a last resort)
@@ -194,6 +196,12 @@ pub const REGISTRY: &[CodeInfo] = &[
         code: DS0006,
         severity: Some(Severity::Error),
         summary: "unterminated block comment",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0007,
+        severity: Some(Severity::Error),
+        summary: "empty quoted name `['']`",
         status: CodeStatus::Active,
     },
     CodeInfo {

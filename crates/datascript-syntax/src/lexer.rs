@@ -67,7 +67,15 @@ pub struct Lexed {
 /// assert_eq!(kinds, [IDENT, PIPE, IDENT, MINUS, IDENT, IDENT]);
 /// assert!(lexed.diagnostics.is_empty());
 /// ```
+///
+/// # Panics
+///
+/// If `text` is 4 GiB or longer: token offsets and spans are `u32`.
 pub fn lex(text: &str, file: FileId) -> Lexed {
+    assert!(
+        u32::try_from(text.len()).is_ok(),
+        "the lexer takes inputs shorter than 4 GiB"
+    );
     let mut lexer = Lexer {
         src: text,
         pos: 0,
@@ -116,10 +124,54 @@ fn is_ident_continue(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
-/// Characters that make a word an identifier-like run. Non-ASCII letters are included so that
+/// Characters that start an identifier-like run. Non-ASCII letters are included so that
 /// `naïve` is one bad name rather than `na`, an error, and `ve`.
-fn is_word_char(c: char) -> bool {
+fn is_word_start(c: char) -> bool {
     is_ident_continue(c) || (!c.is_ascii() && c.is_alphanumeric())
+}
+
+/// Characters that continue an identifier-like run: [`is_word_start`] plus combining marks, so
+/// that a decomposed `naïve` (`i` + U+0308) is one word too.
+fn is_word_char(c: char) -> bool {
+    is_word_start(c) || is_combining_mark(c)
+}
+
+/// Combining diacritics (general category Mn/Mc) that `char::is_alphanumeric` does not cover.
+/// Vowel signs and other marks of scripts such as Devanagari are `Alphabetic` already.
+fn is_combining_mark(c: char) -> bool {
+    matches!(
+        c,
+        '\u{0300}'..='\u{036F}'
+            | '\u{0483}'..='\u{0489}'
+            | '\u{0591}'..='\u{05BD}'
+            | '\u{064B}'..='\u{065F}'
+            | '\u{1AB0}'..='\u{1AFF}'
+            | '\u{1DC0}'..='\u{1DFF}'
+            | '\u{20D0}'..='\u{20FF}'
+            | '\u{302A}'..='\u{302F}'
+            | '\u{3099}'..='\u{309A}'
+            | '\u{FE20}'..='\u{FE2F}'
+    )
+}
+
+/// `name` as a quoted name that lexes back to exactly `name`: `['a b']`, `["it's"]`,
+/// `['it\'s "x"']`. Backslashes and the chosen quote are escaped.
+pub(crate) fn quote_name(name: &str) -> String {
+    let quote = if name.contains('\'') && !name.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
+    let mut out = format!("[{quote}");
+    for c in name.chars() {
+        if c == '\\' || c == quote {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push(quote);
+    out.push(']');
+    out
 }
 
 fn is_line_end(c: char) -> bool {
@@ -180,7 +232,7 @@ impl Lexer<'_> {
         if c.is_ascii_digit() || (c == '.' && next.is_some_and(|n| n.is_ascii_digit())) {
             return self.number(start);
         }
-        if is_word_char(c) {
+        if is_word_start(c) {
             return self.word(start);
         }
         self.bump();
@@ -331,11 +383,8 @@ impl Lexer<'_> {
     fn bad_name(&mut self, start: usize) -> SyntaxKind {
         let word = &self.src[start..self.pos];
         let span = self.span(start, self.pos);
-        let quoted = if word.contains('\'') {
-            format!("[\"{word}\"]")
-        } else {
-            format!("['{word}']")
-        };
+        // A word holds no quotes or backslashes, so this is always `['word']`.
+        let quoted = quote_name(word);
         let d = Diagnostic::error(
             codes::DS0001,
             format!("names with non-ASCII characters must be quoted: `{word}`"),
@@ -451,11 +500,7 @@ impl Lexer<'_> {
         let name = line[..close].to_string();
         self.pos += close + 1;
         let span = self.span(start, self.pos);
-        let quoted = if name.contains('\'') {
-            format!("[\"{name}\"]")
-        } else {
-            format!("['{name}']")
-        };
+        let quoted = quote_name(&name);
         let d = Diagnostic::error(codes::DS0001, "names are not quoted with backticks")
             .primary(span, "backticks are not a quote")
             .help_with(
@@ -912,5 +957,58 @@ mod tests {
         let lexed = lex(text, FileId(0));
         let joined: String = lexed.tokens.iter().map(|t| t.text(text)).collect();
         assert_eq!(joined, text);
+    }
+
+    #[test]
+    fn decomposed_accents_stay_in_one_word() {
+        let text = "nai\u{0308}ve + 1";
+        let tokens = kinds(text);
+        assert_eq!(tokens[0], (ERROR, "nai\u{0308}ve"));
+        let diagnostics = errors(text);
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].help[0].message.contains("['nai\u{0308}ve']"));
+        // A combining mark cannot start a word.
+        assert_eq!(kinds("\u{0308}x")[0].0, ERROR);
+    }
+
+    #[test]
+    fn quote_name_escapes() {
+        assert_eq!(quote_name("a b"), "['a b']");
+        assert_eq!(quote_name("it's"), r#"["it's"]"#);
+        assert_eq!(quote_name(r"a\b"), r"['a\\b']");
+        assert_eq!(quote_name(r#"it's "x""#), r#"['it\'s "x"']"#);
+        for name in ["a b", "it's", r"a\b", r#"it's "x""#, r#"\'""#] {
+            let quoted = quote_name(name);
+            assert_eq!(only(&quoted), QUOTED_IDENT, "{quoted}");
+            let span = Span::new(FileId(0), 0, quoted.len() as u32);
+            assert_eq!(literal::quoted_ident(&quoted, span).unwrap(), name);
+        }
+    }
+
+    #[test]
+    fn backtick_fix_is_valid_code() {
+        for (text, fixed) in [
+            (r"`a\b`", r"['a\\b']"),
+            (r#"`it's "x"`"#, r#"['it\'s "x"']"#),
+        ] {
+            let d = &errors(text)[0];
+            let edit = &d.help[0].suggestion.as_ref().unwrap().edits[0];
+            assert_eq!(edit.replacement, fixed);
+            assert_eq!(only(fixed), QUOTED_IDENT);
+        }
+    }
+
+    #[test]
+    fn greek_mu_and_hex() {
+        assert_eq!(only("5μs"), TIMESPAN);
+        let d = &errors("0x1F")[0];
+        assert_eq!(d.message, "hexadecimal numbers are not supported");
+    }
+
+    #[test]
+    fn empty_quoted_name() {
+        let d = &errors("['']")[0];
+        assert_eq!(d.code, codes::DS0007);
+        assert_eq!(kinds("['']"), [(QUOTED_IDENT, "['']")]);
     }
 }

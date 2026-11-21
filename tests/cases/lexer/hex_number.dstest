@@ -1,0 +1,32 @@
+# Hexadecimal numbers are not supported; the help gives the decimal value.
+mode: syntax
+---- query
+t | where x == 0x1F
+---- expected
+PROGRAM@0..20
+  PIPELINE@0..19
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..19
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..19
+        NAME_REF@10..11
+          IDENT@10..11 "x"
+        WHITESPACE@11..12 " "
+        EQ2@12..14 "=="
+        WHITESPACE@14..15 " "
+        LITERAL@15..19
+          TIMESPAN@15..19 "0x1F"
+  WHITESPACE@19..20 "\n"
+
+error[DS0003]: hexadecimal numbers are not supported
+  --> query:1:16
+  |
+1 | t | where x == 0x1F
+  |                ^^^^ hexadecimal number
+  |
+  = help: write the number in decimal: `31`

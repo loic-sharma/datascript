@@ -1,0 +1,18 @@
+# Stray text after a field is blamed, not the field it cut short (`0` is not checked as a day).
+mode: syntax
+---- query
+datetime(2024-01-0é)
+---- expected
+PROGRAM@0..22
+  PIPELINE@0..21
+    LITERAL@0..21
+      DATETIME@0..21 "datetime(2024-01-0é)"
+  WHITESPACE@21..22 "\n"
+
+error[DS0003]: invalid datetime `2024-01-0é`
+  --> query:1:19
+  |
+1 | datetime(2024-01-0é)
+  |                   ^ unexpected text after the date
+  |
+  = help: write an ISO 8601 date: `datetime(2024-01-31)` or `datetime(2024-01-31T12:00:00Z)`

@@ -62,6 +62,7 @@ error[DS1001]: unknown column `amout`
 | `tables` | `name=path, ...` | | Host-registered tables (simulates `--table`/drag-drop) |
 | `schema` | `name(col: type, ...); ...` | | Schemas for a mock `SchemaProvider`, for `check`/`explain` cases before a real backend exists (M1-05). With `schema`, no files are read |
 | `skip` | reason | | Skip with a reason (e.g. known bug, links a task) |
+| `eol` | `lf`, `crlf` | `lf` | Line endings of the query. `.dstest` files are always stored with LF (`.gitattributes`), so `crlf` converts every query line ending to `\r\n` before running |
 
 Lines starting with `#` before the first section are a free-form description.
 

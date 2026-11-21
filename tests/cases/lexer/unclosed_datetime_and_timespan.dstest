@@ -1,0 +1,64 @@
+# An unclosed `datetime(` or `timespan(` ends at the end of its line.
+mode: syntax
+---- query
+t | where d > datetime(2024-01-01
+| where e > timespan(1:00
+| take 1
+---- expected
+PROGRAM@0..69
+  PIPELINE@0..68
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..33
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..33
+        NAME_REF@10..11
+          IDENT@10..11 "d"
+        WHITESPACE@11..12 " "
+        GT@12..13 ">"
+        WHITESPACE@13..14 " "
+        LITERAL@14..33
+          DATETIME@14..33 "datetime(2024-01-01"
+    WHITESPACE@33..34 "\n"
+    PIPE@34..35 "|"
+    WHITESPACE@35..36 " "
+    WHERE_OP@36..59
+      IDENT@36..41 "where"
+      WHITESPACE@41..42 " "
+      BIN_EXPR@42..59
+        NAME_REF@42..43
+          IDENT@42..43 "e"
+        WHITESPACE@43..44 " "
+        GT@44..45 ">"
+        WHITESPACE@45..46 " "
+        LITERAL@46..59
+          TIMESPAN@46..59 "timespan(1:00"
+    WHITESPACE@59..60 "\n"
+    PIPE@60..61 "|"
+    WHITESPACE@61..62 " "
+    TAKE_OP@62..68
+      IDENT@62..66 "take"
+      WHITESPACE@66..67 " "
+      LITERAL@67..68
+        LONG@67..68 "1"
+  WHITESPACE@68..69 "\n"
+
+error[DS0003]: `datetime(` is never closed
+  --> query:1:15
+  |
+1 | t | where d > datetime(2024-01-01
+  |               ^^^^^^^^^ this literal has no closing `)` on this line
+  |
+  = help: close it with `)`: `datetime(2024-01-01)`
+
+error[DS0003]: `timespan(` is never closed
+  --> query:2:13
+  |
+2 | | where e > timespan(1:00
+  |             ^^^^^^^^^ this literal has no closing `)` on this line
+  |
+  = help: close it with `)`: `timespan(1:00)`

@@ -264,6 +264,18 @@ and after a complete expression, so `f(a⏎U | take 1` keeps the second query wh
 `(a⏎- b)` stay continuations. The missing `;` there is not reported separately. *(M1-19,
 2026-11-21.)*
 
+### D-034 — Lexical gaps closed by M1-20
+`5μs` with the Greek mu (U+03BC) is accepted like the micro sign (U+00B5): the two look the same,
+and rejecting one of them would be an error the user cannot see. `timespan(...)` takes a leading
+`-` before a short-form body (`timespan(-90m)`), not only before the clock form, since `-90m` reads
+naturally and the clock form already allows it. An empty quoted name `['']` is rejected by the
+lexer (new code DS0007) rather than the binder: the lexer is context-free (D-026) and `['']` is a
+name wherever it appears, and no column, table or `let` can usefully be called that. `0x1F` stays
+an error (no hexadecimal literals) but now says so, with the decimal value. Combining marks after
+the first character continue a word, so a decomposed `naïve` is one DS0001 like the composed one.
+Suggestions that quote a name (backticks) escape `\` and the chosen quote, so the fix lexes back to
+the same name. *(M1-20, 2026-11-21.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack
