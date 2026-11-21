@@ -1,0 +1,14 @@
+# `let alias = orders;` with a host table `orders` is a scalar `let` (D-036): DS1006 with the fix.
+mode: check
+schema: orders(id: long)
+---- query
+let alias = orders;
+from alias | take 1
+---- expected
+error[DS1006]: `orders` is a table, not a value
+  --> query:1:13
+  |
+1 | let alias = orders;
+  |             ^^^^^^ this names a table
+  |
+  = help: a `let` is a table only when its value is a pipeline: `let alias = from orders;`

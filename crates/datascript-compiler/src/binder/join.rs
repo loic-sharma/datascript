@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use datascript_diagnostics::codes::{DS1001, DS1007, DS1030, DS2003};
+use datascript_diagnostics::codes::{DS1001, DS1007, DS1030, DS2003, DS4001};
 use datascript_diagnostics::{Diagnostic, Span, Suggestion, did_you_mean};
 use datascript_syntax::SyntaxKind;
 use datascript_syntax::ast::{self, AstNode};
@@ -31,11 +31,32 @@ impl Binder<'_> {
         op: &ast::JoinOp,
         left: &Option<Vec<Column>>,
     ) -> (Op, Option<Vec<Column>>) {
-        let kind = op
-            .kind()
-            .and_then(|k| k.value_token())
+        let kind_token = op.kind().and_then(|k| k.value_token());
+        let kind = kind_token
+            .as_ref()
             .and_then(|t| JoinKind::from_name(t.text()))
             .unwrap_or(JoinKind::Inner);
+        // Capabilities (DS4001): at the kind if it is written, else at `join`.
+        let kind_name = kind_token.as_ref().map_or("inner", |t| t.text());
+        if let Some(caps_kind) = crate::capabilities::JoinKind::from_name(kind_name)
+            && !self.caps.supports_join(caps_kind)
+        {
+            let op_span = self.span(op);
+            let at = match &kind_token {
+                Some(t) => {
+                    let r = t.text_range();
+                    Span::new(self.file, r.start().into(), r.end().into())
+                }
+                None => self.first_token_span(op.syntax(), op_span),
+            };
+            self.diagnostics.push(
+                Diagnostic::error(
+                    DS4001,
+                    format!("`{kind_name}` joins are not supported by this engine"),
+                )
+                .primary(at, "this engine does not implement this kind of join"),
+            );
+        }
         let Some(right_expr) = op.right() else {
             return (Op::Error, None);
         };
@@ -326,6 +347,7 @@ impl Binder<'_> {
                                 .read_from
                                 .clone()
                                 .filter(|_| r.is_some_and(|r| r.read_from == c.read_from)),
+                            arrow_only: None,
                         }
                     }
                     None => c.clone(),

@@ -1,0 +1,34 @@
+# A value that is not a string is not a source (DS2040).
+mode: check
+schema: 'x.csv'(a: long)
+---- query
+let n = 5;
+from n | take 1;
+from 1 + 2 | take 1;
+from 'x.csv' | join (n) on a
+---- expected
+error[DS2040]: this value is not a table
+  --> query:2:6
+  |
+2 | from n | take 1;
+  |      ^ this is `long`, not a table or a path
+  |
+  = help: a source is a file path such as `'data.csv'`, a reader call such as `read_csv('x.txt')`, a table name, or a pipeline in parentheses
+  = note: `n` is defined by a `let` as a value
+
+error[DS2040]: this value is not a table
+  --> query:3:6
+  |
+3 | from 1 + 2 | take 1;
+  |      ^^^^^ this is `long`, not a table or a path
+  |
+  = help: a source is a file path such as `'data.csv'`, a reader call such as `read_csv('x.txt')`, a table name, or a pipeline in parentheses
+
+error[DS2040]: this value is not a table
+  --> query:4:22
+  |
+4 | from 'x.csv' | join (n) on a
+  |                      ^ this is `long`, not a table or a path
+  |
+  = help: a source is a file path such as `'data.csv'`, a reader call such as `read_csv('x.txt')`, a table name, or a pipeline in parentheses
+  = note: `n` is defined by a `let` as a value

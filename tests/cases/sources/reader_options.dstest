@@ -1,0 +1,71 @@
+# Reader options: names, constant values and their types (LANGUAGE.md §3.1).
+mode: check
+schema: 'x.csv'(a: long); 'x.json'(a: long); 'x.parquet'(a: long)
+---- query
+from read_csv('x.csv', delimeter = ';') | take 1;
+from read_csv('x.csv', header = 'yes', delimiter = ';;', infer_rows = 0) | take 1;
+from read_json('x.json', format = 'ndjsn') | take 1;
+from read_csv('x.csv', header = true, header = false) | take 1;
+from read_csv('x.csv', schema = 'a: long') | take 1;
+from read_parquet('x.parquet', compression = 'gzip') | take 1
+---- expected
+error[DS3003]: `read_csv` has no option `delimeter`
+  --> query:1:24
+  |
+1 | from read_csv('x.csv', delimeter = ';') | take 1;
+  |                        ^^^^^^^^^ unknown option
+  |
+  = help: an option with a similar name exists: `delimiter`
+  = note: `read_csv` takes: delimiter, header, quote, escape, null_value, infer_rows, compression
+
+error[DS2041]: `header` must be `true` or `false`
+  --> query:2:33
+  |
+2 | from read_csv('x.csv', header = 'yes', delimiter = ';;', infer_rows = 0) | take 1;
+  |                                 ^^^^^ this is `string`
+
+error[DS2041]: `delimiter` must be a single character
+  --> query:2:52
+  |
+2 | from read_csv('x.csv', header = 'yes', delimiter = ';;', infer_rows = 0) | take 1;
+  |                                                    ^^^^ this has 2 characters
+
+error[DS2041]: `infer_rows` must be a whole number of at least 1
+  --> query:2:71
+  |
+2 | from read_csv('x.csv', header = 'yes', delimiter = ';;', infer_rows = 0) | take 1;
+  |                                                                       ^ this is 0
+
+error[DS2041]: `format` must be one of 'ndjson', 'array'
+  --> query:3:35
+  |
+3 | from read_json('x.json', format = 'ndjsn') | take 1;
+  |                                   ^^^^^^^ 'ndjsn' is not one of them
+  |
+  = help: did you mean 'ndjson'?
+
+error[DS2043]: option `header` is given twice
+  --> query:4:39
+  |
+4 | from read_csv('x.csv', header = true, header = false) | take 1;
+  |                        ------         ^^^^^^ given again here
+  |                        |
+  |                        first given here
+  |
+  = help: keep one of them
+
+error[DS3003]: reader option `schema` is not available yet
+  --> query:5:24
+  |
+5 | from read_csv('x.csv', schema = 'a: long') | take 1;
+  |                        ^^^^^^ planned for M2
+  |
+  = note: it is part of `read_csv`, but this version does not have it
+
+error[DS3003]: `read_parquet` has no option `compression`
+  --> query:6:32
+  |
+6 | from read_parquet('x.parquet', compression = 'gzip') | take 1
+  |                                ^^^^^^^^^^^ unknown option
+  |
+  = note: `read_parquet` takes no options

@@ -30,9 +30,8 @@ fn orders_schema() -> SchemaRef {
 
 impl SchemaProvider for Orders {
     fn schema_of(&self, source: &SourceRef) -> SchemaLookup {
-        let SourceRef::Path(path) = source;
-        match path.as_str() {
-            "orders.csv" => SchemaLookup::Ready(orders_schema()),
+        match source {
+            SourceRef::Path(path) if path == "orders.csv" => SchemaLookup::Ready(orders_schema()),
             _ => SchemaLookup::Failed(SourceError::NotFound { nearby: Vec::new() }),
         }
     }
@@ -151,4 +150,144 @@ fn lets_are_typed_and_inlined() {
         program.explain(),
         "Filter: amount > (cast(1 + 2, real) * 1.5)\n  Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, timestamp: datetime)\n"
     );
+}
+
+/// A cache that knows the sources it was given, and answers `Pending` for the rest, like the
+/// session's (D-022).
+struct Cache(HashMap<SourceRef, SchemaRef>);
+
+impl SchemaProvider for Cache {
+    fn schema_of(&self, source: &SourceRef) -> SchemaLookup {
+        match self.0.get(source) {
+            Some(schema) => SchemaLookup::Ready(schema.clone()),
+            None => SchemaLookup::Pending,
+        }
+    }
+}
+
+/// Every kind of source is found on the first pass, silently, and bound on the second.
+#[test]
+fn two_passes_bind_every_kind_of_source() {
+    let text = "let p = 'orders.csv';\n\
+                let alias = hosted;\n\
+                from p | where amout > 1;\n\
+                from read_csv(p, delimiter = ';') | take 1;\n\
+                from hosted | union 'logs/*.csv';\n\
+                from missing | take 1";
+    let src = SourceFile::new("q", text);
+    let first = check(
+        &src,
+        FileId(0),
+        &Cache(HashMap::new()),
+        &Capabilities::full(),
+    );
+    assert!(first.diagnostics.is_empty(), "{:?}", first.diagnostics);
+    let reader = SourceRef::Reader(crate::ReaderCall {
+        function: "read_csv".into(),
+        path: "orders.csv".into(),
+        options: vec![("delimiter".into(), crate::OptionValue::String(";".into()))],
+    });
+    let mut expected = vec![
+        SourceRef::Path("orders.csv".into()),
+        SourceRef::Glob("logs/*.csv".into()),
+        reader.clone(),
+        SourceRef::Table("hosted".into()),
+        SourceRef::Table("missing".into()),
+    ];
+    expected.sort();
+    assert_eq!(first.pending_sources, expected);
+
+    // The session fetches them; `missing` does not exist.
+    struct Fetched(Cache);
+    impl SchemaProvider for Fetched {
+        fn schema_of(&self, source: &SourceRef) -> SchemaLookup {
+            match self.0.schema_of(source) {
+                SchemaLookup::Pending => SchemaLookup::Failed(SourceError::NotFound {
+                    nearby: vec!["hosted".into()],
+                }),
+                found => found,
+            }
+        }
+    }
+    let cache = Cache(
+        [
+            SourceRef::Path("orders.csv".into()),
+            SourceRef::Glob("logs/*.csv".into()),
+            reader,
+            SourceRef::Table("hosted".into()),
+        ]
+        .into_iter()
+        .map(|s| (s, orders_schema()))
+        .collect(),
+    );
+    let second = check(&src, FileId(0), &Fetched(cache), &Capabilities::full());
+    assert!(second.pending_sources.is_empty());
+    let found: Vec<_> = second
+        .diagnostics
+        .iter()
+        .map(|d| (d.code, d.message.clone()))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (
+                codes::DS1006,
+                "`hosted` is a table, not a value".to_string()
+            ),
+            (codes::DS1001, "unknown column `amout`".to_string()),
+            (codes::DS1002, "unknown table `missing`".to_string()),
+        ]
+    );
+}
+
+/// A column with no DataScript type can be projected, but not used (DS2008).
+#[test]
+fn projection_only_columns() {
+    struct Nested;
+    impl SchemaProvider for Nested {
+        fn schema_of(&self, _: &SourceRef) -> SchemaLookup {
+            let item = Arc::new(Field::new("item", DataType::Int64, true));
+            SchemaLookup::Ready(Arc::new(Schema::new(vec![
+                Field::new("id", DataType::Int64, true),
+                Field::new("tags", DataType::List(item), true),
+            ])))
+        }
+    }
+    let text = "from 'x.csv' | project id, tags | project-rename t = tags | where t > 1";
+    let analysis = check(
+        &SourceFile::new("q", text),
+        FileId(0),
+        &Nested,
+        &Capabilities::full(),
+    );
+    let ds2008: Vec<_> = analysis
+        .diagnostics
+        .iter()
+        .map(|d| (d.code, d.message.as_str()))
+        .collect();
+    assert_eq!(
+        ds2008,
+        [(
+            codes::DS2008,
+            "column `t` has a type DataScript cannot use yet"
+        )]
+    );
+}
+
+/// The engine's deviations reach the analysis without a diagnostic.
+#[test]
+fn deviations_are_carried_through() {
+    use crate::capabilities::Deviation;
+    let caps = Capabilities {
+        deviations: [Deviation::IntegerOverflowUnchecked].into(),
+        ..Capabilities::full()
+    };
+    let analysis = check(
+        &SourceFile::new("q", "from 'orders.csv' | take 1"),
+        FileId(0),
+        &Orders,
+        &caps,
+    );
+    assert!(analysis.diagnostics.is_empty());
+    assert_eq!(analysis.deviations, [Deviation::IntegerOverflowUnchecked]);
 }

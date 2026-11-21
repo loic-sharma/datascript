@@ -1,0 +1,23 @@
+# The DataFusion engine reads only CSV until M1-08: other formats are DS4001 from its
+# capabilities, before any file is read. A name that is not a `let` is a host table, and none
+# are registered yet.
+mode: check
+---- query
+from '../../data/orders.parquet' | take 1;
+from orders | take 1
+---- expected
+error[DS4001]: this engine cannot read parquet files
+  --> query:1:6
+  |
+1 | from '../../data/orders.parquet' | take 1;
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^ a parquet source
+  |
+  = note: this engine reads: csv
+
+error[DS1002]: unknown table `orders`
+  --> query:2:6
+  |
+2 | from orders | take 1
+  |      ^^^^^^ no table with this name
+  |
+  = note: a table name is a tabular `let` or a table registered by the host; to read a file, write its path as a string: `from 'orders.csv'`

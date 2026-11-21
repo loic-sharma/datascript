@@ -1,0 +1,38 @@
+# A path that is computed is DS3006: schemas are read before anything runs.
+mode: check
+schema: 'data/x.csv'(a: long)
+---- query
+let dir = 'data';
+let p = strcat(dir, '/x.csv');
+from strcat(dir, '/x.csv') | take 1;
+from p | take 1;
+from read_csv(p) | take 1
+---- expected
+error[DS3006]: the path of a source must be a constant
+  --> query:3:6
+  |
+3 | from strcat(dir, '/x.csv') | take 1;
+  |      ^^^^^^^^^^^^^^^^^^^^^ this is computed
+  |
+  = help: write the value itself, such as `'data/orders.csv'`, or a `let` bound to it: `let path = 'data/orders.csv';`
+  = note: schemas are read before the program runs, so sources cannot depend on values
+
+error[DS3006]: the path of a source must be a constant
+  --> query:4:6
+  |
+4 | from p | take 1;
+  |      ^ this is computed
+  |
+  = help: write the value itself, such as `'data/orders.csv'`, or a `let` bound to it: `let path = 'data/orders.csv';`
+  = note: schemas are read before the program runs, so sources cannot depend on values
+  = note: `p` is defined by a `let` whose value is not a literal
+
+error[DS3006]: the path of a source must be a constant
+  --> query:5:15
+  |
+5 | from read_csv(p) | take 1
+  |               ^ this is computed
+  |
+  = help: write the value itself, such as `'data/orders.csv'`, or a `let` bound to it: `let path = 'data/orders.csv';`
+  = note: schemas are read before the program runs, so sources cannot depend on values
+  = note: `p` is defined by a `let` whose value is not a literal

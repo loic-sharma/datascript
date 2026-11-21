@@ -1,0 +1,10 @@
+# A path with glob characters is a glob source; its format comes from the extension.
+mode: check
+show: schema
+schema: 'logs/*.csv'(ts: datetime, msg: string)
+---- query
+from 'logs/*.csv' | take 1
+---- expected
+query 1 columns:
+  ts: datetime
+  msg: string

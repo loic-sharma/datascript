@@ -63,7 +63,7 @@ Two shared files are touched by many tasks:
 | [M1-25](M1-25-from-diagnostics.md) | `from` mistakes and statement starts | M1-24 | done | M1-23, M1-05 and later |
 | [M1-05](M1-05-binder.md) | Binder core and expression checking | M1-15, M1-24 | done | M1-03 |
 | [M1-16](M1-16-operator-schemas-joins.md) | Binder: operator schemas, column naming, joins | M1-05 | done | M1-03, M1-17 |
-| [M1-17](M1-17-source-resolution-capabilities.md) | Binder: source resolution and capability pass | M1-05 | todo | M1-03, M1-16 |
+| [M1-17](M1-17-source-resolution-capabilities.md) | Binder: source resolution and capability pass | M1-05 | done | M1-03, M1-16 |
 | [M1-06](M1-06-logical-plan-ir.md) | Logical plan IR and `explain` | M1-16, M1-17 | todo | M1-03 |
 | [M1-07](M1-07-engine-api.md) | Engine API and Session | M1-06 | todo | M1-03, M1-10 |
 | [M1-08](M1-08-datafusion-sources.md) | DataFusion: sources and schemas | M1-07, M0-04, M0-05 | todo | M1-10 |

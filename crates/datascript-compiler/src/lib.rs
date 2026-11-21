@@ -29,7 +29,9 @@ pub use binder::StageSchema;
 pub use capabilities::Capabilities;
 pub use catalog::{FunctionCatalog, FunctionDef, FunctionKind};
 pub use ir::Program;
-pub use source::{NoSchemas, SchemaLookup, SchemaProvider, SourceError, SourceRef};
+pub use source::{
+    NoSchemas, OptionValue, ReaderCall, SchemaLookup, SchemaProvider, SourceError, SourceRef,
+};
 pub use types::Type;
 
 use datascript_diagnostics::codes::DS9001;
@@ -47,6 +49,9 @@ pub struct Analysis {
     /// Sources the provider answered [`SchemaLookup::Pending`] for, sorted. The session fetches
     /// them and checks again (D-022).
     pub pending_sources: Vec<SourceRef>,
+    /// The rules of LANGUAGE.md the engine does not follow, from [`Capabilities::deviations`],
+    /// for frontends to show. They produce no diagnostic.
+    pub deviations: Vec<capabilities::Deviation>,
 }
 
 impl Analysis {
@@ -60,16 +65,19 @@ impl Analysis {
 ///
 /// Schemas come from `schemas`. A source it answers `Pending` for is listed in
 /// [`Analysis::pending_sources`] without a diagnostic, and its columns cause no errors.
-/// `caps` is not used yet; the capability pass is M1-17.
+///
+/// Whatever `caps` says the engine cannot do (a function, a `join` kind, a file format) is
+/// `DS4001` at the place it is used; `caps.deviations` are copied to
+/// [`Analysis::deviations`].
 pub fn check(
     src: &SourceFile,
     file: FileId,
     schemas: &dyn SchemaProvider,
-    _caps: &Capabilities,
+    caps: &Capabilities,
 ) -> Analysis {
     let parse = datascript_syntax::parse(src.text(), file);
     let program = parse.program();
-    let mut binder = binder::Binder::new(file, src.text(), schemas, &program, &parse.errors);
+    let mut binder = binder::Binder::new(file, src.text(), schemas, caps, &program, &parse.errors);
     let hir = binder.bind_program(&program);
     let mut diagnostics = Diagnostics::new();
     for d in parse.errors.into_iter().chain(binder.diagnostics) {
@@ -80,6 +88,7 @@ pub fn check(
         diagnostics: diagnostics.finish(),
         stage_schemas: binder.stage_schemas,
         pending_sources: binder.pending.into_iter().collect(),
+        deviations: caps.deviations.iter().cloned().collect(),
     }
 }
 

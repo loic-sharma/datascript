@@ -424,6 +424,21 @@ that is not a column name or `$left.a == $right.b` (either order) is `DS1030`, a
 anywhere else are `DS1031`. Key columns widen per §4.2; types that do not are `DS2003`, like a
 `union` column conflict. *(M1-16, 2026-11-21.)*
 
+### D-041 — Where the compiler checks sources and capabilities (M1-17)
+**Formats are decided by the compiler.** The binder finds a path's format from its extension and
+reports `DS3002` itself, and checks a reader's option names and values from its own catalog
+(`source::READERS`, `DS3003`, `DS2041`–`DS2043`), before the provider is asked; the engine never
+sees a path it could only guess at. A format the engine cannot read is `DS4001` at the same point,
+so the provider is never asked for it either. **The capability checks are not a separate pass.**
+Functions and `join` kinds are checked where the binder binds them, which has the callee and the
+kind token at hand for the span; an unsupported function keeps its type, so nothing cascades.
+**Host tables.** A name in a table position that is not a `let` is `SourceRef::Table` and is
+looked up like a file; `NotFound` for it is `DS1002` "unknown table" (did-you-mean over the host's
+names and the tabular `let`s). `let alias = orders;` looks `orders` up the same way so it can
+report `DS1006`. **Projection-only columns** (no DataScript type) keep their Arrow type in
+`hir::Column::arrow_only`; a bare name in `project` passes them through, `project-away` and
+`project-rename` keep them, and any other use is `DS2008`. *(M1-17, 2026-11-21.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

@@ -5,7 +5,7 @@
 //! are DataScript types (LANGUAGE.md §5), mapped to the canonical Arrow types by the compiler's
 //! own mapping, so cases see exactly the types a real source would have.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use arrow_schema::{Field, Schema, SchemaRef};
@@ -26,6 +26,8 @@ pub const TYPE_NAMES: &[&str] = &[
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MockSchemaProvider {
     tables: BTreeMap<String, SchemaRef>,
+    /// The names that were quoted: file paths, not host tables.
+    paths: BTreeSet<String>,
 }
 
 impl MockSchemaProvider {
@@ -42,12 +44,19 @@ impl MockSchemaProvider {
 
 impl SchemaProvider for MockSchemaProvider {
     fn schema_of(&self, source: &SourceRef) -> SchemaLookup {
-        let SourceRef::Path(path) = source;
-        match self.tables.get(path) {
-            Some(schema) => SchemaLookup::Ready(schema.clone()),
-            None => {
+        // A host table is declared unquoted, a file quoted; a reader call reads its path.
+        let (key, is_table) = match source {
+            SourceRef::Table(name) => (name.as_str(), true),
+            other => (other.path().unwrap_or_default(), false),
+        };
+        match self.tables.get(key) {
+            Some(schema) if self.paths.contains(key) != is_table => {
+                SchemaLookup::Ready(schema.clone())
+            }
+            _ => {
                 let mut nearby: Vec<String> = self
                     .names()
+                    .filter(|name| self.paths.contains(*name) != is_table)
                     .map(|name| name.rsplit(['/', '\\']).next().unwrap_or(name).to_string())
                     .collect();
                 nearby.sort();
@@ -76,6 +85,7 @@ pub fn parse(value: &str) -> Result<MockSchemaProvider, String> {
         if p.at_end() {
             break;
         }
+        let quoted = matches!(p.peek(), Some('\'' | '"'));
         let table = p.table_name()?;
         p.skip_ws();
         p.expect('(', &format!("after table name `{table}`"))?;
@@ -117,6 +127,9 @@ pub fn parse(value: &str) -> Result<MockSchemaProvider, String> {
         }
         if provider.tables.contains_key(&table) {
             return Err(format!("`schema`: table `{table}` is declared twice"));
+        }
+        if quoted {
+            provider.paths.insert(table.clone());
         }
         provider.tables.insert(table, Arc::new(Schema::new(fields)));
         p.skip_ws();

@@ -230,9 +230,15 @@ Reader options (M1 set):
 | `read_parquet` | none in M1 |
 | `read_json` | `format = "ndjson" \| "array"`, `compression` |
 
-Reader options must be constant expressions (literals or scalar `let`s bound to literals), because
-schemas are fetched before the program can be fully bound (ARCHITECTURE.md § Source resolution).
-A non-constant option is `DS3006`.
+`delimiter`, `quote` and `escape` are one character; `infer_rows` is at least 1; `compression` is
+`"gzip"`, `"bzip2"`, `"xz"` or `"zstd"`. Reader options must be constant expressions (literals or
+scalar `let`s bound to literals), because schemas are fetched before the program can be fully
+bound (ARCHITECTURE.md § Source resolution). A non-constant option or path is `DS3006`, an
+unknown option `DS3003`, a value of the wrong kind `DS2041`, an option given twice `DS2043`, and
+a reader call without exactly one path `DS2042`.
+
+A value in a table position that is not a string (`let n = 5; from n`) is `DS2040`. A name that
+is neither a `let` nor a host table is `DS1002`.
 
 ### 3.2 Operators
 

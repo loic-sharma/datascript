@@ -1,0 +1,13 @@
+# A path `let` and a reader call plan as scans of the source they name.
+mode: explain
+schema: 'x.csv'(a: long, b: string)
+---- query
+let p = 'x.csv';
+from p | where a > 1;
+from read_csv(p, delimiter = ';') | take 1
+---- expected
+Filter: a > 1
+  Scan: 'x.csv' (a: long, b: string)
+
+Limit: 1
+  Scan: read_csv('x.csv', delimiter = ';') (a: long, b: string)

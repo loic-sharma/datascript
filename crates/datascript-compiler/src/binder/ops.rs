@@ -156,24 +156,46 @@ impl Binder<'_> {
         };
         let mut namings = Vec::new();
         let mut exprs = Vec::new();
+        let mut arrow_onlys = Vec::new();
         for item in op.items() {
             let (Some(naming), Some(expr)) = (self.naming_of(&item), item.expr()) else {
                 continue;
             };
-            let bound = self.expr(&expr, &cx);
-            exprs.push(self.value_sink(bound));
+            // A column with no DataScript type can be projected as it is (DS2008 otherwise).
+            let arrow_only = match (&expr, columns) {
+                (ast::Expr::NameRef(name_ref), Some(cs)) => name_ref.text().and_then(|n| {
+                    cs.iter()
+                        .find(|c| c.name == n)
+                        .and_then(|c| c.arrow_only.clone())
+                }),
+                _ => None,
+            };
+            let bound = match (&arrow_only, &expr) {
+                (Some(_), ast::Expr::NameRef(name_ref)) => Expr {
+                    kind: ExprKind::Column(name_ref.text().unwrap_or_default()),
+                    ty: Type::Error,
+                    span: self.span(&expr),
+                },
+                _ => {
+                    let bound = self.expr(&expr, &cx);
+                    self.value_sink(bound)
+                }
+            };
+            exprs.push(bound);
+            arrow_onlys.push(arrow_only);
             namings.push(naming);
         }
         let names = self.assign_names(&namings, &HashSet::new());
         let mut items = Vec::new();
         let mut out = Vec::new();
-        for (name, expr) in names.into_iter().zip(exprs) {
+        for ((name, expr), arrow_only) in names.into_iter().zip(exprs).zip(arrow_onlys) {
             let Some(name) = name else { continue };
             let read_from = columns.as_deref().and_then(|cs| Self::read_from(cs, &expr));
             out.push(Column {
                 name: name.clone(),
                 ty: expr.ty,
                 read_from,
+                arrow_only,
             });
             items.push(ProjectItem { name, expr });
         }
@@ -299,6 +321,7 @@ impl Binder<'_> {
                     name: name.clone(),
                     ty: bound.ty,
                     read_from: Self::read_from(cols, &bound),
+                    arrow_only: None,
                 };
                 match cols.iter_mut().find(|c| c.name == name) {
                     Some(existing) => *existing = column,
@@ -384,6 +407,7 @@ impl Binder<'_> {
                 name: name.clone(),
                 ty: expr.ty,
                 read_from,
+                arrow_only: None,
             });
             let item = ProjectItem { name, expr };
             if i < keys {
@@ -599,6 +623,7 @@ impl Binder<'_> {
             name: "Count".to_string(),
             ty: Type::Long,
             read_from: None,
+            arrow_only: None,
         }]
     }
 
@@ -613,6 +638,7 @@ impl Binder<'_> {
             name: name.to_string(),
             ty,
             read_from: None,
+            arrow_only: None,
         })
         .collect()
     }

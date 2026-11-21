@@ -1,0 +1,16 @@
+# D-020: the same string `let` is a reader's path and a path source. Neither is DS2007 (retired).
+mode: check
+show: schema
+schema: 'x.csv'(a: long, b: string)
+---- query
+let p = 'x.csv';
+from read_csv(p, delimiter = ';', header = true) | take 1;
+from p | take 1
+---- expected
+query 1 columns:
+  a: long
+  b: string
+
+query 2 columns:
+  a: long
+  b: string

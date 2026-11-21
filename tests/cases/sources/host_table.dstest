@@ -1,0 +1,33 @@
+# A name that is not a `let` is a host table.
+mode: check
+show: schema
+schema: orders(id: long, amount: real); 'orders.csv'(x: long)
+---- query
+from orders | where amount > 1;
+from ordrs | take 1;
+from customers | take 1
+---- expected
+error[DS1002]: unknown table `ordrs`
+  --> query:2:6
+  |
+2 | from ordrs | take 1;
+  |      ^^^^^ no table with this name
+  |
+  = help: a table with a similar name exists: `orders`
+  = note: a table name is a tabular `let` or a table registered by the host; to read a file, write its path as a string: `from 'orders.csv'`
+
+error[DS1002]: unknown table `customers`
+  --> query:3:6
+  |
+3 | from customers | take 1
+  |      ^^^^^^^^^ no table with this name
+  |
+  = note: a table name is a tabular `let` or a table registered by the host; to read a file, write its path as a string: `from 'orders.csv'`
+
+query 1 columns:
+  id: long
+  amount: real
+
+query 2 columns: unknown
+
+query 3 columns: unknown

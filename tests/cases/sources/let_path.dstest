@@ -1,0 +1,16 @@
+# D-020: a scalar `let` bound to a constant string is a path in a table position.
+mode: check
+show: schema
+schema: 'x.csv'(a: long, b: string)
+---- query
+let p = 'x.csv';
+let q = p;
+from p | take 1;
+from q | project b
+---- expected
+query 1 columns:
+  a: long
+  b: string
+
+query 2 columns:
+  b: string

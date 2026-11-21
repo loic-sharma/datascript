@@ -1,0 +1,43 @@
+# A reader reads exactly one constant path, and options are constants.
+mode: check
+schema: 'x.csv'(a: long); 'y.csv'(a: long)
+---- query
+let sep = strcat(';', '');
+from read_csv() | take 1;
+from read_csv('x.csv', 'y.csv') | take 1;
+from read_csv(42) | take 1;
+from read_csv('x.csv', delimiter = sep) | take 1
+---- expected
+error[DS2042]: `read_csv` needs the path of the file to read
+  --> query:2:6
+  |
+2 | from read_csv() | take 1;
+  |      ^^^^^^^^^^ no path given
+  |
+  = help: pass the path first: `read_csv('data/file')`
+
+error[DS2042]: `read_csv` reads one path
+  --> query:3:24
+  |
+3 | from read_csv('x.csv', 'y.csv') | take 1;
+  |                        ^^^^^^^ a second path
+  |
+  = help: options are passed by name, such as `delimiter = ';'`; to read several files, use a glob such as `'logs/*.csv'`
+
+error[DS2006]: the path must be a string
+  --> query:4:15
+  |
+4 | from read_csv(42) | take 1;
+  |               ^^ this is `long`
+  |
+  = help: write the path as a string, such as `'data/file.csv'`
+
+error[DS3006]: reader option `delimiter` must be a constant
+  --> query:5:36
+  |
+5 | from read_csv('x.csv', delimiter = sep) | take 1
+  |                                    ^^^ this is computed
+  |
+  = help: write the value itself, such as `'data/orders.csv'`, or a `let` bound to it: `let path = 'data/orders.csv';`
+  = note: schemas are read before the program runs, so sources cannot depend on values
+  = note: `sep` is defined by a `let` whose value is not a literal

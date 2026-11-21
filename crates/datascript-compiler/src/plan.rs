@@ -62,6 +62,7 @@ fn plan_pipeline(pipeline: &hir::Pipeline) -> Result<Plan, Diagnostic> {
                     name: item.name.clone(),
                     ty: item.expr.ty,
                     read_from: None,
+                    arrow_only: None,
                 };
                 match after.iter_mut().find(|c| c.name == item.name) {
                     Some(existing) => *existing = column,

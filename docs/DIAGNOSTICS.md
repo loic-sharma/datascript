@@ -99,7 +99,7 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS0152–DS0159 | M1-25 `from` mistakes and statement starts |
 | DS1001–DS1029, DS2001–DS2029 | M1-05 binder core (and M1-04 for DS2002, DS2003, DS2006, DS2009) |
 | DS1030–DS1049, DS2030–DS2039 | M1-16 operator schemas and joins (also implements the registered DS1005, DS1007) |
-| DS2040–DS2049 | M1-17 source resolution and capability pass (also implements the registered DS2008, DS3006, DS4001) |
+| DS2040–DS2049 | M1-17 source resolution and capability pass (also implements the registered DS2008, DS3006, DS4001, and builds DS3002 and DS3003 in the binder, D-041) |
 | DS2100–DS2149 | M1-14 lints |
 | DS3001–DS3049 | M1-08 sources (DS3007 reserved for M4-01) |
 | DS4001–DS4049 | M1-07 / M1-09 engine |
@@ -186,6 +186,10 @@ design decision and implemented by the task named in the allocation table.
 | DS2011 | error | named argument in a call to a function that takes none |
 | DS2012 | error | field access or indexing on a value that is not `dynamic` (`dynamic` is M2) |
 | DS2030 | error | `summarize` with no aggregate and no `by` key |
+| DS2040 | error | a value that is not a table or a path used as a source (`from 5`, a `let` bound to a number) |
+| DS2041 | error | reader option value has the wrong type or is not allowed |
+| DS2042 | error | reader call without exactly one path argument |
+| DS2043 | error | reader option given twice |
 | DS2101 | warning | `take`/`limit` before `sort`: the rows kept are arbitrary *(planned, M1-14)* |
 | DS2102 | warning | predicate is always true or always false *(planned, M1-14)* |
 | DS2103 | warning | `sort` key without `asc`/`desc` (default is asc, ≠ KQL); machine-applicable fix inserts `asc` *(planned, M1-14, D-005)* |
@@ -197,7 +201,7 @@ design decision and implemented by the task named in the allocation table.
 | DS3006 | error | source path or reader option is not a constant |
 | DS3007 | error | path is outside the UI root directory *(planned, M4-01, D-016)* |
 | DS3008 | error | file could not be read (permission denied, malformed CSV/JSON row at runtime) |
-| DS4001 | error | function not supported by this engine |
+| DS4001 | error | function, `join` kind or file format not supported by this engine (reported by `check`, from the engine's capabilities) |
 | DS4002 | error | engine runtime error |
 | DS4003 | error | arithmetic error: integer division by zero, overflow, or out-of-range value (D-014) |
 | DS5001 | info | chart not drawn in this runtime |

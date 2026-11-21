@@ -29,8 +29,6 @@ error[DS9001]: a `top` count that is not a whole-number literal is not implement
   |
 3 | from 'orders.csv' | top qty by amount desc
   |                         ^^^ not supported by this version of DataScript
-  |
-  = note: this version can read a `.csv` file, a tabular `let` or a pipeline in parentheses
 
 query 1 columns:
   orderId: string

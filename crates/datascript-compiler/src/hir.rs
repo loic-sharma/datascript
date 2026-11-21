@@ -81,6 +81,9 @@ pub struct Column {
     /// The source the column was read from unchanged, as written, for messages such as
     /// "column `price` was read from products.csv".
     pub read_from: Option<String>,
+    /// The Arrow type of a column with no DataScript type (`ty` is then the error type). It
+    /// can be projected, but using it in an expression is `DS2008`.
+    pub arrow_only: Option<arrow_schema::DataType>,
 }
 
 /// Where a pipeline's rows come from.

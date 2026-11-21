@@ -18,6 +18,7 @@ use datafusion::error::DataFusionError;
 use datafusion::logical_expr::{LogicalPlan, LogicalPlanBuilder, Operator, binary_expr, cast};
 use datafusion::prelude::{Expr as DfExpr, SessionConfig, SessionContext, lit};
 use datascript_compiler::arrow::{from_arrow_source, to_arrow, to_arrow_type};
+use datascript_compiler::capabilities::SourceFormat;
 use datascript_compiler::ir::{
     BinaryOp, Expr, ExprKind, Plan, PlanNode, PrefixOp, QueryPlan, Value,
 };
@@ -54,7 +55,11 @@ impl DataFusionEngine {
     pub fn new(config: DataFusionConfig) -> Self {
         DataFusionEngine {
             config,
-            capabilities: Capabilities::full(),
+            // Only CSV files can be read until M1-08.
+            capabilities: Capabilities {
+                formats: [SourceFormat::Csv].into(),
+                ..Capabilities::full()
+            },
         }
     }
 
@@ -134,7 +139,20 @@ impl CsvTable {
         source: &SourceRef,
         ctx: &ExecContext,
     ) -> Result<CsvTable, SourceError> {
-        let SourceRef::Path(path) = source;
+        let path = match source {
+            SourceRef::Path(path) => path,
+            // `read_csv('x.csv')` with no options reads like the path; the rest is M1-08.
+            SourceRef::Reader(call) if call.function == "read_csv" && call.options.is_empty() => {
+                &call.path
+            }
+            // No host tables are registered yet (M1-08).
+            SourceRef::Table(_) => return Err(SourceError::NotFound { nearby: Vec::new() }),
+            other => {
+                return Err(SourceError::Unreadable {
+                    reason: format!("reading {other} is not supported yet"),
+                });
+            }
+        };
         let path = resolve(path, &ctx.base_dir);
         if !path.is_file() {
             return Err(SourceError::NotFound {

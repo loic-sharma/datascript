@@ -123,10 +123,12 @@ impl Driver for PipelineDriver {
 
     fn check(&self, input: &CaseInput<'_>) -> DriverResult {
         let query = Query::new(input);
+        let caps = input
+            .capabilities
+            .cloned()
+            .unwrap_or_else(Capabilities::full);
         let analysis = match input.schema {
-            Some(mock) => {
-                datascript_compiler::check(&query.src, query.file, mock, &Capabilities::full())
-            }
+            Some(mock) => datascript_compiler::check(&query.src, query.file, mock, &caps),
             None => {
                 let session = session(input);
                 let ctx = session.exec_context(input.base_dir());
@@ -145,10 +147,12 @@ impl Driver for PipelineDriver {
 
     fn explain(&self, input: &CaseInput<'_>) -> DriverResult {
         let query = Query::new(input);
+        let caps = input
+            .capabilities
+            .cloned()
+            .unwrap_or_else(Capabilities::full);
         let program = match input.schema {
-            Some(mock) => {
-                datascript_compiler::compile(&query.src, query.file, mock, &Capabilities::full())
-            }
+            Some(mock) => datascript_compiler::compile(&query.src, query.file, mock, &caps),
             None => {
                 let session = session(input);
                 let ctx = session.exec_context(input.base_dir());

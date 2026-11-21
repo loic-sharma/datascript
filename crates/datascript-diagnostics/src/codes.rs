@@ -157,6 +157,14 @@ pub const DS2011: Code = Code::new(2011);
 pub const DS2012: Code = Code::new(2012);
 /// `summarize` with no aggregate and no `by` key
 pub const DS2030: Code = Code::new(2030);
+/// a value that is not a table or a path used as a source (`from 5`, a `let` bound to a number)
+pub const DS2040: Code = Code::new(2040);
+/// reader option value has the wrong type or is not allowed
+pub const DS2041: Code = Code::new(2041);
+/// reader call without exactly one path argument
+pub const DS2042: Code = Code::new(2042);
+/// reader option given twice
+pub const DS2043: Code = Code::new(2043);
 /// `take`/`limit` before `sort`: the rows kept are arbitrary (planned, M1-14)
 pub const DS2101: Code = Code::new(2101);
 /// predicate is always true or always false (planned, M1-14)
@@ -179,7 +187,7 @@ pub const DS3006: Code = Code::new(3006);
 pub const DS3007: Code = Code::new(3007);
 /// file could not be read (permission denied, malformed CSV/JSON row at runtime)
 pub const DS3008: Code = Code::new(3008);
-/// function not supported by this engine
+/// function, `join` kind or file format not supported by this engine (reported by `check`, from the engine's capabilities)
 pub const DS4001: Code = Code::new(4001);
 /// engine runtime error
 pub const DS4002: Code = Code::new(4002);
@@ -559,6 +567,30 @@ pub const REGISTRY: &[CodeInfo] = &[
         status: CodeStatus::Active,
     },
     CodeInfo {
+        code: DS2040,
+        severity: Some(Severity::Error),
+        summary: "a value that is not a table or a path used as a source (`from 5`, a `let` bound to a number)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS2041,
+        severity: Some(Severity::Error),
+        summary: "reader option value has the wrong type or is not allowed",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS2042,
+        severity: Some(Severity::Error),
+        summary: "reader call without exactly one path argument",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS2043,
+        severity: Some(Severity::Error),
+        summary: "reader option given twice",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
         code: DS2101,
         severity: Some(Severity::Warning),
         summary: "`take`/`limit` before `sort`: the rows kept are arbitrary *(planned, M1-14)*",
@@ -627,7 +659,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS4001,
         severity: Some(Severity::Error),
-        summary: "function not supported by this engine",
+        summary: "function, `join` kind or file format not supported by this engine (reported by `check`, from the engine's capabilities)",
         status: CodeStatus::Active,
     },
     CodeInfo {

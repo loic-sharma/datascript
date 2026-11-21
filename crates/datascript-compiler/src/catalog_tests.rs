@@ -751,23 +751,13 @@ fn arg_type_error_for_class_constraint() {
     arg_error("min", &[Dynamic]);
 }
 
-/// The parser's list of reader functions (`datascript_syntax::READERS`, for DS0150) must agree
-/// with the readers the compiler knows. Readers return tables, so they are not in the scalar
-/// catalog; until M1-17 adds the reader definitions, each name must read a known format.
+/// The parser's list of reader functions (`datascript_syntax::READERS`, for DS0150) must be the
+/// compiler's reader definitions (`source::READERS`), and no reader is also a scalar function.
 #[test]
 fn syntax_readers_match_the_compiler() {
-    use crate::capabilities::SourceFormat;
-    let mut readers = datascript_syntax::READERS.to_vec();
-    readers.sort_unstable();
-    assert_eq!(readers, datascript_syntax::READERS, "keep READERS sorted");
+    let ours: Vec<&str> = crate::source::READERS.iter().map(|r| r.name).collect();
+    assert_eq!(datascript_syntax::READERS, ours.as_slice());
     for reader in datascript_syntax::READERS {
-        let format = reader
-            .strip_prefix("read_")
-            .unwrap_or_else(|| panic!("`{reader}` is not named `read_<format>`"));
-        assert!(
-            SourceFormat::ALL.iter().any(|f| f.name() == format),
-            "`{reader}` reads no known format"
-        );
         assert!(
             catalog().lookup(reader).is_err(),
             "`{reader}` is also a scalar function"

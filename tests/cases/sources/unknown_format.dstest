@@ -1,0 +1,14 @@
+# A path without a known extension: DS3002, with a reader function as the fix.
+mode: check
+schema: 'notes.txt'(a: long)
+---- query
+from 'notes.txt' | take 1
+---- expected
+error[DS3002]: cannot tell the format of `notes.txt`
+  --> query:1:6
+  |
+1 | from 'notes.txt' | take 1
+  |      ^^^^^^^^^^^ the file name has no known extension
+  |
+  = help: to read it as CSV, use a reader function: `read_csv('notes.txt')`
+  = note: formats come from the extension: .csv, .tsv, .parquet, .json, .ndjson and .jsonl, and CSV, TSV and JSON may end in .gz, .bz2, .xz or .zst; `read_parquet` and `read_json` read other names too

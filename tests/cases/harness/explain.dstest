@@ -1,8 +1,10 @@
 # Sample `explain` case: prints the logical plan.
-# The plan format is defined by M1-06; bless this file once that mode is supported.
+# The plan format is defined by M1-06, which re-blesses this file if it changes.
 mode: explain
-skip: needs host tables (M1-17); the skeleton explain case is skeleton/explain.dstest
 schema: orders(orderId: string, customerId: string, amount: real, timestamp: datetime)
 ---- query
 from orders | where amount > 10 | take 5
 ---- expected
+Limit: 5
+  Filter: amount > 10.0
+    Scan: table `orders` (orderId: string, customerId: string, amount: real, timestamp: datetime)

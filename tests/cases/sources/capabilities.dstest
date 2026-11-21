@@ -1,0 +1,38 @@
+# DS4001: what the engine cannot do, at the place it is used.
+mode: check
+schema: 'x.csv'(a: long, s: string); 'y.csv'(a: long); 'z.parquet'(a: long)
+without: function strlen, join fullouter, format parquet
+---- query
+from 'x.csv' | where strlen(s) > 1 | join kind=fullouter 'y.csv' on a;
+from 'z.parquet' | take 1;
+from read_parquet('z.parquet') | take 1
+---- expected
+error[DS4001]: function `strlen` is not supported by this engine
+  --> query:1:22
+  |
+1 | from 'x.csv' | where strlen(s) > 1 | join kind=fullouter 'y.csv' on a;
+  |                      ^^^^^^ this engine does not implement it
+  |
+  = note: the function is part of DataScript, but the engine that runs this program cannot run it
+
+error[DS4001]: `fullouter` joins are not supported by this engine
+  --> query:1:48
+  |
+1 | from 'x.csv' | where strlen(s) > 1 | join kind=fullouter 'y.csv' on a;
+  |                                                ^^^^^^^^^ this engine does not implement this kind of join
+
+error[DS4001]: this engine cannot read parquet files
+  --> query:2:6
+  |
+2 | from 'z.parquet' | take 1;
+  |      ^^^^^^^^^^^ a parquet source
+  |
+  = note: this engine reads: csv, json, ndjson, tsv
+
+error[DS4001]: this engine cannot read parquet files
+  --> query:3:6
+  |
+3 | from read_parquet('z.parquet') | take 1
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^ a parquet source
+  |
+  = note: this engine reads: csv, json, ndjson, tsv

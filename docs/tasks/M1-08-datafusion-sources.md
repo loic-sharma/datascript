@@ -53,5 +53,8 @@ Design-review additions:
 - [ ] (from M0-04) Confirm DataFusion's CSV inference reads `2024-02-29T23:59:59Z` timestamps as UTC timestamps, not strings, with a golden case.
 - [ ] (from review of M1-04) Struct, List and Map columns must not be widened to `arrow.json` text by `widen()` in M1 (the text is not JSON, or the cast fails); report them as unsupported (DS2008) until M2-03, matching M1-23.
 - [ ] (from review of M1-04) A `UInt64` value above `i64::MAX` fails the scan cast with a generic DS4002. Report DS4003 naming the column, as LANGUAGE.md §5.1 requires.
+- [ ] (from M1-17) `SourceRef` now has `Path`, `Glob`, `Reader(ReaderCall)` and `Table`. `CsvTable::open` handles only `Path` and `read_csv` without options; other cases return `SourceError::Unreadable` ("not supported yet"), and `Table` returns `NotFound` (the binder reports DS1002 "unknown table"). Implement them, and register host tables so `Table` lookups find them.
+- [ ] (from M1-17) `DataFusionEngine`'s `Capabilities::formats` is `{Csv}`, so other formats are DS4001 before any read (`tests/cases/sources/datafusion_formats.dstest`). Add each format as it can be read, and re-bless that case.
+- [ ] (from M1-17) The binder already builds DS3002 (unknown extension) and DS3003 (unknown or planned reader option) and checks option values (DS2041–DS2043) from `source::READERS` (D-041), so `SourceError` needs no `UnknownFormat` case. Golden cases for them are in `tests/cases/sources/`; add the engine-side DS3xxx cases next to them.
 
 ## Follow-ups

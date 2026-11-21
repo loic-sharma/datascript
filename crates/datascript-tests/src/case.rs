@@ -8,6 +8,12 @@ use std::ops::Range;
 
 use datascript_diagnostics::did_you_mean;
 
+use std::collections::BTreeSet;
+
+use datascript_compiler::Capabilities;
+use datascript_compiler::FunctionCatalog;
+use datascript_compiler::capabilities::{FunctionSupport, JoinKind, SourceFormat};
+
 use crate::schema::{self, MockSchemaProvider};
 
 /// The fixed clock used when a case has no `now:` header.
@@ -17,7 +23,7 @@ pub const DEFAULT_NOW: &str = "2024-06-01T00:00:00Z";
 pub const DEFAULT_ENGINE: &str = "datafusion";
 
 const HEADER_KEYS: &[&str] = &[
-    "mode", "order", "now", "engine", "tables", "schema", "skip", "eol", "show",
+    "mode", "order", "now", "engine", "tables", "schema", "skip", "eol", "show", "without",
 ];
 const SECTION_NAMES: &[&str] = &["query", "expected"];
 
@@ -118,6 +124,9 @@ pub struct TestCase {
     pub tables: Vec<(String, String)>,
     /// Schemas from `schema:`.
     pub schema: Option<MockSchemaProvider>,
+    /// `without:`: the capabilities `check` and `explain` use with `schema:`, everything but
+    /// the listed functions, `join` kinds and formats. `None` means everything.
+    pub capabilities: Option<Capabilities>,
     /// Reason from `skip:`.
     pub skip: Option<String>,
     /// `show: schema`: `check` cases also print each query's output columns.
@@ -324,6 +333,16 @@ impl Parser {
             None => None,
             Some(v) => Some(schema::parse(&v.value).map_err(|m| err(v.line, m))?),
         };
+        let capabilities = match header("without") {
+            None => None,
+            Some(v) if schema.is_none() => {
+                return Err(err(
+                    v.line,
+                    "`without` needs `schema`: it restricts the mock engine's capabilities",
+                ));
+            }
+            Some(v) => Some(parse_without(&v.value).map_err(|m| err(v.line, m))?),
+        };
         let skip = header("skip").map(|v| v.value.clone());
         // `.gitattributes` keeps `.dstest` files LF, so CRLF input is asked for explicitly.
         let crlf = match header("eol") {
@@ -404,6 +423,7 @@ impl Parser {
             engines,
             tables,
             schema,
+            capabilities,
             skip,
             show_schema,
             query: if crlf {
@@ -501,6 +521,53 @@ pub fn normalize_body(text: &str) -> String {
         lines.pop();
     }
     lines.join("\n")
+}
+
+/// Parses `without: function strlen, join fullouter, format parquet`.
+fn parse_without(value: &str) -> Result<Capabilities, String> {
+    let mut caps = Capabilities::full();
+    let catalog = FunctionCatalog::builtin();
+    let entries = split_list(value, ',');
+    if entries.is_empty() {
+        return Err("`without` needs at least one entry, such as `function strlen`".to_string());
+    }
+    for entry in entries {
+        let shape = || {
+            format!(
+                "`without` entry `{entry}` must look like `function <name>`, `join <kind>` or \
+                 `format <name>`"
+            )
+        };
+        let (what, name) = entry.split_once(char::is_whitespace).ok_or_else(shape)?;
+        let name = name.trim();
+        match what {
+            "function" => {
+                if catalog.lookup(name).is_err() {
+                    return Err(format!("`without`: unknown function `{name}`"));
+                }
+                let mut names: BTreeSet<String> = match &caps.functions {
+                    FunctionSupport::All => catalog.names().map(str::to_string).collect(),
+                    FunctionSupport::Only(names) => names.clone(),
+                };
+                names.remove(name);
+                caps.functions = FunctionSupport::Only(names);
+            }
+            "join" => {
+                let kind = JoinKind::from_name(name)
+                    .ok_or_else(|| format!("`without`: unknown join kind `{name}`"))?;
+                caps.join_kinds.remove(&kind);
+            }
+            "format" => {
+                let format = SourceFormat::ALL
+                    .into_iter()
+                    .find(|f| f.name() == name)
+                    .ok_or_else(|| format!("`without`: unknown format `{name}`"))?;
+                caps.formats.remove(&format);
+            }
+            _ => return Err(shape()),
+        }
+    }
+    Ok(caps)
 }
 
 fn split_list(value: &str, sep: char) -> Vec<String> {

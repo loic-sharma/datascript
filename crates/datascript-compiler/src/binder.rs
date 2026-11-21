@@ -14,17 +14,18 @@
 //!   silently (DIAGNOSTICS.md rule 8). A node with a syntax error is not bound at all, so a
 //!   syntax error adds no semantic errors (ARCHITECTURE.md § Compilation pipeline).
 //!
-//! Operator schemas and column naming (M1-16) are in [`ops`], `join` in [`join`]. Sources other
-//! than `.csv` paths, tabular `let`s and parenthesized pipelines are M1-17, and `render` is M1-10;
-//! they give `DS9001` "not implemented yet".
+//! Operator schemas and column naming (M1-16) are in [`ops`], `join` in [`join`], and sources
+//! and the engine's file formats (M1-17) in [`sources`]. The other capability checks (DS4001)
+//! are where the function or `join` kind is bound. `render` is M1-10; it gives `DS9001` "not
+//! implemented yet".
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use arrow_schema::{Schema, SchemaRef};
 use datascript_diagnostics::codes::{
-    DS0003, DS1001, DS1002, DS1003, DS1004, DS1006, DS1031, DS2001, DS2004, DS2005, DS2010, DS2011,
-    DS2012, DS3001, DS9001,
+    DS0003, DS1001, DS1002, DS1003, DS1004, DS1006, DS1031, DS2001, DS2004, DS2005, DS2008, DS2010,
+    DS2011, DS2012, DS4001, DS9001,
 };
 use datascript_diagnostics::{
     Applicability, Diagnostic, FileId, Span, Suggestion, TextEdit, did_you_mean,
@@ -33,7 +34,7 @@ use datascript_syntax::ast::{self, AstNode, LiteralKind, Operator, PrefixOp, Stm
 use datascript_syntax::{SyntaxKind, SyntaxNode, literal};
 
 use crate::Type;
-use crate::arrow::{from_arrow, to_arrow};
+use crate::arrow::to_arrow;
 use crate::catalog::{CallSite, FunctionCatalog, FunctionKind, ResolveError};
 use crate::hir::{
     Column, Expr, ExprKind, Hir, LetBinding, LetValue, Op, Pipeline, Query, Source, Stage,
@@ -42,9 +43,11 @@ use crate::hir::{
 
 mod join;
 mod ops;
+mod sources;
+use crate::capabilities::Capabilities;
 use crate::ir::{BinaryOp, Value};
 use crate::operators::{self, Operand};
-use crate::source::{SchemaLookup, SchemaProvider, SourceError, SourceRef};
+use crate::source::{SchemaLookup, SchemaProvider, SourceRef};
 
 /// The schema after one pipeline stage (for column completion, later).
 #[derive(Debug, Clone, PartialEq)]
@@ -107,6 +110,7 @@ pub(crate) struct Binder<'a> {
     file: FileId,
     text: &'a str,
     schemas: &'a dyn SchemaProvider,
+    caps: &'a Capabilities,
     catalog: &'static FunctionCatalog,
     /// Nodes that contain a syntax error directly (not inside a smaller expression). They are
     /// not bound, and their value has the error type.
@@ -125,6 +129,7 @@ impl<'a> Binder<'a> {
         file: FileId,
         text: &'a str,
         schemas: &'a dyn SchemaProvider,
+        caps: &'a Capabilities,
         program: &ast::Program,
         syntax_errors: &[Diagnostic],
     ) -> Self {
@@ -132,6 +137,7 @@ impl<'a> Binder<'a> {
             file,
             text,
             schemas,
+            caps,
             catalog: FunctionCatalog::builtin(),
             broken: broken_nodes(program.syntax(), file, syntax_errors),
             lets: HashMap::new(),
@@ -220,22 +226,28 @@ impl<'a> Binder<'a> {
             && let Some((_, LetEntry::Table(_))) = self.lets.get(&name)
         {
             let span = self.span(value);
-            self.diagnostics.push(
-                Diagnostic::error(DS1006, format!("`{name}` is a table, not a value"))
-                    .primary(span, "this names a table")
-                    .help_with(
-                        format!(
-                            "a `let` is a table only when its value is a pipeline: \
-                             `let {let_name} = from {};`",
-                            &self.text[span.range()]
-                        ),
-                        Suggestion::new(
-                            vec![TextEdit::new(Span::empty(self.file, span.start), "from ")],
-                            Applicability::MachineApplicable,
-                        ),
-                    ),
-            );
+            self.table_in_scalar_let(let_name, &name, span);
             return LetValue::Error;
+        }
+        // `let alias = orders;` where `orders` is a host table.
+        if let ast::Expr::NameRef(name_ref) = value
+            && let Some(name) = name_ref.text()
+            && !self.lets.contains_key(&name)
+        {
+            let span = self.span(value);
+            let source = SourceRef::Table(name.clone());
+            match self.schemas.schema_of(&source) {
+                SchemaLookup::Ready(_) => {
+                    self.table_in_scalar_let(let_name, &name, span);
+                    return LetValue::Error;
+                }
+                // Known on the next pass; until then the name has the error type silently.
+                SchemaLookup::Pending => {
+                    self.pending.insert(source);
+                    return LetValue::Error;
+                }
+                SchemaLookup::Failed(_) => {}
+            }
         }
         let cx = Cx {
             cols: Cols::NoRows,
@@ -248,6 +260,25 @@ impl<'a> Binder<'a> {
         } else {
             LetValue::Scalar(expr)
         }
+    }
+
+    /// `DS1006`: `let alias = orders;` where `orders` is a table (D-036).
+    fn table_in_scalar_let(&mut self, let_name: &str, name: &str, span: Span) {
+        self.diagnostics.push(
+            Diagnostic::error(DS1006, format!("`{name}` is a table, not a value"))
+                .primary(span, "this names a table")
+                .help_with(
+                    format!(
+                        "a `let` is a table only when its value is a pipeline: \
+                         `let {let_name} = from {};`",
+                        &self.text[span.range()]
+                    ),
+                    Suggestion::new(
+                        vec![TextEdit::new(Span::empty(self.file, span.start), "from ")],
+                        Applicability::MachineApplicable,
+                    ),
+                ),
+        );
     }
 
     // --- Pipelines ---
@@ -281,108 +312,6 @@ impl<'a> Binder<'a> {
             stages,
             columns,
         })
-    }
-
-    fn bind_source(&mut self, source: &ast::Expr) -> (Source, Option<Vec<Column>>) {
-        let span = self.span(source);
-        let error = Source::Error { span };
-        if self.broken.contains(source.syntax()) {
-            return (error, None);
-        }
-        let path = match source {
-            ast::Expr::Literal(lit) if lit.kind() == Some(LiteralKind::String) => {
-                let Some(token) = lit.token() else {
-                    return (error, None);
-                };
-                match literal::string(token.text(), span) {
-                    Ok(path) => path,
-                    // The lexer already reported the bad literal.
-                    Err(_) => return (error, None),
-                }
-            }
-            ast::Expr::Paren(paren) => {
-                return match paren.inner() {
-                    Some(ast::Expr::Pipeline(inner)) => {
-                        let pipeline = self.bind_pipeline(&inner);
-                        let columns = pipeline.columns.clone();
-                        (Source::Subquery { span, pipeline }, columns)
-                    }
-                    Some(inner) => self.bind_source(&inner),
-                    None => (error, None),
-                };
-            }
-            ast::Expr::NameRef(name_ref) => {
-                let name = name_ref.text().unwrap_or_default();
-                return match self.lets.get(&name) {
-                    Some((_, LetEntry::Table(pipeline))) => {
-                        let pipeline = pipeline.clone();
-                        let columns = pipeline.columns.clone();
-                        if let Some(columns) = &columns {
-                            self.stage_schemas.push(StageSchema {
-                                span,
-                                schema: schema_of(columns),
-                            });
-                        }
-                        (
-                            Source::Let {
-                                name,
-                                span,
-                                pipeline,
-                            },
-                            columns,
-                        )
-                    }
-                    Some((_, LetEntry::Error)) => (error, None),
-                    _ => {
-                        // Host tables and string `let`s as paths are M1-17.
-                        self.not_implemented(span, "a table name as a source");
-                        (error, None)
-                    }
-                };
-            }
-            _ => {
-                self.not_implemented(span, "this kind of source");
-                return (error, None);
-            }
-        };
-        if !path.to_ascii_lowercase().ends_with(".csv") {
-            self.not_implemented(span, "reading files other than `.csv`");
-            return (error, None);
-        }
-        let source_ref = SourceRef::Path(path.clone());
-        match self.schemas.schema_of(&source_ref) {
-            SchemaLookup::Ready(schema) => {
-                let columns: Vec<Column> = schema
-                    .fields()
-                    .iter()
-                    // Columns with no DataScript type are projection-only (DS2008, M1-17);
-                    // until then they have the error type.
-                    .map(|f| Column {
-                        name: f.name().clone(),
-                        ty: from_arrow(f).unwrap_or(Type::Error),
-                        read_from: Some(path.clone()),
-                    })
-                    .collect();
-                self.stage_schemas.push(StageSchema {
-                    span,
-                    schema: schema_of(&columns),
-                });
-                let source = Source::Scan {
-                    source: source_ref,
-                    span,
-                    columns: columns.clone(),
-                };
-                (source, Some(columns))
-            }
-            SchemaLookup::Failed(failure) => {
-                self.source_error(span, &path, &failure);
-                (error, None)
-            }
-            SchemaLookup::Pending => {
-                self.pending.insert(source_ref);
-                (error, None)
-            }
-        }
     }
 
     // --- Operators ---
@@ -623,6 +552,23 @@ impl<'a> Binder<'a> {
         if let Cols::Known(columns) = cx.cols
             && let Some(column) = columns.iter().find(|c| c.name == name)
         {
+            if let Some(arrow) = &column.arrow_only {
+                let mut d = Diagnostic::error(
+                    DS2008,
+                    format!("column `{name}` has a type DataScript cannot use yet"),
+                )
+                .primary(span, format!("this column is `{arrow}` in Arrow"))
+                .help(format!(
+                    "it can only be projected as it is: `project {name}`, `project-away                      {name}`"
+                ));
+                if let Some(source) = &column.read_from {
+                    d = d.note(format!("column `{name}` was read from {source}"));
+                }
+                self.diagnostics.push(d.note(
+                    "nested, JSON and GUID columns become `dynamic` and `guid` values in M2",
+                ));
+                return Expr::error(span);
+            }
             if column.ty.is_error() {
                 return Expr::error(span);
             }
@@ -939,6 +885,22 @@ impl<'a> Binder<'a> {
         }
 
         let types: Vec<Type> = args.iter().map(|a| a.ty).collect();
+        if !self.caps.supports_function(self.catalog, function.name) {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    DS4001,
+                    format!(
+                        "function `{}` is not supported by this engine",
+                        function.name
+                    ),
+                )
+                .primary(callee_span, "this engine does not implement it")
+                .note(
+                    "the function is part of DataScript, but the engine that runs this program \
+                     cannot run it",
+                ),
+            );
+        }
         match function.resolve(&types) {
             Ok(resolved) => {
                 if resolved.return_type.is_error() {
@@ -1110,11 +1072,7 @@ impl<'a> Binder<'a> {
     fn not_implemented(&mut self, span: Span, what: &str) {
         self.diagnostics.push(
             Diagnostic::error(DS9001, format!("{what} is not implemented yet"))
-                .primary(span, "not supported by this version of DataScript")
-                .note(
-                    "this version can read a `.csv` file, a tabular `let` or a pipeline in \
-                     parentheses",
-                ),
+                .primary(span, "not supported by this version of DataScript"),
         );
     }
 
@@ -1237,48 +1195,6 @@ impl<'a> Binder<'a> {
             ));
         }
         self.diagnostics.push(d);
-    }
-
-    fn source_error(&mut self, span: Span, path: &str, error: &SourceError) {
-        match error {
-            SourceError::NotFound { nearby } => {
-                let (dir, file_name) = match path.rfind(['/', '\\']) {
-                    Some(i) => (&path[..=i], &path[i + 1..]),
-                    None => ("", path),
-                };
-                let mut d = Diagnostic::error(DS3001, format!("file `{path}` not found"))
-                    .primary(span, "no file at this path");
-                let suggestions = did_you_mean(file_name, nearby.iter().map(String::as_str));
-                if let Some(best) = suggestions.single() {
-                    let literal = &self.text[span.range()];
-                    let help = format!("a file with a similar name exists: `{dir}{best}`");
-                    // Replace the file name inside the literal; a literal with escapes that
-                    // spell the name differently gets the help without an edit.
-                    match literal.rfind(file_name) {
-                        Some(i) => {
-                            let start = span.start + i as u32;
-                            let edit = TextEdit::new(
-                                Span::new(self.file, start, start + file_name.len() as u32),
-                                best,
-                            );
-                            d = d.help_with(
-                                help,
-                                Suggestion::new(vec![edit], Applicability::MaybeIncorrect),
-                            );
-                        }
-                        None => d = d.help(help),
-                    }
-                }
-                self.diagnostics.push(d);
-            }
-            SourceError::Unreadable { reason } => {
-                self.diagnostics.push(
-                    Diagnostic::error(DS9001, format!("cannot read the schema of `{path}`"))
-                        .primary(span, "this file could not be read")
-                        .note(format!("the engine said: {reason}")),
-                );
-            }
-        }
     }
 
     /// Adds where an operand's type came from to the label that says its type:
