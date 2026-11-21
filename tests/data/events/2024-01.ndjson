@@ -1,0 +1,8 @@
+{"ts":"2024-01-06T10:15:28Z","user":"u-4","event":"view","duration_ms":1615,"props":{"page":"/home","ref":null}}
+{"ts":"2024-01-07T05:33:39Z","user":"u-3","event":"purchase","duration_ms":725,"props":{"page":"/docs","ref":null}}
+{"ts":"2024-01-14T18:54:55Z","user":"u-4","event":"purchase","duration_ms":2414,"props":{"page":"/docs","ref":"newsletter"}}
+{"ts":"2024-01-16T16:27:12Z","user":"u-5","event":"purchase","duration_ms":4797,"props":{"page":"/pricing","ref":"newsletter"}}
+{"ts":"2024-01-21T01:59:55Z","user":"u-4","event":"view","duration_ms":3322,"props":{"page":"/docs","ref":"newsletter"}}
+{"ts":"2024-01-22T14:13:34Z","user":"u-3","event":"purchase","duration_ms":3201,"props":{"page":"/docs","ref":"newsletter"}}
+{"ts":"2024-01-24T12:15:21Z","user":"u-5","event":"view","duration_ms":3133,"props":{"page":"/docs","ref":null}}
+{"ts":"2024-01-28T12:14:59Z","user":"u-4","event":"view","duration_ms":3502,"props":{"page":"/pricing","ref":"newsletter"}}

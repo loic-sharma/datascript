@@ -69,6 +69,7 @@ crates/
   datascript-lsp/           Language server (M3)
   datascript-server/        Local web UI server (M4)
   datascript-wasm/          wasm-bindgen bindings (M5)
+  datascript-fixtures/      Generator for tests/data (`cargo run -p datascript-fixtures`)
 editors/vscode/             VS Code extension (M3)
 web/                        Web UI front end, shared by `ds ui` and the WASM playground (M4/M5)
 tests/

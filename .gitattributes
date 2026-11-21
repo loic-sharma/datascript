@@ -1,1 +1,4 @@
 *.dstest text eol=lf
+
+# Generated fixtures are compared byte for byte; never convert line endings.
+tests/data/** -text

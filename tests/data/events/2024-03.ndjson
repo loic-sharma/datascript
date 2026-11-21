@@ -1,0 +1,8 @@
+{"ts":"2024-03-03T10:52:45Z","user":"u-1","event":"purchase","duration_ms":null,"props":{"page":"/pricing","ref":null}}
+{"ts":"2024-03-08T03:04:02Z","user":"u-5","event":"view","duration_ms":2946,"props":{"page":"/pricing","ref":null}}
+{"ts":"2024-03-11T04:43:49Z","user":"u-4","event":"purchase","duration_ms":1853,"props":{"page":"/docs","ref":null}}
+{"ts":"2024-03-11T14:35:02Z","user":"u-1","event":"view","duration_ms":3367,"props":{"page":"/home","ref":"newsletter"}}
+{"ts":"2024-03-12T08:27:28Z","user":"u-5","event":"view","duration_ms":814,"props":{"page":"/pricing","ref":"newsletter"}}
+{"ts":"2024-03-12T13:13:25Z","user":"u-5","event":"view","duration_ms":4722,"props":{"page":"/docs","ref":"newsletter"}}
+{"ts":"2024-03-22T16:36:54Z","user":"u-4","event":"click","duration_ms":4215,"props":{"page":"/home","ref":null}}
+{"ts":"2024-03-23T07:38:54Z","user":"u-1","event":"view","duration_ms":4708,"props":{"page":"/pricing","ref":null}}
