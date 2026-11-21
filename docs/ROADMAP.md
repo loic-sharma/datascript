@@ -1,0 +1,68 @@
+# Roadmap
+
+Milestones are ordered by dependency. Within a milestone, tasks can often run in parallel. See the
+dependency column in [tasks/README.md](tasks/README.md).
+
+## M0 — Foundation
+
+Workspace, CI, the diagnostics core, and the golden-test harness. After M0, every later task can
+write failing `.dstest` cases first.
+
+**Done when:** `cargo test --workspace` runs an (initially trivial) `.dstest` suite in CI; core
+crates are checked for wasm32 in CI; diagnostics render in terminal, plain, and JSON form.
+
+## M1 — Core language + CLI
+
+Parse, check, and run real queries on local CSV/Parquet/JSON files from the command line.
+
+**Done when:**
+- The README example runs end to end with `ds run` against fixtures.
+- All ● operators and the M1 function set in [LANGUAGE.md](LANGUAGE.md) work, each with happy-path
+  and error golden tests.
+- `ds check` reports multiple independent errors per file with did-you-mean suggestions.
+- `ds` (REPL) supports multi-line queries, history, and `.schema`.
+- `render` is parsed, validated, and shown as an info note in the CLI.
+
+## M2 — Language breadth
+
+○ operators, `dynamic`, user-defined functions, the formatter (`ds fmt`), the rest of the function
+library, and long-form error explanations.
+
+**Done when:** a realistic log-analysis tutorial (JSON logs, parse, mv-expand, make-series) runs end
+to end, and `ds fmt` is idempotent over the whole test corpus.
+
+## M3 — Editor experience
+
+Language server plus VS Code extension: live diagnostics, completion (operators, columns from
+inferred schemas, functions, file paths), hover docs, go to definition for `let`, quick fixes from
+suggestions, and a "▶ Run" CodeLens that shows results (and charts, after M4) in a panel.
+
+**Done when:** typing in VS Code shows the same diagnostics as `ds check` within ~100 ms on typical
+scripts, and Run shows a result grid.
+
+## M4 — Local web UI
+
+`ds ui` starts a local server and opens a browser tab with an editor, a file/schema sidebar, a
+results grid, and charts for every render kind.
+
+**Done when:** a new user can `ds ui` in a folder of CSVs, browse schemas, write a query with
+inline errors and completion, and see a timechart.
+
+## M5 — In-browser runtime (WASM)
+
+The same web UI running fully client-side: files come from drag-drop or URLs, and execution uses
+DataFusion compiled to WASM. Published as `@datascript/wasm` plus a static playground site.
+
+**Done when:** the playground runs the README example on dropped files with results identical to
+the CLI (checked by a parity test over the golden corpus).
+
+## M6 — Release readiness
+
+Language reference generated from the function catalog, prebuilt binaries and installers, VS Code
+Marketplace and npm publishing, and a second backend (SQL emitter) that proves the engine
+abstraction works.
+
+## Explicitly later / unscheduled
+
+Remote data sources (S3/HTTP beyond simple URLs), query parameters, notebooks, materialized `let`,
+additional engines beyond the SQL emitter, and localization of error messages.

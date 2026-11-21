@@ -1,0 +1,38 @@
+# M0-02 — Diagnostics core
+
+**Status:** todo
+**Depends on:** M0-01
+**Crates:** `datascript-diagnostics`
+
+## Goal
+The single diagnostic model and renderers used by every surface. See [DIAGNOSTICS.md](../DIAGNOSTICS.md)
+and the Diagnostics section of [ARCHITECTURE.md](../ARCHITECTURE.md).
+
+## Scope
+- Types: `Span` (byte range + `FileId`), `SourceFile`/`SourceMap` (line index, UTF-8 ↔ UTF-16
+  column conversion for LSP), `Code`, `Severity`, `Label`, `Help`, `Suggestion`, `Applicability`,
+  `Diagnostic` with a builder API (`Diagnostic::error(code, msg).primary(span, "...").help("...")`).
+- `DiagnosticSink` / `Diagnostics` collection, sorted by source position, de-duplicated.
+- Renderers:
+  - **terminal**: color + Unicode box drawing (evaluate `annotate-snippets` or `ariadne`; pick
+    one and record it in DECISIONS.md, or hand-roll it if neither renders the formats in
+    DIAGNOSTICS.md well),
+  - **plain**: ASCII, no color, stable (used by golden tests, format shown in TESTING.md),
+  - **JSON**: `serde` serialization with line/column (1-based) and byte offsets.
+- Edit-distance helper `did_you_mean(candidate, iter) -> Suggestions` (Damerau-Levenshtein
+  plus case-insensitive match), shared by all later stages.
+- Code registry: a `codes.rs` with a constant per code and its summary, matching the table in
+  DIAGNOSTICS.md.
+
+## Out of scope
+LSP conversion (M3-01), long-form explanations (M2-08).
+
+## Acceptance criteria
+- [ ] Unit tests for multi-line spans, spans at EOF, empty spans, tabs, and non-ASCII text (columns
+      counted in characters for display, UTF-16 for LSP).
+- [ ] Snapshot tests (e.g. `insta`) of the terminal and plain renderers for the three examples in
+      DIAGNOSTICS.md.
+- [ ] JSON schema documented in a doc comment. Round-trip test.
+- [ ] Crate builds for wasm32.
+
+## Follow-ups
