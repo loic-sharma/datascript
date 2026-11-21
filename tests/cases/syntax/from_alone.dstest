@@ -1,0 +1,79 @@
+# `from x` with no operators is a PIPELINE everywhere: a query, a `let` value, in parentheses, a call argument.
+mode: syntax
+---- query
+from orders;
+let t = from orders;
+(from orders) | take 5;
+from orders | extend n = f(from customers)
+---- expected
+PROGRAM@0..101
+  PIPELINE@0..11
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..11
+      IDENT@5..11 "orders"
+  SEMICOLON@11..12 ";"
+  WHITESPACE@12..13 "\n"
+  LET_STMT@13..32
+    LET_KW@13..16 "let"
+    WHITESPACE@16..17 " "
+    NAME@17..18
+      IDENT@17..18 "t"
+    WHITESPACE@18..19 " "
+    EQ@19..20 "="
+    WHITESPACE@20..21 " "
+    PIPELINE@21..32
+      IDENT@21..25 "from"
+      WHITESPACE@25..26 " "
+      NAME_REF@26..32
+        IDENT@26..32 "orders"
+  SEMICOLON@32..33 ";"
+  WHITESPACE@33..34 "\n"
+  PIPELINE@34..56
+    PAREN_EXPR@34..47
+      L_PAREN@34..35 "("
+      PIPELINE@35..46
+        IDENT@35..39 "from"
+        WHITESPACE@39..40 " "
+        NAME_REF@40..46
+          IDENT@40..46 "orders"
+      R_PAREN@46..47 ")"
+    WHITESPACE@47..48 " "
+    PIPE@48..49 "|"
+    WHITESPACE@49..50 " "
+    TAKE_OP@50..56
+      IDENT@50..54 "take"
+      WHITESPACE@54..55 " "
+      LITERAL@55..56
+        LONG@55..56 "5"
+  SEMICOLON@56..57 ";"
+  WHITESPACE@57..58 "\n"
+  PIPELINE@58..100
+    IDENT@58..62 "from"
+    WHITESPACE@62..63 " "
+    NAME_REF@63..69
+      IDENT@63..69 "orders"
+    WHITESPACE@69..70 " "
+    PIPE@70..71 "|"
+    WHITESPACE@71..72 " "
+    EXTEND_OP@72..100
+      IDENT@72..78 "extend"
+      WHITESPACE@78..79 " "
+      NAMED_EXPR@79..100
+        NAME@79..80
+          IDENT@79..80 "n"
+        WHITESPACE@80..81 " "
+        EQ@81..82 "="
+        WHITESPACE@82..83 " "
+        CALL_EXPR@83..100
+          NAME_REF@83..84
+            IDENT@83..84 "f"
+          ARG_LIST@84..100
+            L_PAREN@84..85 "("
+            PIPELINE@85..99
+              IDENT@85..89 "from"
+              WHITESPACE@89..90 " "
+              NAME_REF@90..99
+                IDENT@90..99 "customers"
+            R_PAREN@99..100 ")"
+  WHITESPACE@100..101 "\n"

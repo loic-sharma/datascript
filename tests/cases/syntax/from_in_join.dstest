@@ -1,0 +1,61 @@
+# `from` on the right of `join` or `union` is not written there: a generic error until M1-25.
+mode: syntax
+---- query
+from orders | join from customers on customerId;
+from orders | union from 'b.csv'
+---- expected
+PROGRAM@0..82
+  PIPELINE@0..47
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..11
+      IDENT@5..11 "orders"
+    WHITESPACE@11..12 " "
+    PIPE@12..13 "|"
+    WHITESPACE@13..14 " "
+    JOIN_OP@14..47
+      IDENT@14..18 "join"
+      WHITESPACE@18..19 " "
+      IDENT@19..23 "from"
+      WHITESPACE@23..24 " "
+      NAME_REF@24..33
+        IDENT@24..33 "customers"
+      WHITESPACE@33..34 " "
+      IDENT@34..36 "on"
+      WHITESPACE@36..37 " "
+      NAME_REF@37..47
+        IDENT@37..47 "customerId"
+  SEMICOLON@47..48 ";"
+  WHITESPACE@48..49 "\n"
+  PIPELINE@49..81
+    IDENT@49..53 "from"
+    WHITESPACE@53..54 " "
+    NAME_REF@54..60
+      IDENT@54..60 "orders"
+    WHITESPACE@60..61 " "
+    PIPE@61..62 "|"
+    WHITESPACE@62..63 " "
+    UNION_OP@63..81
+      IDENT@63..68 "union"
+      WHITESPACE@68..69 " "
+      IDENT@69..73 "from"
+      WHITESPACE@73..74 " "
+      LITERAL@74..81
+        STRING@74..81 "'b.csv'"
+  WHITESPACE@81..82 "\n"
+
+error[DS0101]: expected a table after `join`, found `from`
+  --> query:1:20
+  |
+1 | from orders | join from customers on customerId;
+  |                    ^^^^ `from` starts a query, not a table here
+  |
+  = help: write the table directly, or put a pipeline in parentheses: `(from t | take 5)`
+
+error[DS0101]: expected a table after `union`, found `from`
+  --> query:2:21
+  |
+2 | from orders | union from 'b.csv'
+  |                     ^^^^ `from` starts a query, not a table here
+  |
+  = help: write the table directly, or put a pipeline in parentheses: `(from t | take 5)`

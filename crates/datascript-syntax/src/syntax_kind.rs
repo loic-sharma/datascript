@@ -155,9 +155,11 @@ syntax_kinds! {
     // Nodes
     /// The whole file: statements separated by `;`.
     PROGRAM,
-    /// `let name = value`, scalar or tabular (the binder decides, D-020).
+    /// `let name = value`. Tabular if the value is a `PIPELINE` (or one in parentheses), scalar
+    /// otherwise: the kind is syntactic (D-036).
     LET_STMT,
-    /// `source | op | op`. A query statement is always a pipeline, even with no operators.
+    /// `from source | op | op`, the `from` token first (D-036). A query statement is always a
+    /// pipeline, even with no operators, and so is `from source` anywhere.
     PIPELINE,
 
     /// `where predicate`

@@ -229,6 +229,15 @@ impl Parser<'_> {
         }
     }
 
+    /// Whether the current token is the keyword `from` at a pipeline head (D-036): the word
+    /// `from` followed by something that can start an expression, other than `-` and `not`.
+    /// Anywhere else `from` is an ordinary name (`let y = from - 1`, `where from > 3`).
+    fn at_from_kw(&self) -> bool {
+        self.at_kw("from")
+            && EXPR_START.contains(self.nth(1))
+            && !matches!(self.nth(1), MINUS | NOT_KW)
+    }
+
     /// `by` as a keyword (not `by = ...`, which names an output column `by`).
     fn at_by(&self) -> bool {
         self.at_kw("by") && self.nth(1) != EQ
@@ -344,6 +353,10 @@ fn let_stmt(p: &mut Parser<'_>) {
 
 /// A query statement: always a `PIPELINE`, even without operators.
 fn query_stmt(p: &mut Parser<'_>) {
+    if p.at_from_kw() {
+        from_pipeline(p);
+        return;
+    }
     let m = p.start();
     let start = p.pos;
     if p.at(PIPE) {
@@ -393,9 +406,26 @@ fn sql_select_at(p: &Parser<'_>) -> Option<(usize, usize)> {
     from.map(|from| (from, i))
 }
 
-/// An expression, wrapped in a `PIPELINE` if a `|` follows. Used where the parser cannot tell
-/// a table from a scalar: the right side of `let`, inside parentheses, and call arguments.
+/// `from source { '|' operator }`: always a `PIPELINE`, even with no operators (D-036). The
+/// `from` token is a direct child of the `PIPELINE` node, before the source. The current token
+/// is `from`.
+fn from_pipeline(p: &mut Parser<'_>) {
+    let m = p.start();
+    let start = p.pos;
+    p.bump(); // from
+    expr(p);
+    pipeline_tail(p, start);
+    m.complete(p, PIPELINE);
+}
+
+/// A pipeline or a scalar expression, where either may appear: the right side of `let`, inside
+/// parentheses, and call arguments. `from` makes a pipeline (D-036); otherwise the expression
+/// is wrapped in a `PIPELINE` only if a `|` follows. Returns whether anything was parsed.
 fn pipeline_or_expr(p: &mut Parser<'_>) -> bool {
+    if p.at_from_kw() {
+        from_pipeline(p);
+        return true;
+    }
     let start = p.pos;
     let Some(source) = expr(p) else {
         return false;
@@ -620,7 +650,7 @@ fn operator_named(
             JOIN_OP
         }
         "union" => {
-            list(p, right_table);
+            list(p, |p| right_table(p, "union"));
             UNION_OP
         }
         "render" => {
@@ -870,7 +900,7 @@ fn join_body(p: &mut Parser<'_>) {
         m.complete(p, JOIN_KIND);
     }
     let right_start = p.offset();
-    right_table(p);
+    right_table(p, "join");
     let right = (p.prev_end() > right_start).then(|| (right_start, p.prev_end()));
     let on = if p.eat_kw("on") {
         true
@@ -895,7 +925,18 @@ fn join_body(p: &mut Parser<'_>) {
 
 /// The table on the right of `join` or `union`: a name, a path string, or a parenthesized
 /// pipeline. Any expression parses here; the binder rejects the ones that are not tables.
-fn right_table(p: &mut Parser<'_>) {
+/// `from` is not written here (D-036): it is reported, and the table after it parsed.
+fn right_table(p: &mut Parser<'_>, op: &str) {
+    if p.at_from_kw() {
+        let d = p
+            .expected(&format!("a table after `{op}`"))
+            .primary(p.current_span(), "`from` starts a query, not a table here")
+            .help(
+                "write the table directly, or put a pipeline in parentheses: `(from t | take 5)`",
+            );
+        p.report(d);
+        p.bump(); // from
+    }
     if p.at_set(EXPR_START) {
         expr(p);
     } else {

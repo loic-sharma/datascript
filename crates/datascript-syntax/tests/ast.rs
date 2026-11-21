@@ -333,3 +333,40 @@ fn spans_exclude_trivia() {
     assert_eq!((span.start, span.end), (6, 18));
     assert_eq!(span.file, FileId(3));
 }
+
+#[test]
+fn from_token_and_source() {
+    let q = query("from 'a.csv' | take 1");
+    let from = q.from_token().expect("a `from` token");
+    assert_eq!(from.text(), "from");
+    assert_eq!(u32::from(from.text_range().start()), 0);
+    assert!(matches!(q.source(), Some(Expr::Literal(_))));
+    assert_eq!(q.operators().count(), 1);
+
+    // `from from`: the second `from` is the source, a name.
+    let q = query("from from");
+    assert!(q.from_token().is_some());
+    let Some(Expr::NameRef(name)) = q.source() else {
+        panic!("{:?}", q.source())
+    };
+    assert_eq!(name.text().unwrap(), "from");
+}
+
+#[test]
+fn let_kind_is_syntactic() {
+    let parse = parse(
+        "let a = from t; let b = (from t | where x); let c = 'p.csv'; let d = other; \
+         let e = (from t | count) + 1; from a",
+        FileId(0),
+    );
+    assert!(parse.errors.is_empty(), "{:#?}", parse.errors);
+    let kinds: Vec<bool> = parse
+        .program()
+        .statements()
+        .filter_map(|stmt| match stmt {
+            Stmt::Let(stmt) => Some(stmt.is_tabular()),
+            Stmt::Query(_) => None,
+        })
+        .collect();
+    assert_eq!(kinds, [true, true, false, false, false]);
+}

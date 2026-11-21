@@ -149,6 +149,21 @@ impl LetStmt {
     pub fn value(&self) -> Option<Expr> {
         child(&self.syntax)
     }
+
+    /// Whether this `let` defines a table (D-036): its value is a [`Pipeline`] (it starts with
+    /// `from`, or has operators), or a pipeline in parentheses. The kind is read from the syntax
+    /// alone: `let alias = orders;` is a scalar `let` even if `orders` is a table, and
+    /// `let x = (from t | count) + 1` is a scalar expression.
+    pub fn is_tabular(&self) -> bool {
+        let mut value = self.value();
+        loop {
+            match value {
+                Some(Expr::Pipeline(_)) => return true,
+                Some(Expr::Paren(paren)) => value = paren.inner(),
+                _ => return false,
+            }
+        }
+    }
 }
 
 ast_enum!(
@@ -162,14 +177,26 @@ ast_enum!(
 );
 
 ast_node!(
-    /// `source | op | op ...`. A query statement is always a pipeline, even with no operators.
+    /// `from source | op | op ...` (D-036). A query statement is always a pipeline, even with no
+    /// operators, and so is `from source` anywhere. In a broken program the `from` may be missing.
     Pipeline,
     PIPELINE
 );
 
 impl Pipeline {
-    /// The source: a path string, a name, a reader call, a parenthesized pipeline, or (in a broken
-    /// program) any other expression, which the binder rejects.
+    /// The `from` keyword, a direct child token of the pipeline before the source. `None` for a
+    /// pipeline written without it (an error, DS0150) or one that starts with a generator.
+    pub fn from_token(&self) -> Option<SyntaxToken> {
+        let first = self
+            .syntax
+            .children_with_tokens()
+            .find(|element| !element.kind().is_trivia())?
+            .into_token()?;
+        (first.kind() == IDENT && first.text() == "from").then_some(first)
+    }
+
+    /// The source after `from`: a path string, a name, a reader call, a parenthesized pipeline,
+    /// or (in a broken program) any other expression, which the binder rejects.
     pub fn source(&self) -> Option<Expr> {
         child(&self.syntax)
     }
@@ -671,7 +698,8 @@ ast_enum!(
         Bin(BinExpr),
         In(InExpr),
         Between(BetweenExpr),
-        /// A pipeline in expression position: the right side of a `let`, or inside parentheses.
+        /// A pipeline in expression position: the right side of a `let`, inside parentheses, or
+        /// a call argument.
         Pipeline(Pipeline),
     }
 );

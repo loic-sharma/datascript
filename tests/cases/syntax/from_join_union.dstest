@@ -1,0 +1,94 @@
+# The right side of `join` and `union` is a table without `from`; a pipeline there is parenthesized and starts with `from`.
+mode: syntax
+---- query
+from orders | join customers on customerId;
+from orders | join (from 'c.csv' | where active) on id;
+from 'a.csv' | union 'b.csv', (from 'c.csv' | where active)
+---- expected
+PROGRAM@0..160
+  PIPELINE@0..42
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..11
+      IDENT@5..11 "orders"
+    WHITESPACE@11..12 " "
+    PIPE@12..13 "|"
+    WHITESPACE@13..14 " "
+    JOIN_OP@14..42
+      IDENT@14..18 "join"
+      WHITESPACE@18..19 " "
+      NAME_REF@19..28
+        IDENT@19..28 "customers"
+      WHITESPACE@28..29 " "
+      IDENT@29..31 "on"
+      WHITESPACE@31..32 " "
+      NAME_REF@32..42
+        IDENT@32..42 "customerId"
+  SEMICOLON@42..43 ";"
+  WHITESPACE@43..44 "\n"
+  PIPELINE@44..98
+    IDENT@44..48 "from"
+    WHITESPACE@48..49 " "
+    NAME_REF@49..55
+      IDENT@49..55 "orders"
+    WHITESPACE@55..56 " "
+    PIPE@56..57 "|"
+    WHITESPACE@57..58 " "
+    JOIN_OP@58..98
+      IDENT@58..62 "join"
+      WHITESPACE@62..63 " "
+      PAREN_EXPR@63..92
+        L_PAREN@63..64 "("
+        PIPELINE@64..91
+          IDENT@64..68 "from"
+          WHITESPACE@68..69 " "
+          LITERAL@69..76
+            STRING@69..76 "'c.csv'"
+          WHITESPACE@76..77 " "
+          PIPE@77..78 "|"
+          WHITESPACE@78..79 " "
+          WHERE_OP@79..91
+            IDENT@79..84 "where"
+            WHITESPACE@84..85 " "
+            NAME_REF@85..91
+              IDENT@85..91 "active"
+        R_PAREN@91..92 ")"
+      WHITESPACE@92..93 " "
+      IDENT@93..95 "on"
+      WHITESPACE@95..96 " "
+      NAME_REF@96..98
+        IDENT@96..98 "id"
+  SEMICOLON@98..99 ";"
+  WHITESPACE@99..100 "\n"
+  PIPELINE@100..159
+    IDENT@100..104 "from"
+    WHITESPACE@104..105 " "
+    LITERAL@105..112
+      STRING@105..112 "'a.csv'"
+    WHITESPACE@112..113 " "
+    PIPE@113..114 "|"
+    WHITESPACE@114..115 " "
+    UNION_OP@115..159
+      IDENT@115..120 "union"
+      WHITESPACE@120..121 " "
+      LITERAL@121..128
+        STRING@121..128 "'b.csv'"
+      COMMA@128..129 ","
+      WHITESPACE@129..130 " "
+      PAREN_EXPR@130..159
+        L_PAREN@130..131 "("
+        PIPELINE@131..158
+          IDENT@131..135 "from"
+          WHITESPACE@135..136 " "
+          LITERAL@136..143
+            STRING@136..143 "'c.csv'"
+          WHITESPACE@143..144 " "
+          PIPE@144..145 "|"
+          WHITESPACE@145..146 " "
+          WHERE_OP@146..158
+            IDENT@146..151 "where"
+            WHITESPACE@151..152 " "
+            NAME_REF@152..158
+              IDENT@152..158 "active"
+        R_PAREN@158..159 ")"
+  WHITESPACE@159..160 "\n"

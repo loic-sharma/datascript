@@ -1,0 +1,118 @@
+# A table `let` (its value is a PIPELINE) and scalar `let`s bound to a string and to a bare name: no errors.
+mode: syntax
+---- query
+let big = from 'orders.csv' | where amount > 100;
+let p = 'data/orders.csv';
+let n = other;
+let x = (from big | count) + 1;
+from big | summarize count() by customerId
+---- expected
+PROGRAM@0..167
+  LET_STMT@0..48
+    LET_KW@0..3 "let"
+    WHITESPACE@3..4 " "
+    NAME@4..7
+      IDENT@4..7 "big"
+    WHITESPACE@7..8 " "
+    EQ@8..9 "="
+    WHITESPACE@9..10 " "
+    PIPELINE@10..48
+      IDENT@10..14 "from"
+      WHITESPACE@14..15 " "
+      LITERAL@15..27
+        STRING@15..27 "'orders.csv'"
+      WHITESPACE@27..28 " "
+      PIPE@28..29 "|"
+      WHITESPACE@29..30 " "
+      WHERE_OP@30..48
+        IDENT@30..35 "where"
+        WHITESPACE@35..36 " "
+        BIN_EXPR@36..48
+          NAME_REF@36..42
+            IDENT@36..42 "amount"
+          WHITESPACE@42..43 " "
+          GT@43..44 ">"
+          WHITESPACE@44..45 " "
+          LITERAL@45..48
+            LONG@45..48 "100"
+  SEMICOLON@48..49 ";"
+  WHITESPACE@49..50 "\n"
+  LET_STMT@50..75
+    LET_KW@50..53 "let"
+    WHITESPACE@53..54 " "
+    NAME@54..55
+      IDENT@54..55 "p"
+    WHITESPACE@55..56 " "
+    EQ@56..57 "="
+    WHITESPACE@57..58 " "
+    LITERAL@58..75
+      STRING@58..75 "'data/orders.csv'"
+  SEMICOLON@75..76 ";"
+  WHITESPACE@76..77 "\n"
+  LET_STMT@77..90
+    LET_KW@77..80 "let"
+    WHITESPACE@80..81 " "
+    NAME@81..82
+      IDENT@81..82 "n"
+    WHITESPACE@82..83 " "
+    EQ@83..84 "="
+    WHITESPACE@84..85 " "
+    NAME_REF@85..90
+      IDENT@85..90 "other"
+  SEMICOLON@90..91 ";"
+  WHITESPACE@91..92 "\n"
+  LET_STMT@92..122
+    LET_KW@92..95 "let"
+    WHITESPACE@95..96 " "
+    NAME@96..97
+      IDENT@96..97 "x"
+    WHITESPACE@97..98 " "
+    EQ@98..99 "="
+    WHITESPACE@99..100 " "
+    BIN_EXPR@100..122
+      PAREN_EXPR@100..118
+        L_PAREN@100..101 "("
+        PIPELINE@101..117
+          IDENT@101..105 "from"
+          WHITESPACE@105..106 " "
+          NAME_REF@106..109
+            IDENT@106..109 "big"
+          WHITESPACE@109..110 " "
+          PIPE@110..111 "|"
+          WHITESPACE@111..112 " "
+          COUNT_OP@112..117
+            IDENT@112..117 "count"
+        R_PAREN@117..118 ")"
+      WHITESPACE@118..119 " "
+      PLUS@119..120 "+"
+      WHITESPACE@120..121 " "
+      LITERAL@121..122
+        LONG@121..122 "1"
+  SEMICOLON@122..123 ";"
+  WHITESPACE@123..124 "\n"
+  PIPELINE@124..166
+    IDENT@124..128 "from"
+    WHITESPACE@128..129 " "
+    NAME_REF@129..132
+      IDENT@129..132 "big"
+    WHITESPACE@132..133 " "
+    PIPE@133..134 "|"
+    WHITESPACE@134..135 " "
+    SUMMARIZE_OP@135..166
+      IDENT@135..144 "summarize"
+      WHITESPACE@144..145 " "
+      NAMED_EXPR@145..152
+        CALL_EXPR@145..152
+          NAME_REF@145..150
+            IDENT@145..150 "count"
+          ARG_LIST@150..152
+            L_PAREN@150..151 "("
+            R_PAREN@151..152 ")"
+      WHITESPACE@152..153 " "
+      BY_CLAUSE@153..166
+        IDENT@153..155 "by"
+        WHITESPACE@155..156 " "
+        NAMED_EXPR@156..166
+          NAME_REF@156..166
+            IDENT@156..166 "customerId"
+  WHITESPACE@166..167 "\n"

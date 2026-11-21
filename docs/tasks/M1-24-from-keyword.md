@@ -1,6 +1,6 @@
 # M1-24 — Require `from` at the start of a query
 
-**Status:** todo
+**Status:** in-progress
 **Depends on:** M1-22
 **Crates:** `datascript-syntax`, `datascript-diagnostics`, `datascript-compiler` (only where the
 AST shape changes), `datascript-tests`

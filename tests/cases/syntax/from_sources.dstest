@@ -1,0 +1,161 @@
+# `from` with each source form: path, glob, name, scalar `let` path, reader call, parenthesized pipeline, `from(`.
+mode: syntax
+---- query
+from 'data/orders.csv' | take 5;
+from 'logs/2024-*/*.parquet' | count;
+from orders | take 5;
+let p = 'data/orders.csv';
+from p | take 5;
+from read_csv('x.txt', delimiter = ';') | take 5;
+from (from orders | where amount > 100) | count;
+from('data/orders.csv') | take 1
+---- expected
+PROGRAM@0..269
+  PIPELINE@0..31
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    LITERAL@5..22
+      STRING@5..22 "'data/orders.csv'"
+    WHITESPACE@22..23 " "
+    PIPE@23..24 "|"
+    WHITESPACE@24..25 " "
+    TAKE_OP@25..31
+      IDENT@25..29 "take"
+      WHITESPACE@29..30 " "
+      LITERAL@30..31
+        LONG@30..31 "5"
+  SEMICOLON@31..32 ";"
+  WHITESPACE@32..33 "\n"
+  PIPELINE@33..69
+    IDENT@33..37 "from"
+    WHITESPACE@37..38 " "
+    LITERAL@38..61
+      STRING@38..61 "'logs/2024-*/*.parquet'"
+    WHITESPACE@61..62 " "
+    PIPE@62..63 "|"
+    WHITESPACE@63..64 " "
+    COUNT_OP@64..69
+      IDENT@64..69 "count"
+  SEMICOLON@69..70 ";"
+  WHITESPACE@70..71 "\n"
+  PIPELINE@71..91
+    IDENT@71..75 "from"
+    WHITESPACE@75..76 " "
+    NAME_REF@76..82
+      IDENT@76..82 "orders"
+    WHITESPACE@82..83 " "
+    PIPE@83..84 "|"
+    WHITESPACE@84..85 " "
+    TAKE_OP@85..91
+      IDENT@85..89 "take"
+      WHITESPACE@89..90 " "
+      LITERAL@90..91
+        LONG@90..91 "5"
+  SEMICOLON@91..92 ";"
+  WHITESPACE@92..93 "\n"
+  LET_STMT@93..118
+    LET_KW@93..96 "let"
+    WHITESPACE@96..97 " "
+    NAME@97..98
+      IDENT@97..98 "p"
+    WHITESPACE@98..99 " "
+    EQ@99..100 "="
+    WHITESPACE@100..101 " "
+    LITERAL@101..118
+      STRING@101..118 "'data/orders.csv'"
+  SEMICOLON@118..119 ";"
+  WHITESPACE@119..120 "\n"
+  PIPELINE@120..135
+    IDENT@120..124 "from"
+    WHITESPACE@124..125 " "
+    NAME_REF@125..126
+      IDENT@125..126 "p"
+    WHITESPACE@126..127 " "
+    PIPE@127..128 "|"
+    WHITESPACE@128..129 " "
+    TAKE_OP@129..135
+      IDENT@129..133 "take"
+      WHITESPACE@133..134 " "
+      LITERAL@134..135
+        LONG@134..135 "5"
+  SEMICOLON@135..136 ";"
+  WHITESPACE@136..137 "\n"
+  PIPELINE@137..185
+    IDENT@137..141 "from"
+    WHITESPACE@141..142 " "
+    CALL_EXPR@142..176
+      NAME_REF@142..150
+        IDENT@142..150 "read_csv"
+      ARG_LIST@150..176
+        L_PAREN@150..151 "("
+        LITERAL@151..158
+          STRING@151..158 "'x.txt'"
+        COMMA@158..159 ","
+        WHITESPACE@159..160 " "
+        NAMED_EXPR@160..175
+          NAME@160..169
+            IDENT@160..169 "delimiter"
+          WHITESPACE@169..170 " "
+          EQ@170..171 "="
+          WHITESPACE@171..172 " "
+          LITERAL@172..175
+            STRING@172..175 "';'"
+        R_PAREN@175..176 ")"
+    WHITESPACE@176..177 " "
+    PIPE@177..178 "|"
+    WHITESPACE@178..179 " "
+    TAKE_OP@179..185
+      IDENT@179..183 "take"
+      WHITESPACE@183..184 " "
+      LITERAL@184..185
+        LONG@184..185 "5"
+  SEMICOLON@185..186 ";"
+  WHITESPACE@186..187 "\n"
+  PIPELINE@187..234
+    IDENT@187..191 "from"
+    WHITESPACE@191..192 " "
+    PAREN_EXPR@192..226
+      L_PAREN@192..193 "("
+      PIPELINE@193..225
+        IDENT@193..197 "from"
+        WHITESPACE@197..198 " "
+        NAME_REF@198..204
+          IDENT@198..204 "orders"
+        WHITESPACE@204..205 " "
+        PIPE@205..206 "|"
+        WHITESPACE@206..207 " "
+        WHERE_OP@207..225
+          IDENT@207..212 "where"
+          WHITESPACE@212..213 " "
+          BIN_EXPR@213..225
+            NAME_REF@213..219
+              IDENT@213..219 "amount"
+            WHITESPACE@219..220 " "
+            GT@220..221 ">"
+            WHITESPACE@221..222 " "
+            LITERAL@222..225
+              LONG@222..225 "100"
+      R_PAREN@225..226 ")"
+    WHITESPACE@226..227 " "
+    PIPE@227..228 "|"
+    WHITESPACE@228..229 " "
+    COUNT_OP@229..234
+      IDENT@229..234 "count"
+  SEMICOLON@234..235 ";"
+  WHITESPACE@235..236 "\n"
+  PIPELINE@236..268
+    IDENT@236..240 "from"
+    PAREN_EXPR@240..259
+      L_PAREN@240..241 "("
+      LITERAL@241..258
+        STRING@241..258 "'data/orders.csv'"
+      R_PAREN@258..259 ")"
+    WHITESPACE@259..260 " "
+    PIPE@260..261 "|"
+    WHITESPACE@261..262 " "
+    TAKE_OP@262..268
+      IDENT@262..266 "take"
+      WHITESPACE@266..267 " "
+      LITERAL@267..268
+        LONG@267..268 "1"
+  WHITESPACE@268..269 "\n"
