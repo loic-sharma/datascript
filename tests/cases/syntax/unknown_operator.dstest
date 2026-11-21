@@ -1,4 +1,4 @@
-# An unknown operator name; M1-03 adds did-you-mean (DS0104).
+# An unknown operator name with one close match: DS0104 with a fix.
 mode: syntax
 ---- query
 t | summerize count() | take 5
@@ -10,12 +10,16 @@ PROGRAM@0..31
     WHITESPACE@1..2 " "
     PIPE@2..3 "|"
     WHITESPACE@3..4 " "
-    ERROR@4..21
+    SUMMARIZE_OP@4..21
       IDENT@4..13 "summerize"
       WHITESPACE@13..14 " "
-      IDENT@14..19 "count"
-      L_PAREN@19..20 "("
-      R_PAREN@20..21 ")"
+      NAMED_EXPR@14..21
+        CALL_EXPR@14..21
+          NAME_REF@14..19
+            IDENT@14..19 "count"
+          ARG_LIST@19..21
+            L_PAREN@19..20 "("
+            R_PAREN@20..21 ")"
     WHITESPACE@21..22 " "
     PIPE@22..23 "|"
     WHITESPACE@23..24 " "
@@ -26,10 +30,14 @@ PROGRAM@0..31
         LONG@29..30 "5"
   WHITESPACE@30..31 "\n"
 
-error[DS0101]: expected an operator after `|`, found `summerize`
+error[DS0104]: unknown operator `summerize`
   --> query:1:5
   |
 1 | t | summerize count() | take 5
   |     ^^^^^^^^^
   |
-  = note: the operators are `count`, `distinct`, `extend`, `getschema`, `join`, `limit`, `order`, `project`, `project-away`, `project-rename`, `render`, `sort`, `summarize`, `take`, `top`, `union` and `where`
+  = help: an operator with a similar name exists: `summarize`
+
+with the machine-applicable fixes applied:
+    t | summarize count() | take 5
+which parses without errors

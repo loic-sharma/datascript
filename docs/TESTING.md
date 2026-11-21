@@ -10,7 +10,7 @@ are behaviour, and they are reviewed in diffs like any other output.
 |---|---|---|
 | Golden tests | `tests/cases/**/*.dstest`, run by the `datascript-tests` crate | End-to-end: parse → bind → plan → execute, or the diagnostics |
 | Unit tests | `#[cfg(test)]` in each crate | Lexer edge cases, type rules, small algorithms |
-| Parser snapshots | `tests/cases/syntax/*.dstest` with `mode: syntax` | CST dumps for tricky parses and recovery: one line per node (`KIND@start..end`) or token (`KIND@start..end "text"`), children indented two spaces, trivia included; then the lexical and syntax diagnostics |
+| Parser snapshots | `tests/cases/syntax/*.dstest` with `mode: syntax` | CST dumps for tricky parses and recovery: one line per node (`KIND@start..end`) or token (`KIND@start..end "text"`), children indented two spaces, trivia included; then the lexical and syntax diagnostics, and, if any has a machine-applicable fix, the query with the fixes applied and the result of parsing it again. Targeted syntax diagnostics live in `tests/cases/errors/syntax/` |
 | LSP tests | `crates/datascript-lsp/tests` (M3) | Request/response scripts against an in-process server |
 | Web/WASM tests | `web/` (Vitest + Playwright, M4/M5) | UI flows and runtime parity with the CLI |
 
@@ -98,6 +98,12 @@ Harness details (M0-03):
   Control characters in strings are escaped (`\n`, `\t`, `\u{1b}`). Trailing spaces are trimmed.
 - A `render` adds a line `render: timechart x=month y=[revenue] series=customerId` after the table.
 - **Diagnostics** use the *plain* renderer: no color, ASCII only, the file is shown as `query`.
+- **Fixes** (`mode: syntax`, M1-03): when a diagnostic carries a machine-applicable suggestion,
+  the output ends with `with the machine-applicable fixes applied:`, the fixed query indented four
+  spaces, and either `which parses without errors` or `which still has errors:` followed by them
+  (the file is shown as `fixed`). `datascript_tests::apply_suggestions` applies the fixes; a
+  suggestion that overlaps one already applied is skipped whole. A fix that does not parse shows
+  up in review as a diff, so every such suggestion is tested by the case that produces it.
   All diagnostics are printed, errors and warnings, in source order.
 - When a `run` program has warnings and still executes, the warnings print first, then the table.
 - `DS5001` (chart not drawn) is not printed in golden output, because the `render:` line already

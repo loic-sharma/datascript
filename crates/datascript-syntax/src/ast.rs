@@ -210,13 +210,11 @@ impl Operator {
         let Some(first) = toks.next() else {
             return String::new();
         };
-        // A hyphenated name is three adjacent tokens; the parser puts no other `-` directly in
-        // an operator node.
+        // A hyphenated name is three tokens; the parser puts no other `-` directly in an
+        // operator node. They are adjacent unless the parser reported `project - away` (DS0104).
         if let (Some(minus), Some(second)) = (toks.next(), toks.next())
             && minus.kind() == MINUS
             && second.kind() == IDENT
-            && first.text_range().end() == minus.text_range().start()
-            && minus.text_range().end() == second.text_range().start()
         {
             return format!("{}-{}", first.text(), second.text());
         }
@@ -812,7 +810,8 @@ impl PrefixExpr {
     pub fn op(&self) -> Option<PrefixOp> {
         match self.op_token()?.kind() {
             MINUS => Some(PrefixOp::Neg),
-            NOT_KW => Some(PrefixOp::Not),
+            // `!x` is reported by the parser (DS0111) and read as `not(x)`.
+            NOT_KW | BANG => Some(PrefixOp::Not),
             _ => None,
         }
     }
@@ -905,10 +904,12 @@ impl BinExpr {
     pub fn op(&self) -> Option<BinaryOp> {
         let token = self.op_token()?;
         Some(match token.kind() {
-            OR_KW => BinaryOp::Or,
-            AND_KW => BinaryOp::And,
-            EQ2 => BinaryOp::Eq,
-            NEQ => BinaryOp::NotEq,
+            // `||`, `&&`, `=` and `<>` are reported by the parser (DS0111, DS0110, DS0107) and
+            // read as the operator the user meant.
+            OR_KW | PIPE2 => BinaryOp::Or,
+            AND_KW | AMP2 => BinaryOp::And,
+            EQ2 | EQ => BinaryOp::Eq,
+            NEQ | LTGT => BinaryOp::NotEq,
             LT => BinaryOp::Lt,
             LTEQ => BinaryOp::LtEq,
             GT => BinaryOp::Gt,

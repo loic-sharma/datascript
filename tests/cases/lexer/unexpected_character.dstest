@@ -67,3 +67,24 @@ error[DS0001]: names are not quoted with backticks
   |              ^^^ backticks are not a quote
   |
   = help: quote the name with brackets: `['z']`
+
+with the machine-applicable fixes applied:
+    t | where x > 1 # comment?
+    | extend y = ['z']
+which still has errors:
+
+error[DS0001]: unexpected character `#`
+  --> fixed:1:17
+  |
+1 | t | where x > 1 # comment?
+  |                 ^ not valid here
+  |
+  = help: comments start with `//`
+
+error[DS0001]: unexpected character `?`
+  --> fixed:1:26
+  |
+1 | t | where x > 1 # comment?
+  |                          ^ not valid here
+  |
+  = help: for a conditional value, use `iff(condition, then, else)`

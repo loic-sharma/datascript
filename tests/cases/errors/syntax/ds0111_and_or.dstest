@@ -1,0 +1,68 @@
+# C's `&&` and `||`: one DS0111 each, with fixes. The tree keeps `and` above `or` precedence.
+mode: syntax
+---- query
+'orders.csv' | where amount > 10 && amount < 100 || customerId == "c-001"
+---- expected
+PROGRAM@0..74
+  PIPELINE@0..73
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..73
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      BIN_EXPR@21..73
+        BIN_EXPR@21..48
+          BIN_EXPR@21..32
+            NAME_REF@21..27
+              IDENT@21..27 "amount"
+            WHITESPACE@27..28 " "
+            GT@28..29 ">"
+            WHITESPACE@29..30 " "
+            LITERAL@30..32
+              LONG@30..32 "10"
+          WHITESPACE@32..33 " "
+          AMP2@33..35 "&&"
+          WHITESPACE@35..36 " "
+          BIN_EXPR@36..48
+            NAME_REF@36..42
+              IDENT@36..42 "amount"
+            WHITESPACE@42..43 " "
+            LT@43..44 "<"
+            WHITESPACE@44..45 " "
+            LITERAL@45..48
+              LONG@45..48 "100"
+        WHITESPACE@48..49 " "
+        PIPE2@49..51 "||"
+        WHITESPACE@51..52 " "
+        BIN_EXPR@52..73
+          NAME_REF@52..62
+            IDENT@52..62 "customerId"
+          WHITESPACE@62..63 " "
+          EQ2@63..65 "=="
+          WHITESPACE@65..66 " "
+          LITERAL@66..73
+            STRING@66..73 "\"c-001\""
+  WHITESPACE@73..74 "\n"
+
+error[DS0111]: `&&` is not an operator
+  --> query:1:34
+  |
+1 | 'orders.csv' | where amount > 10 && amount < 100 || customerId == "c-001"
+  |                                  ^^
+  |
+  = help: use `and` to require both conditions: `amount > 10 and amount < 100`
+
+error[DS0111]: `||` is not an operator
+  --> query:1:50
+  |
+1 | 'orders.csv' | where amount > 10 && amount < 100 || customerId == "c-001"
+  |                                                  ^^
+  |
+  = help: use `or` to accept either condition
+
+with the machine-applicable fixes applied:
+    'orders.csv' | where amount > 10 and amount < 100 or customerId == "c-001"
+which parses without errors

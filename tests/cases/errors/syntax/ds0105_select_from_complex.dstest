@@ -1,0 +1,40 @@
+# A SQL query too complex to rewrite: one DS0105 with a general example.
+mode: syntax
+---- query
+SELECT customerId, count(*)
+FROM orders
+GROUP BY customerId
+---- expected
+PROGRAM@0..60
+  PIPELINE@0..59
+    ERROR@0..59
+      IDENT@0..6 "SELECT"
+      WHITESPACE@6..7 " "
+      IDENT@7..17 "customerId"
+      COMMA@17..18 ","
+      WHITESPACE@18..19 " "
+      IDENT@19..24 "count"
+      L_PAREN@24..25 "("
+      STAR@25..26 "*"
+      R_PAREN@26..27 ")"
+      WHITESPACE@27..28 "\n"
+      IDENT@28..32 "FROM"
+      WHITESPACE@32..33 " "
+      IDENT@33..39 "orders"
+      WHITESPACE@39..40 "\n"
+      IDENT@40..45 "GROUP"
+      WHITESPACE@45..46 " "
+      IDENT@46..48 "BY"
+      WHITESPACE@48..49 " "
+      IDENT@49..59 "customerId"
+  WHITESPACE@59..60 "\n"
+
+error[DS0105]: `SELECT ... FROM` is SQL, not DataScript
+  --> query:1:1
+  |
+1 | SELECT customerId, count(*)
+  | ^^^^^^ this is SQL
+2 | FROM orders
+  | ---- in DataScript the table comes first
+  |
+  = help: start with the table and pipe it into operators: `'orders.csv' | where amount > 10 | project customerId, amount`

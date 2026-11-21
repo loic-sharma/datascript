@@ -20,22 +20,25 @@ PROGRAM@0..38
     WHITESPACE@18..19 " "
     PIPE@19..20 "|"
     WHITESPACE@20..21 " "
-    PROJECT_OP@21..35
+    PROJECT_AWAY_OP@21..37
       IDENT@21..28 "project"
       WHITESPACE@28..29 " "
-      NAMED_EXPR@29..35
-        PREFIX_EXPR@29..35
-          MINUS@29..30 "-"
-          WHITESPACE@30..31 " "
-          NAME_REF@31..35
-            IDENT@31..35 "away"
-    WHITESPACE@35..36 " "
-    ERROR@36..37
-      IDENT@36..37 "y"
+      MINUS@29..30 "-"
+      WHITESPACE@30..31 " "
+      IDENT@31..35 "away"
+      WHITESPACE@35..36 " "
+      COLUMN_PATTERN@36..37
+        IDENT@36..37 "y"
   WHITESPACE@37..38 "\n"
 
-error[DS0101]: expected `|` or `;`, found `y`
-  --> query:1:37
+error[DS0104]: operator name `project - away` has spaces in it
+  --> query:1:22
   |
 1 | t | project-away x | project - away y
-  |                                     ^
+  |                      ^^^^^^^^^^^^^^
+  |
+  = help: write `project-away`, with no spaces
+
+with the machine-applicable fixes applied:
+    t | project-away x | project-away y
+which parses without errors

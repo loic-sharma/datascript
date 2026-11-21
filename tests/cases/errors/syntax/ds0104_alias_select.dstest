@@ -1,0 +1,36 @@
+# Lowercase `select`: DS0104 pointing at `project`, with a fix.
+mode: syntax
+---- query
+'orders.csv' | select customerId, amount
+---- expected
+PROGRAM@0..41
+  PIPELINE@0..40
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    PROJECT_OP@15..40
+      IDENT@15..21 "select"
+      WHITESPACE@21..22 " "
+      NAMED_EXPR@22..32
+        NAME_REF@22..32
+          IDENT@22..32 "customerId"
+      COMMA@32..33 ","
+      WHITESPACE@33..34 " "
+      NAMED_EXPR@34..40
+        NAME_REF@34..40
+          IDENT@34..40 "amount"
+  WHITESPACE@40..41 "\n"
+
+error[DS0104]: unknown operator `select`
+  --> query:1:16
+  |
+1 | 'orders.csv' | select customerId, amount
+  |                ^^^^^^ not a DataScript operator
+  |
+  = help: to choose or compute columns, use `project`
+
+with the machine-applicable fixes applied:
+    'orders.csv' | project customerId, amount
+which parses without errors

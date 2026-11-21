@@ -1,0 +1,57 @@
+# Two `let`s on one line without `;`: DS0106, with a fix.
+mode: syntax
+---- query
+let a = 1 let b = 2;
+'orders.csv' | take a
+---- expected
+PROGRAM@0..43
+  LET_STMT@0..9
+    LET_KW@0..3 "let"
+    WHITESPACE@3..4 " "
+    NAME@4..5
+      IDENT@4..5 "a"
+    WHITESPACE@5..6 " "
+    EQ@6..7 "="
+    WHITESPACE@7..8 " "
+    LITERAL@8..9
+      LONG@8..9 "1"
+  WHITESPACE@9..10 " "
+  LET_STMT@10..19
+    LET_KW@10..13 "let"
+    WHITESPACE@13..14 " "
+    NAME@14..15
+      IDENT@14..15 "b"
+    WHITESPACE@15..16 " "
+    EQ@16..17 "="
+    WHITESPACE@17..18 " "
+    LITERAL@18..19
+      LONG@18..19 "2"
+  SEMICOLON@19..20 ";"
+  WHITESPACE@20..21 "\n"
+  PIPELINE@21..42
+    LITERAL@21..33
+      STRING@21..33 "'orders.csv'"
+    WHITESPACE@33..34 " "
+    PIPE@34..35 "|"
+    WHITESPACE@35..36 " "
+    TAKE_OP@36..42
+      IDENT@36..40 "take"
+      WHITESPACE@40..41 " "
+      NAME_REF@41..42
+        IDENT@41..42 "a"
+  WHITESPACE@42..43 "\n"
+
+error[DS0106]: missing `;` between statements
+  --> query:1:10
+  |
+1 | let a = 1 let b = 2;
+  |          ^--- a new statement starts here
+  |          |
+  |          expected `;` here
+  |
+  = help: end the statement with `;`
+
+with the machine-applicable fixes applied:
+    let a = 1; let b = 2;
+    'orders.csv' | take a
+which parses without errors

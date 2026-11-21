@@ -31,8 +31,15 @@ PROGRAM@0..26
           IDENT@24..25 "a"
   WHITESPACE@25..26 "\n"
 
-error[DS0101]: expected `|` before the next operator, found `project`
+error[DS0102]: missing `|` before `project`
   --> query:2:1
   |
 2 | project a
-  | ^^^^^^^
+  | ^^^^^^^ `project` starts a new operator
+  |
+  = help: insert `|` to pipe into `project`: `| project`
+
+with the machine-applicable fixes applied:
+    t | where x > 1
+    | project a
+which parses without errors

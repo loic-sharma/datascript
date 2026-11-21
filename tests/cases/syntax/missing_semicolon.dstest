@@ -1,4 +1,4 @@
-# A new statement on a new line without ; (M1-03 makes this DS0106).
+# New statements on new lines without ; (DS0106, with a fix that inserts it).
 mode: syntax
 ---- query
 let x = 5
@@ -42,14 +42,28 @@ PROGRAM@0..32
         LONG@30..31 "3"
   WHITESPACE@31..32 "\n"
 
-error[DS0101]: expected `;` between statements, found `t`
-  --> query:2:1
+error[DS0106]: missing `;` between statements
+  --> query:1:10
+  |
+1 | let x = 5
+  |          ^ expected `;` here
+2 | t | take x
+  | - a new statement starts here
+  |
+  = help: end the statement with `;`
+
+error[DS0106]: missing `;` between statements
+  --> query:2:11
   |
 2 | t | take x
-  | ^
-
-error[DS0101]: expected `;` between statements, found `u`
-  --> query:3:1
-  |
+  |           ^ expected `;` here
 3 | u | take 3
-  | ^
+  | - a new statement starts here
+  |
+  = help: end the statement with `;`
+
+with the machine-applicable fixes applied:
+    let x = 5;
+    t | take x;
+    u | take 3
+which parses without errors

@@ -1,0 +1,36 @@
+# SQL's uppercase `WHERE`: DS0105, with a fix to `where`.
+mode: syntax
+---- query
+'orders.csv' | WHERE amount > 10
+---- expected
+PROGRAM@0..33
+  PIPELINE@0..32
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..32
+      IDENT@15..20 "WHERE"
+      WHITESPACE@20..21 " "
+      BIN_EXPR@21..32
+        NAME_REF@21..27
+          IDENT@21..27 "amount"
+        WHITESPACE@27..28 " "
+        GT@28..29 ">"
+        WHITESPACE@29..30 " "
+        LITERAL@30..32
+          LONG@30..32 "10"
+  WHITESPACE@32..33 "\n"
+
+error[DS0105]: SQL keyword `WHERE` is not an operator
+  --> query:1:16
+  |
+1 | 'orders.csv' | WHERE amount > 10
+  |                ^^^^^
+  |
+  = help: operator names are lowercase: write `where`
+
+with the machine-applicable fixes applied:
+    'orders.csv' | where amount > 10
+which parses without errors

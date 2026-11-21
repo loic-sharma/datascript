@@ -26,10 +26,8 @@ PROGRAM@0..28
         LONG@26..27 "5"
   WHITESPACE@27..28 "\n"
 
-error[DS0101]: expected an operator after `|`, found `mv-expand`
+error[DS0104]: operator `mv-expand` is not available yet
   --> query:1:5
   |
 1 | t | mv-expand tags | take 5
-  |     ^^^^^^^^^
-  |
-  = note: `mv-expand` is planned but not available yet
+  |     ^^^^^^^^^ planned for a later version

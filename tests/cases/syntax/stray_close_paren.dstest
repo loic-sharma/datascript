@@ -27,8 +27,10 @@ PROGRAM@0..22
         LONG@20..21 "5"
   WHITESPACE@21..22 "\n"
 
-error[DS0101]: expected `|` or `;`, found `)`
+error[DS0112]: unmatched `)`
   --> query:1:12
   |
 1 | t | where x) | take 5
-  |            ^
+  |            ^ there is no `(` for this to close
+  |
+  = help: remove it, or add the missing `(`

@@ -1,4 +1,4 @@
-# join without on; M1-03 makes this DS0122.
+# join without on (DS0122); the right table is the last thing before the pipe.
 mode: syntax
 ---- query
 t | join u | take 1
@@ -25,8 +25,10 @@ PROGRAM@0..20
         LONG@18..19 "1"
   WHITESPACE@19..20 "\n"
 
-error[DS0101]: expected `on` and the columns to join on, found `|`
-  --> query:1:12
+error[DS0122]: `join` needs `on` and the columns to match
+  --> query:1:10
   |
 1 | t | join u | take 1
-  |            ^
+  |          ^ expected `on` after this table
+  |
+  = help: say which columns to match: `join u on customerId`

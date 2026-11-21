@@ -42,7 +42,7 @@ Two shared files are touched by many tasks:
 |---|---|---|---|---|
 | [M1-01](M1-01-lexer.md) | Lexer | M0-02, M0-03 | done | M1-04 |
 | [M1-02](M1-02-parser.md) | Parser and syntax tree | M1-01 | done | M1-04 |
-| [M1-03](M1-03-syntax-diagnostics.md) | Syntax diagnostics quality pass | M1-02 | todo | M1-05 and later |
+| [M1-03](M1-03-syntax-diagnostics.md) | Syntax diagnostics quality pass | M1-02 | done | M1-05 and later |
 | [M1-04](M1-04-types-function-catalog.md) | Type system and function catalog | M0-02 | todo | M1-01, M1-02 |
 | [M1-15](M1-15-walking-skeleton.md) | Walking skeleton: one query through every layer | M1-02, M1-04, M0-04, M0-05 | todo | M1-03 |
 | [M1-05](M1-05-binder.md) | Binder core and expression checking | M1-15 | todo | M1-03 |

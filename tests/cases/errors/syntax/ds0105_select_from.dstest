@@ -1,0 +1,37 @@
+# A whole SQL query: one DS0105 with the equivalent pipeline (not machine-applicable: worth a look).
+mode: syntax
+---- query
+SELECT customerId, amount FROM orders WHERE amount > 10
+---- expected
+PROGRAM@0..56
+  PIPELINE@0..55
+    ERROR@0..55
+      IDENT@0..6 "SELECT"
+      WHITESPACE@6..7 " "
+      IDENT@7..17 "customerId"
+      COMMA@17..18 ","
+      WHITESPACE@18..19 " "
+      IDENT@19..25 "amount"
+      WHITESPACE@25..26 " "
+      IDENT@26..30 "FROM"
+      WHITESPACE@30..31 " "
+      IDENT@31..37 "orders"
+      WHITESPACE@37..38 " "
+      IDENT@38..43 "WHERE"
+      WHITESPACE@43..44 " "
+      IDENT@44..50 "amount"
+      WHITESPACE@50..51 " "
+      GT@51..52 ">"
+      WHITESPACE@52..53 " "
+      LONG@53..55 "10"
+  WHITESPACE@55..56 "\n"
+
+error[DS0105]: `SELECT ... FROM` is SQL, not DataScript
+  --> query:1:1
+  |
+1 | SELECT customerId, amount FROM orders WHERE amount > 10
+  | ^^^^^^                    ---- in DataScript the table comes first
+  | |
+  | this is SQL
+  |
+  = help: start with the table and pipe it into operators: `orders | where amount > 10 | project customerId, amount`

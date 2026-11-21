@@ -1,0 +1,36 @@
+# `filter` from other languages: DS0104 pointing at `where`, with a fix.
+mode: syntax
+---- query
+'orders.csv' | filter amount > 10
+---- expected
+PROGRAM@0..34
+  PIPELINE@0..33
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..33
+      IDENT@15..21 "filter"
+      WHITESPACE@21..22 " "
+      BIN_EXPR@22..33
+        NAME_REF@22..28
+          IDENT@22..28 "amount"
+        WHITESPACE@28..29 " "
+        GT@29..30 ">"
+        WHITESPACE@30..31 " "
+        LITERAL@31..33
+          LONG@31..33 "10"
+  WHITESPACE@33..34 "\n"
+
+error[DS0104]: unknown operator `filter`
+  --> query:1:16
+  |
+1 | 'orders.csv' | filter amount > 10
+  |                ^^^^^^ not a DataScript operator
+  |
+  = help: to keep the rows that match a condition, use `where`
+
+with the machine-applicable fixes applied:
+    'orders.csv' | where amount > 10
+which parses without errors

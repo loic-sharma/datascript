@@ -1,0 +1,47 @@
+# The unclosed `(` is reported where it opens, even lines away from where the input ends.
+mode: syntax
+---- query
+'orders.csv'
+| where (amount > 10
+| take 5
+---- expected
+PROGRAM@0..43
+  PIPELINE@0..42
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 "\n"
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..42
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      PAREN_EXPR@21..42
+        L_PAREN@21..22 "("
+        PIPELINE@22..42
+          BIN_EXPR@22..33
+            NAME_REF@22..28
+              IDENT@22..28 "amount"
+            WHITESPACE@28..29 " "
+            GT@29..30 ">"
+            WHITESPACE@30..31 " "
+            LITERAL@31..33
+              LONG@31..33 "10"
+          WHITESPACE@33..34 "\n"
+          PIPE@34..35 "|"
+          WHITESPACE@35..36 " "
+          TAKE_OP@36..42
+            IDENT@36..40 "take"
+            WHITESPACE@40..41 " "
+            LITERAL@41..42
+              LONG@41..42 "5"
+  WHITESPACE@42..43 "\n"
+
+error[DS0112]: unclosed `(`
+  --> query:2:9
+  |
+2 | | where (amount > 10
+  |         ^ this `(` is never closed
+3 | | take 5
+  |         - the input ends before a `)`
+  |
+  = help: add `)` where the bracketed part ends

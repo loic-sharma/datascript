@@ -1,0 +1,32 @@
+# Two renders: DS0120 at the first, without a fix (moving it would not help).
+mode: syntax
+---- query
+'orders.csv' | render barchart | render table
+---- expected
+PROGRAM@0..46
+  PIPELINE@0..45
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    RENDER_OP@15..30
+      IDENT@15..21 "render"
+      WHITESPACE@21..22 " "
+      IDENT@22..30 "barchart"
+    WHITESPACE@30..31 " "
+    PIPE@31..32 "|"
+    WHITESPACE@32..33 " "
+    RENDER_OP@33..45
+      IDENT@33..39 "render"
+      WHITESPACE@39..40 " "
+      IDENT@40..45 "table"
+  WHITESPACE@45..46 "\n"
+
+error[DS0120]: `render` must be the last operator
+  --> query:1:16
+  |
+1 | 'orders.csv' | render barchart | render table
+  |                ^^^^^^^^^^^^^^^   ------------ this operator comes after `render`
+  |
+  = help: a query draws one chart: keep only the last `render`

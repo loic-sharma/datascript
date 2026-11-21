@@ -5,10 +5,13 @@
 //! from the events and puts the trivia back, so the tree is lossless.
 //!
 //! The parser never fails and never loops: every grammar loop either consumes a token or stops.
-//! Text that does not fit the grammar is reported (DS0101) and wrapped in an `ERROR` node.
+//! Text that does not fit the grammar is reported and wrapped in an `ERROR` node. Mistakes we can
+//! recognize (a forgotten `|`, SQL habits, `=` for `==`, …) get targeted diagnostics from
+//! [`targeted`]; DS0101 is the last resort.
 
 mod grammar;
 mod sink;
+mod targeted;
 
 use datascript_diagnostics::{Diagnostic, FileId, Span, codes};
 use rowan::GreenNode;
@@ -51,6 +54,9 @@ pub(crate) fn parse_tokens(
         last_error_at: None,
         depth: 0,
         nesting: 0,
+        eq_compares: false,
+        too_deep: false,
+        last_unclosed: None,
     };
     grammar::program(&mut parser);
     let green = sink::build_tree(text, tokens, parser.events);
@@ -112,6 +118,13 @@ struct Parser<'t> {
     depth: u32,
     /// How many expressions the parser is inside, to stop before the stack overflows.
     nesting: u32,
+    /// Whether `=` here is a mistyped comparison (DS0110): in a `where` predicate, a `join ... on`
+    /// condition, or the arguments of `iff` and friends.
+    eq_compares: bool,
+    /// Whether DS0100 was reported, after which unclosed brackets are not reported again.
+    too_deep: bool,
+    /// Where the last unclosed bracket was reported (token index) and the index of its error.
+    last_unclosed: Option<(usize, usize)>,
 }
 
 impl Parser<'_> {
@@ -179,6 +192,17 @@ impl Parser<'_> {
 
     fn span(&self, start: u32, end: u32) -> Span {
         Span::new(self.file, start, end)
+    }
+
+    /// The span of the significant token at index `i`.
+    fn token_span(&self, i: usize) -> Span {
+        let t = self.tokens[i];
+        self.span(t.start, t.end())
+    }
+
+    /// The source text between two byte offsets.
+    fn source(&self, start: u32, end: u32) -> &str {
+        &self.text[start as usize..end as usize]
     }
 
     // --- Consuming tokens ---
@@ -373,6 +397,14 @@ struct CompletedMarker {
 }
 
 impl CompletedMarker {
+    /// The kind of the finished node.
+    fn kind(self, p: &Parser<'_>) -> SyntaxKind {
+        match p.events[self.event as usize] {
+            Event::Start { kind, .. } => kind,
+            _ => TOMBSTONE_KIND,
+        }
+    }
+
     /// Starts a new node that will contain this one: `a` becomes the left side of `a + b`.
     fn precede(self, p: &mut Parser<'_>) -> Marker {
         let mut new = p.start();

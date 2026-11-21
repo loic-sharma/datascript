@@ -1,0 +1,60 @@
+# A misspelled `filter` is skipped up to the next pipe, with a hint about `where`; the next operator still gets its own error.
+mode: syntax
+---- query
+'orders.csv' | filtr amount = 1 | sort amount desc
+---- expected
+PROGRAM@0..51
+  PIPELINE@0..50
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    ERROR@15..31
+      IDENT@15..20 "filtr"
+      WHITESPACE@20..21 " "
+      IDENT@21..27 "amount"
+      WHITESPACE@27..28 " "
+      EQ@28..29 "="
+      WHITESPACE@29..30 " "
+      LONG@30..31 "1"
+    WHITESPACE@31..32 " "
+    PIPE@32..33 "|"
+    WHITESPACE@33..34 " "
+    SORT_OP@34..50
+      IDENT@34..38 "sort"
+      WHITESPACE@38..39 " "
+      SORT_KEY@39..50
+        NAME_REF@39..45
+          IDENT@39..45 "amount"
+        WHITESPACE@45..46 " "
+        IDENT@46..50 "desc"
+  WHITESPACE@50..51 "\n"
+
+error[DS0104]: unknown operator `filtr`
+  --> query:1:16
+  |
+1 | 'orders.csv' | filtr amount = 1 | sort amount desc
+  |                ^^^^^
+  |
+  = help: to keep the rows that match a condition, use `where`
+
+error[DS0121]: missing `by` after `sort`
+  --> query:1:40
+  |
+1 | 'orders.csv' | filtr amount = 1 | sort amount desc
+  |                                        ^^^^^^ expected `by` before this
+  |
+  = help: insert `by`: `sort by amount desc`
+
+with the machine-applicable fixes applied:
+    'orders.csv' | filtr amount = 1 | sort by amount desc
+which still has errors:
+
+error[DS0104]: unknown operator `filtr`
+  --> fixed:1:16
+  |
+1 | 'orders.csv' | filtr amount = 1 | sort by amount desc
+  |                ^^^^^
+  |
+  = help: to keep the rows that match a condition, use `where`

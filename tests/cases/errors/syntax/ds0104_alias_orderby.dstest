@@ -1,0 +1,33 @@
+# `orderby`: DS0104 pointing at `sort by`, with a fix.
+mode: syntax
+---- query
+'orders.csv' | orderby amount desc
+---- expected
+PROGRAM@0..35
+  PIPELINE@0..34
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    SORT_OP@15..34
+      IDENT@15..22 "orderby"
+      WHITESPACE@22..23 " "
+      SORT_KEY@23..34
+        NAME_REF@23..29
+          IDENT@23..29 "amount"
+        WHITESPACE@29..30 " "
+        IDENT@30..34 "desc"
+  WHITESPACE@34..35 "\n"
+
+error[DS0104]: unknown operator `orderby`
+  --> query:1:16
+  |
+1 | 'orders.csv' | orderby amount desc
+  |                ^^^^^^^ not a DataScript operator
+  |
+  = help: to sort rows, use `sort by`
+
+with the machine-applicable fixes applied:
+    'orders.csv' | sort by amount desc
+which parses without errors

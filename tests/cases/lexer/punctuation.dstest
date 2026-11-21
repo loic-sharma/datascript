@@ -81,12 +81,6 @@ error[DS0101]: expected a table before `|`
   |
   = help: start the query with a file path such as `'data.csv'`, or a table name
 
-error[DS0101]: expected an operator after `|`, found `;`
-  --> query:1:3
-  |
-1 | | ; , ( ) [ ] { } . .. : = == != < <= > >= <> =~ !~ + - * / % ! ~ && || $left $right
-  |   ^
-
 error[DS0101]: expected a query or a `let` statement, found `,`
   --> query:1:5
   |

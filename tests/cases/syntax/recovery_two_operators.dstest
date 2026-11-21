@@ -10,16 +10,17 @@ PROGRAM@0..39
     WHITESPACE@1..2 " "
     PIPE@2..3 "|"
     WHITESPACE@3..4 " "
-    WHERE_OP@4..11
+    WHERE_OP@4..15
       IDENT@4..9 "where"
       WHITESPACE@9..10 " "
-      NAME_REF@10..11
-        IDENT@10..11 "a"
-    WHITESPACE@11..12 " "
-    ERROR@12..15
-      EQ@12..13 "="
-      WHITESPACE@13..14 " "
-      LONG@14..15 "1"
+      BIN_EXPR@10..15
+        NAME_REF@10..11
+          IDENT@10..11 "a"
+        WHITESPACE@11..12 " "
+        EQ@12..13 "="
+        WHITESPACE@13..14 " "
+        LITERAL@14..15
+          LONG@14..15 "1"
     WHITESPACE@15..16 " "
     PIPE@16..17 "|"
     WHITESPACE@17..18 " "
@@ -42,14 +43,26 @@ PROGRAM@0..39
         LONG@37..38 "5"
   WHITESPACE@38..39 "\n"
 
-error[DS0101]: expected `|` or `;`, found `=`
+error[DS0110]: `=` is assignment, not comparison
   --> query:1:13
   |
 1 | t | where a = 1 | project b c | take 5
-  |             ^
+  |             ^ assignment is not allowed here
+  |
+  = help: use `==` to compare values: `a == 1`
 
 error[DS0101]: expected `|` or `;`, found `c`
   --> query:1:29
   |
 1 | t | where a = 1 | project b c | take 5
   |                             ^
+
+with the machine-applicable fixes applied:
+    t | where a == 1 | project b c | take 5
+which still has errors:
+
+error[DS0101]: expected `|` or `;`, found `c`
+  --> fixed:1:30
+  |
+1 | t | where a == 1 | project b c | take 5
+  |                              ^

@@ -1,0 +1,25 @@
+# An unknown operator with no close match lists the operators.
+mode: syntax
+---- query
+'orders.csv' | frobnicate 3
+---- expected
+PROGRAM@0..28
+  PIPELINE@0..27
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    ERROR@15..27
+      IDENT@15..25 "frobnicate"
+      WHITESPACE@25..26 " "
+      LONG@26..27 "3"
+  WHITESPACE@27..28 "\n"
+
+error[DS0104]: unknown operator `frobnicate`
+  --> query:1:16
+  |
+1 | 'orders.csv' | frobnicate 3
+  |                ^^^^^^^^^^
+  |
+  = note: the operators are `count`, `distinct`, `extend`, `getschema`, `join`, `limit`, `order`, `project`, `project-away`, `project-rename`, `render`, `sort`, `summarize`, `take`, `top`, `union` and `where`

@@ -1,0 +1,34 @@
+# `a&&b` without spaces: the fix adds them.
+mode: syntax
+---- query
+'orders.csv' | where a&&b
+---- expected
+PROGRAM@0..26
+  PIPELINE@0..25
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..25
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      BIN_EXPR@21..25
+        NAME_REF@21..22
+          IDENT@21..22 "a"
+        AMP2@22..24 "&&"
+        NAME_REF@24..25
+          IDENT@24..25 "b"
+  WHITESPACE@25..26 "\n"
+
+error[DS0111]: `&&` is not an operator
+  --> query:1:23
+  |
+1 | 'orders.csv' | where a&&b
+  |                       ^^
+  |
+  = help: use `and` to require both conditions: `a and b`
+
+with the machine-applicable fixes applied:
+    'orders.csv' | where a and b
+which parses without errors

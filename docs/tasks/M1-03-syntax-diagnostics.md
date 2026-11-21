@@ -1,6 +1,6 @@
 # M1-03 — Syntax diagnostics quality pass
 
-**Status:** todo
+**Status:** done — targeted DS0102–DS0124 diagnostics (forgotten/extra pipes, unknown operators with did-you-mean and foreign aliases, SQL habits, `=`/`<>`/`&&`/`||`/`!`, brackets, `render` placement, missing `by`/`on`, join kinds) with machine-applicable fixes that `mode: syntax` applies and re-parses; 44 new golden cases.
 **Depends on:** M1-02
 **Crates:** `datascript-syntax`
 **Diagnostic codes:** DS0102–DS0149 (D-018)
@@ -27,9 +27,29 @@ Design-review additions: DS0106 missing `;` between statements (machine-applicab
 kind, DS0124 `innerunique`. All codes are already in the registry.
 
 ## Acceptance criteria
-- [ ] Each diagnostic has at least one golden case with the full rendered output.
-- [ ] Machine-applicable suggestions are tested by applying them and re-parsing without errors
-      (a harness helper `apply_suggestions`).
-- [ ] A review pass over all syntax golden outputs against the style rules in DIAGNOSTICS.md.
+- [x] Each diagnostic has at least one golden case with the full rendered output.
+      (`tests/cases/errors/syntax/`, 44 cases, plus the re-blessed `tests/cases/syntax/` ones.)
+- [x] Machine-applicable suggestions are tested by applying them and re-parsing without errors
+      (a harness helper `apply_suggestions`). `datascript_tests::apply_suggestions` (with unit
+      tests); `mode: syntax` prints the fixed query and the result of re-parsing it, so every
+      case with a fix shows `which parses without errors` (TESTING.md).
+- [x] A review pass over all syntax golden outputs against the style rules in DIAGNOSTICS.md.
+      Every message is lowercase-first with no trailing period; labels add to the message.
+
+## Notes
+- Design choices are recorded in D-030: habit tokens (`&&`, `||`, `<>`, `=` in predicates, `!x`)
+  parse as the operator meant and the AST reads them that way; a certain fix for an unknown
+  operator name parses the rest as that operator; `||` before an operator name is two pipes;
+  DS0112 only when no closing bracket follows in the statement.
+- `=` is a comparison (DS0110) in `where`, `join ... on`, and the arguments of `iff`, `iif`,
+  `case`, `countif` and `sumif`. Inside other calls `name = value` stays a named argument.
+- Only DS0102–DS0124 (the registered codes) were needed; DS0108–DS0109, DS0113–DS0119 and
+  DS0125–DS0149 stay free in this block.
+- The parser fuzz fragments now include the habit tokens; run once with 100k cases per property.
+  The 10k-line benchmark is unchanged (7.0 ms).
 
 ## Follow-ups
+- Generic DS0101 remains for chained comparisons (`a < b < c`), missing expressions and token
+  soups. Chained comparisons could move to a code from this block if they need one.
+- Uppercase `NULLS FIRST` / `NULLS LAST` and SQL's `LEFT JOIN` written as an operator have no
+  targeted help yet.

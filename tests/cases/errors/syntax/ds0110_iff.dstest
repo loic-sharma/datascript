@@ -1,0 +1,56 @@
+# `=` in the condition of `iff`: DS0110, not a named argument.
+mode: syntax
+---- query
+'orders.csv' | extend big = iff(amount = 100, "yes", "no")
+---- expected
+PROGRAM@0..59
+  PIPELINE@0..58
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    EXTEND_OP@15..58
+      IDENT@15..21 "extend"
+      WHITESPACE@21..22 " "
+      NAMED_EXPR@22..58
+        NAME@22..25
+          IDENT@22..25 "big"
+        WHITESPACE@25..26 " "
+        EQ@26..27 "="
+        WHITESPACE@27..28 " "
+        CALL_EXPR@28..58
+          NAME_REF@28..31
+            IDENT@28..31 "iff"
+          ARG_LIST@31..58
+            L_PAREN@31..32 "("
+            BIN_EXPR@32..44
+              NAME_REF@32..38
+                IDENT@32..38 "amount"
+              WHITESPACE@38..39 " "
+              EQ@39..40 "="
+              WHITESPACE@40..41 " "
+              LITERAL@41..44
+                LONG@41..44 "100"
+            COMMA@44..45 ","
+            WHITESPACE@45..46 " "
+            LITERAL@46..51
+              STRING@46..51 "\"yes\""
+            COMMA@51..52 ","
+            WHITESPACE@52..53 " "
+            LITERAL@53..57
+              STRING@53..57 "\"no\""
+            R_PAREN@57..58 ")"
+  WHITESPACE@58..59 "\n"
+
+error[DS0110]: `=` is assignment, not comparison
+  --> query:1:40
+  |
+1 | 'orders.csv' | extend big = iff(amount = 100, "yes", "no")
+  |                                        ^ assignment is not allowed here
+  |
+  = help: use `==` to compare values: `amount == 100`
+
+with the machine-applicable fixes applied:
+    'orders.csv' | extend big = iff(amount == 100, "yes", "no")
+which parses without errors

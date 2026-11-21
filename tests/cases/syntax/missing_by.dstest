@@ -1,4 +1,4 @@
-# sort without by; M1-03 makes this DS0121. The keys still parse.
+# sort and top without by (DS0121, with a fix). The keys still parse.
 mode: syntax
 ---- query
 t | sort x desc | top 3 x
@@ -32,14 +32,22 @@ PROGRAM@0..26
           IDENT@24..25 "x"
   WHITESPACE@25..26 "\n"
 
-error[DS0101]: expected `by` after `sort`, found `x`
+error[DS0121]: missing `by` after `sort`
   --> query:1:10
   |
 1 | t | sort x desc | top 3 x
-  |          ^
+  |          ^ expected `by` before this
+  |
+  = help: insert `by`: `sort by x desc`
 
-error[DS0101]: expected `by` after `3`, found `x`
+error[DS0121]: missing `by` after `top`
   --> query:1:25
   |
 1 | t | sort x desc | top 3 x
-  |                         ^
+  |                         ^ expected `by` before this
+  |
+  = help: insert `by`: `top 3 by x`
+
+with the machine-applicable fixes applied:
+    t | sort by x desc | top 3 by x
+which parses without errors

@@ -1,4 +1,4 @@
-# With spaces, project - away is not an operator name (D-026); M1-03 makes this DS0104.
+# With spaces, project - away is not an operator name (D-026): DS0104 with a fix, and it parses as project-away.
 mode: syntax
 ---- query
 t | project - away x
@@ -10,22 +10,25 @@ PROGRAM@0..21
     WHITESPACE@1..2 " "
     PIPE@2..3 "|"
     WHITESPACE@3..4 " "
-    PROJECT_OP@4..18
+    PROJECT_AWAY_OP@4..20
       IDENT@4..11 "project"
       WHITESPACE@11..12 " "
-      NAMED_EXPR@12..18
-        PREFIX_EXPR@12..18
-          MINUS@12..13 "-"
-          WHITESPACE@13..14 " "
-          NAME_REF@14..18
-            IDENT@14..18 "away"
-    WHITESPACE@18..19 " "
-    ERROR@19..20
-      IDENT@19..20 "x"
+      MINUS@12..13 "-"
+      WHITESPACE@13..14 " "
+      IDENT@14..18 "away"
+      WHITESPACE@18..19 " "
+      COLUMN_PATTERN@19..20
+        IDENT@19..20 "x"
   WHITESPACE@20..21 "\n"
 
-error[DS0101]: expected `|` or `;`, found `x`
-  --> query:1:20
+error[DS0104]: operator name `project - away` has spaces in it
+  --> query:1:5
   |
 1 | t | project - away x
-  |                    ^
+  |     ^^^^^^^^^^^^^^
+  |
+  = help: write `project-away`, with no spaces
+
+with the machine-applicable fixes applied:
+    t | project-away x
+which parses without errors

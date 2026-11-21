@@ -5,12 +5,15 @@ use datascript_syntax::ast::{Operator, Stmt};
 
 use crate::case::Mode;
 use crate::driver::{CaseInput, Driver, DriverResult};
+use crate::fixes::apply_suggestions;
 
 /// Runs cases through the DataScript pipeline. Modes whose stages do not exist yet are
 /// unsupported, so their cases are ignored.
 ///
 /// `mode: syntax` prints the CST dump ([`datascript_syntax::debug_tree`]), then the lexical and
-/// syntax diagnostics after a blank line.
+/// syntax diagnostics after a blank line. If any diagnostic has a machine-applicable fix, it then
+/// prints the query with every such fix applied ([`apply_suggestions`]) and the diagnostics of
+/// parsing that text again, so a case shows that its fixes work.
 #[derive(Debug, Clone)]
 pub struct PipelineDriver {
     engine: String,
@@ -46,6 +49,25 @@ impl Driver for PipelineDriver {
         if !diagnostics.is_empty() {
             out.push('\n');
             out.push_str(&Renderer::plain().render_all(&diagnostics, &sources));
+        }
+        if let Some(fixed) = apply_suggestions(input.query, file, &diagnostics) {
+            out.push_str("\nwith the machine-applicable fixes applied:\n");
+            for line in fixed.trim_end().lines() {
+                if !line.is_empty() {
+                    out.push_str("    ");
+                }
+                out.push_str(line);
+                out.push('\n');
+            }
+            let mut fixed_sources = SourceMap::new();
+            let fixed_file = fixed_sources.add("fixed", fixed.as_str());
+            let reparse = datascript_syntax::parse(&fixed, fixed_file);
+            if reparse.errors.is_empty() {
+                out.push_str("which parses without errors\n");
+            } else {
+                out.push_str("which still has errors:\n\n");
+                out.push_str(&Renderer::plain().render_all(&reparse.errors, &fixed_sources));
+            }
         }
         Ok(out)
     }

@@ -1,0 +1,95 @@
+# Four independent habits in one query: four errors, and applying the fixes gives a program that parses.
+mode: syntax
+---- query
+'orders.csv'
+| where customerId = "c-001" && amount <> 0
+| render columnchart
+| take 10
+---- expected
+PROGRAM@0..88
+  PIPELINE@0..87
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 "\n"
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..56
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      BIN_EXPR@21..56
+        BIN_EXPR@21..41
+          NAME_REF@21..31
+            IDENT@21..31 "customerId"
+          WHITESPACE@31..32 " "
+          EQ@32..33 "="
+          WHITESPACE@33..34 " "
+          LITERAL@34..41
+            STRING@34..41 "\"c-001\""
+        WHITESPACE@41..42 " "
+        AMP2@42..44 "&&"
+        WHITESPACE@44..45 " "
+        BIN_EXPR@45..56
+          NAME_REF@45..51
+            IDENT@45..51 "amount"
+          WHITESPACE@51..52 " "
+          LTGT@52..54 "<>"
+          WHITESPACE@54..55 " "
+          LITERAL@55..56
+            LONG@55..56 "0"
+    WHITESPACE@56..57 "\n"
+    PIPE@57..58 "|"
+    WHITESPACE@58..59 " "
+    RENDER_OP@59..77
+      IDENT@59..65 "render"
+      WHITESPACE@65..66 " "
+      IDENT@66..77 "columnchart"
+    WHITESPACE@77..78 "\n"
+    PIPE@78..79 "|"
+    WHITESPACE@79..80 " "
+    TAKE_OP@80..87
+      IDENT@80..84 "take"
+      WHITESPACE@84..85 " "
+      LITERAL@85..87
+        LONG@85..87 "10"
+  WHITESPACE@87..88 "\n"
+
+error[DS0110]: `=` is assignment, not comparison
+  --> query:2:20
+  |
+2 | | where customerId = "c-001" && amount <> 0
+  |                    ^ assignment is not allowed here
+  |
+  = help: use `==` to compare values: `customerId == "c-001"`
+
+error[DS0111]: `&&` is not an operator
+  --> query:2:30
+  |
+2 | | where customerId = "c-001" && amount <> 0
+  |                              ^^
+  |
+  = help: use `and` to require both conditions
+
+error[DS0107]: `<>` is not an operator
+  --> query:2:40
+  |
+2 | | where customerId = "c-001" && amount <> 0
+  |                                        ^^ this is SQL's "not equal"
+  |
+  = help: use `!=` to test that values differ: `amount != 0`
+
+error[DS0120]: `render` must be the last operator
+  --> query:3:3
+  |
+3 | | render columnchart
+  |   ^^^^^^^^^^^^^^^^^^
+4 | | take 10
+  |   ------- this operator comes after `render`
+  |
+  = help: move `render columnchart` to the end of the query
+
+with the machine-applicable fixes applied:
+    'orders.csv'
+    | where customerId == "c-001" and amount != 0
+    | take 10
+    | render columnchart
+which parses without errors

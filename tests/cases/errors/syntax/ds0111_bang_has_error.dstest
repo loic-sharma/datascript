@@ -1,0 +1,33 @@
+# `!has_error` is `!` and the name `has_error`, not the operator `!has` (LANGUAGE.md section 1): DS0111 with a fix to `not(has_error)`.
+mode: syntax
+---- query
+'events.csv' | where !has_error
+---- expected
+PROGRAM@0..32
+  PIPELINE@0..31
+    LITERAL@0..12
+      STRING@0..12 "'events.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..31
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      PREFIX_EXPR@21..31
+        BANG@21..22 "!"
+        NAME_REF@22..31
+          IDENT@22..31 "has_error"
+  WHITESPACE@31..32 "\n"
+
+error[DS0111]: `!` is not an operator
+  --> query:1:22
+  |
+1 | 'events.csv' | where !has_error
+  |                      ^
+  |
+  = help: negate it with `not(...)`: `not(has_error)`
+  = note: `!has_error` is `!` followed by the name `has_error`; the negated operator `!has` goes between two values: `a !has b`
+
+with the machine-applicable fixes applied:
+    'events.csv' | where not(has_error)
+which parses without errors

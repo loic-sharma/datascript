@@ -11,12 +11,14 @@
 //!
 //! - [`TestCase`] parses `.dstest` files and reports malformed ones with a line number.
 //! - [`Driver`] runs a case in one mode on one engine. Unsupported modes make a case ignored.
+//! - [`apply_suggestions`] applies machine-applicable fixes, so cases can show they work.
 //! - [`MockSchemaProvider`] serves the `schema:` header to `check`/`explain` cases.
 //! - [`runner::main`] is the entry point used by `tests/golden.rs`.
 
 pub mod bless;
 pub mod case;
 pub mod driver;
+pub mod fixes;
 pub mod output;
 pub mod pipeline;
 pub mod runner;
@@ -24,6 +26,7 @@ pub mod schema;
 
 pub use case::{CaseError, ExpectedSection, Mode, Order, TestCase};
 pub use driver::{CaseInput, Driver, DriverConfig, DriverError, DriverResult, StubDriver};
+pub use fixes::apply_suggestions;
 pub use pipeline::PipelineDriver;
 pub use runner::Drivers;
 pub use schema::MockSchemaProvider;

@@ -210,6 +210,25 @@ forgotten `;`). One token gets at most one error, and the parser never reports a
 lexer already rejected. **Nesting** is limited to 256 levels of expressions (`DS0100`), so the
 recursive parser cannot overflow the stack on hostile input. *(M1-02, 2026-11-20.)*
 
+### D-030 — Syntax habits parse as what the user meant
+M1-03 settled how targeted syntax diagnostics (DS0102–DS0124) shape the tree. **Habit tokens
+parse as the operator meant and are reported once**: `&&`, `||`, `<>` and `=` (where a predicate
+is expected) are binary operators with the precedence of `and`, `or`, `!=` and `==`, and `!x` is a
+prefix `not`; the typed AST reads them as those operators, so later stages see a usable tree and
+add no second error. `=` counts as a comparison only in a `where` predicate, a `join ... on`
+condition, and the arguments of `iff`, `iif`, `case`, `countif` and `sumif` (which take no named
+arguments); inside any other call `name = value` stays a named argument. **`||` directly before an
+operator name is two pipes** (DS0103), not `or`. **A certain fix means a certain parse**: when an
+unknown operator name has a machine-applicable replacement (`filter` → `where`, `ORDER BY` →
+`sort by`, `Take` → `take`, one close did-you-mean match), the rest parses as that operator, so
+errors inside it appear in the same pass. `project - away` is reported (DS0104) and parses as
+`project-away`; `sort x`/`top 3 x` report DS0121 and parse the keys. **Brackets**: DS0112 is
+given only when no matching bracket follows before the end of the statement, and points at the
+opening one; brackets left open at the same place share one error with a label each. A
+`SELECT ... FROM` statement is one DS0105 and is skipped to the next `;`. **Fixes are tested**:
+`mode: syntax` output shows the query with every machine-applicable fix applied and whether it
+parses (TESTING.md). *(M1-03, 2026-11-20.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

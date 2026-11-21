@@ -37,10 +37,12 @@ PROGRAM@0..28
             LONG@26..27 "5"
   WHITESPACE@27..28 "\n"
 
-error[DS0101]: expected `)`, found the end of the input
-  --> query:1:28
+error[DS0112]: unclosed `(`
+  --> query:1:1
   |
 1 | (t | where (a > 1) | take 5
-  | -                          ^ the input ends here
+  | ^                          - the input ends before a `)`
   | |
-  | to close this `(`
+  | this `(` is never closed
+  |
+  = help: add `)` where the bracketed part ends

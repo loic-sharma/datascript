@@ -1,0 +1,46 @@
+# Two brackets left open at the end: one DS0112 with a label on each.
+mode: syntax
+---- query
+'orders.csv' | where strlen(tostring(amount > 2
+---- expected
+PROGRAM@0..48
+  PIPELINE@0..47
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..47
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      CALL_EXPR@21..47
+        NAME_REF@21..27
+          IDENT@21..27 "strlen"
+        ARG_LIST@27..47
+          L_PAREN@27..28 "("
+          CALL_EXPR@28..47
+            NAME_REF@28..36
+              IDENT@28..36 "tostring"
+            ARG_LIST@36..47
+              L_PAREN@36..37 "("
+              BIN_EXPR@37..47
+                NAME_REF@37..43
+                  IDENT@37..43 "amount"
+                WHITESPACE@43..44 " "
+                GT@44..45 ">"
+                WHITESPACE@45..46 " "
+                LITERAL@46..47
+                  LONG@46..47 "2"
+  WHITESPACE@47..48 "\n"
+
+error[DS0112]: unclosed `(`
+  --> query:1:37
+  |
+1 | 'orders.csv' | where strlen(tostring(amount > 2
+  |                            -        ^          - the input ends before a `)`
+  |                            |        |
+  |                            |        this `(` is never closed
+  |                            |
+  |                            this `(` is never closed either
+  |
+  = help: add `)` where the bracketed part ends

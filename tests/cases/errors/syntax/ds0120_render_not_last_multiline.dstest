@@ -1,0 +1,91 @@
+# The fix moves the whole `| render` line, keeping the layout.
+mode: syntax
+---- query
+'orders.csv'
+| summarize total = sum(amount) by customerId
+| render barchart with (title = "Totals")
+| sort by total desc
+---- expected
+PROGRAM@0..122
+  PIPELINE@0..121
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 "\n"
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    SUMMARIZE_OP@15..58
+      IDENT@15..24 "summarize"
+      WHITESPACE@24..25 " "
+      NAMED_EXPR@25..44
+        NAME@25..30
+          IDENT@25..30 "total"
+        WHITESPACE@30..31 " "
+        EQ@31..32 "="
+        WHITESPACE@32..33 " "
+        CALL_EXPR@33..44
+          NAME_REF@33..36
+            IDENT@33..36 "sum"
+          ARG_LIST@36..44
+            L_PAREN@36..37 "("
+            NAME_REF@37..43
+              IDENT@37..43 "amount"
+            R_PAREN@43..44 ")"
+      WHITESPACE@44..45 " "
+      BY_CLAUSE@45..58
+        IDENT@45..47 "by"
+        WHITESPACE@47..48 " "
+        NAMED_EXPR@48..58
+          NAME_REF@48..58
+            IDENT@48..58 "customerId"
+    WHITESPACE@58..59 "\n"
+    PIPE@59..60 "|"
+    WHITESPACE@60..61 " "
+    RENDER_OP@61..100
+      IDENT@61..67 "render"
+      WHITESPACE@67..68 " "
+      IDENT@68..76 "barchart"
+      WHITESPACE@76..77 " "
+      RENDER_PROPS@77..100
+        IDENT@77..81 "with"
+        WHITESPACE@81..82 " "
+        L_PAREN@82..83 "("
+        RENDER_PROP@83..99
+          NAME@83..88
+            IDENT@83..88 "title"
+          WHITESPACE@88..89 " "
+          EQ@89..90 "="
+          WHITESPACE@90..91 " "
+          LITERAL@91..99
+            STRING@91..99 "\"Totals\""
+        R_PAREN@99..100 ")"
+    WHITESPACE@100..101 "\n"
+    PIPE@101..102 "|"
+    WHITESPACE@102..103 " "
+    SORT_OP@103..121
+      IDENT@103..107 "sort"
+      WHITESPACE@107..108 " "
+      IDENT@108..110 "by"
+      WHITESPACE@110..111 " "
+      SORT_KEY@111..121
+        NAME_REF@111..116
+          IDENT@111..116 "total"
+        WHITESPACE@116..117 " "
+        IDENT@117..121 "desc"
+  WHITESPACE@121..122 "\n"
+
+error[DS0120]: `render` must be the last operator
+  --> query:3:3
+  |
+3 | | render barchart with (title = "Totals")
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+4 | | sort by total desc
+  |   ------------------ this operator comes after `render`
+  |
+  = help: move `render barchart with (title = "Totals")` to the end of the query
+
+with the machine-applicable fixes applied:
+    'orders.csv'
+    | summarize total = sum(amount) by customerId
+    | sort by total desc
+    | render barchart with (title = "Totals")
+which parses without errors

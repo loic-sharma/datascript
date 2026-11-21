@@ -1,4 +1,4 @@
-# A pipe with nothing after it; M1-03 makes this DS0103.
+# A trailing pipe with nothing after it (DS0103).
 mode: syntax
 ---- query
 t | take 5 |
@@ -19,8 +19,10 @@ PROGRAM@0..13
     PIPE@11..12 "|"
   WHITESPACE@12..13 "\n"
 
-error[DS0101]: expected an operator after `|`, found the end of the input
-  --> query:1:13
+error[DS0103]: `|` with no operator after it
+  --> query:1:12
   |
 1 | t | take 5 |
-  |             ^ the input ends here
+  |            ^ expected an operator after this `|`
+  |
+  = help: remove the `|`, or add an operator after it, such as `take 10`

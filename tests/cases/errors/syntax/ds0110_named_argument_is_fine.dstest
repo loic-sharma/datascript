@@ -1,0 +1,53 @@
+# Inside other calls in a `where`, `name = value` is still a named argument: no error.
+mode: syntax
+---- query
+'orders.csv' | where amount in (read_csv('limits.csv', header = true) | project amount)
+---- expected
+PROGRAM@0..88
+  PIPELINE@0..87
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..87
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      IN_EXPR@21..87
+        NAME_REF@21..27
+          IDENT@21..27 "amount"
+        WHITESPACE@27..28 " "
+        IDENT@28..30 "in"
+        WHITESPACE@30..31 " "
+        ARG_LIST@31..87
+          L_PAREN@31..32 "("
+          PIPELINE@32..86
+            CALL_EXPR@32..69
+              NAME_REF@32..40
+                IDENT@32..40 "read_csv"
+              ARG_LIST@40..69
+                L_PAREN@40..41 "("
+                LITERAL@41..53
+                  STRING@41..53 "'limits.csv'"
+                COMMA@53..54 ","
+                WHITESPACE@54..55 " "
+                NAMED_EXPR@55..68
+                  NAME@55..61
+                    IDENT@55..61 "header"
+                  WHITESPACE@61..62 " "
+                  EQ@62..63 "="
+                  WHITESPACE@63..64 " "
+                  LITERAL@64..68
+                    TRUE_KW@64..68 "true"
+                R_PAREN@68..69 ")"
+            WHITESPACE@69..70 " "
+            PIPE@70..71 "|"
+            WHITESPACE@71..72 " "
+            PROJECT_OP@72..86
+              IDENT@72..79 "project"
+              WHITESPACE@79..80 " "
+              NAMED_EXPR@80..86
+                NAME_REF@80..86
+                  IDENT@80..86 "amount"
+          R_PAREN@86..87 ")"
+  WHITESPACE@87..88 "\n"

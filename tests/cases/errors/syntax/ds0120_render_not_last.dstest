@@ -1,0 +1,37 @@
+# `render` before another operator: DS0120, with a fix that moves it to the end.
+mode: syntax
+---- query
+'orders.csv' | render barchart | take 5
+---- expected
+PROGRAM@0..40
+  PIPELINE@0..39
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    RENDER_OP@15..30
+      IDENT@15..21 "render"
+      WHITESPACE@21..22 " "
+      IDENT@22..30 "barchart"
+    WHITESPACE@30..31 " "
+    PIPE@31..32 "|"
+    WHITESPACE@32..33 " "
+    TAKE_OP@33..39
+      IDENT@33..37 "take"
+      WHITESPACE@37..38 " "
+      LITERAL@38..39
+        LONG@38..39 "5"
+  WHITESPACE@39..40 "\n"
+
+error[DS0120]: `render` must be the last operator
+  --> query:1:16
+  |
+1 | 'orders.csv' | render barchart | take 5
+  |                ^^^^^^^^^^^^^^^   ------ this operator comes after `render`
+  |
+  = help: move `render barchart` to the end of the query
+
+with the machine-applicable fixes applied:
+    'orders.csv' | take 5 | render barchart
+which parses without errors

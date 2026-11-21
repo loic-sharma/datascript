@@ -31,6 +31,14 @@ PROGRAM@0..41
       LONG@39..40 "1"
   WHITESPACE@40..41 "\n"
 
+error[DS0120]: `render` must be the last operator
+  --> query:1:5
+  |
+1 | t | render | render chart with title = 1
+  |     ^^^^^^   ----------------- this operator comes after `render`
+  |
+  = help: a query draws one chart: keep only the last `render`
+
 error[DS0101]: expected a chart kind after `render`, found `|`
   --> query:1:12
   |

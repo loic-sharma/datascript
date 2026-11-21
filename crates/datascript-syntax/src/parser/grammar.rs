@@ -6,6 +6,7 @@
 
 use datascript_diagnostics::{Diagnostic, codes};
 
+use super::targeted::{JOIN_KINDS, PREDICATE_FUNCTIONS, is_close_bracket};
 use super::{CompletedMarker, Parser, TokenSet};
 use crate::SyntaxKind::*;
 
@@ -58,9 +59,6 @@ const TYPED_NULL_TYPES: &[&str] = &[
     "bool", "decimal", "dynamic", "guid", "int", "long", "real", "string",
 ];
 
-const JOIN_KINDS: &str = "`inner`, `leftouter`, `rightouter`, `fullouter`, `leftsemi`, \
-                          `leftanti`, `rightsemi` and `rightanti`";
-
 const RENDER_KINDS: &str = "`table`, `timechart`, `linechart`, `areachart`, `barchart`, \
                             `columnchart`, `piechart`, `scatterchart` and `card`";
 
@@ -69,7 +67,7 @@ const LITERALS: TokenSet = TokenSet::new(&[
 ]);
 
 /// Tokens that can start an expression (and so a source).
-const EXPR_START: TokenSet = TokenSet::new(&[
+pub(super) const EXPR_START: TokenSet = TokenSet::new(&[
     LONG,
     REAL,
     STRING,
@@ -99,30 +97,41 @@ const BP_MUL: u8 = 6;
 const BP_NEG: u8 = 7;
 
 impl Parser<'_> {
-    /// The operator name at the current token and how many tokens it spans (3 for a hyphenated
-    /// name whose tokens are adjacent).
-    fn op_name(&self) -> Option<(String, usize)> {
+    /// The operator name at the current token and how many tokens it spans: 3 for a hyphenated
+    /// name. The flag says whether a hyphenated name has spaces in it (`project - away`, DS0104).
+    fn op_name(&self) -> Option<(String, usize, bool)> {
         if !self.at(IDENT) {
             return None;
         }
         let first = self.nth_text(0);
-        if self.nth(1) == MINUS && self.nth_joined(1) && self.nth(2) == IDENT && self.nth_joined(2)
-        {
+        if self.nth(1) == MINUS && self.nth(2) == IDENT {
             let name = format!("{first}-{}", self.nth_text(2));
             if HYPHENATED_OPERATORS.contains(&name.as_str()) {
-                return Some((name, 3));
+                let spaced = !(self.nth_joined(1) && self.nth_joined(2));
+                return Some((name, 3, spaced));
             }
         }
-        Some((first.to_string(), 1))
+        Some((first.to_string(), 1, false))
     }
 
     /// Whether the current token is a known operator name at the start of a line, where a `|`
     /// was probably forgotten. The parser resynchronizes there.
     fn at_operator_on_new_line(&self) -> bool {
-        self.at_line_start()
-            && self
-                .op_name()
-                .is_some_and(|(name, _)| OPERATORS.contains(&name.as_str()))
+        self.at_line_start() && self.at_known_operator()
+    }
+
+    /// Whether the current token is the name of an operator of the language today.
+    fn at_known_operator(&self) -> bool {
+        self.op_name()
+            .is_some_and(|(name, _, spaced)| !spaced && OPERATORS.contains(&name.as_str()))
+    }
+
+    /// Whether `||` here is two pipes rather than a C-style `or`: an operator name follows it.
+    fn at_double_pipe(&self) -> bool {
+        self.at(PIPE2) && self.nth(1) == IDENT && {
+            let name = self.nth_text(1);
+            OPERATORS.contains(&name) || LATER_OPERATORS.contains(&name)
+        }
     }
 
     /// Whether the current token probably starts a new statement: something that can start an
@@ -179,15 +188,21 @@ pub(super) fn program(p: &mut Parser<'_>) {
             continue;
         }
         if !statement(p) {
-            p.error_expected("a query or a `let` statement");
+            if is_close_bracket(p.current()) {
+                p.stray_close_bracket();
+            } else {
+                p.error_expected("a query or a `let` statement");
+            }
             p.recover(|p| p.at(SEMICOLON) || p.at(LET_KW) || p.at_new_statement());
             continue;
         }
         if p.eat(SEMICOLON) || p.at(EOF) {
             continue;
         }
-        p.error_expected("`;` between statements");
-        if !(p.at(LET_KW) || p.at_new_statement()) {
+        if p.at(LET_KW) || p.at_new_statement() {
+            p.missing_semicolon();
+        } else {
+            p.error_expected("`;` between statements");
             p.recover(|p| p.at(SEMICOLON) || p.at(LET_KW) || p.at_new_statement());
         }
     }
@@ -230,11 +245,42 @@ fn query_stmt(p: &mut Parser<'_>) {
             .primary(p.current_span(), "this pipe has nothing to read from")
             .help("start the query with a file path such as `'data.csv'`, or a table name");
         p.report(d);
+    } else if let Some((from, end)) = sql_select_at(p) {
+        p.sql_select(from, end);
+        p.recover(|p| p.at(SEMICOLON) || p.at(LET_KW));
+        m.complete(p, PIPELINE);
+        return;
     } else {
         expr(p);
     }
     pipeline_tail(p);
     m.complete(p, PIPELINE);
+}
+
+/// `SELECT ... FROM` at the start of a statement, in any case: the token index of `FROM` and the
+/// index just past the statement (at `;`, `let` or the end, outside brackets).
+fn sql_select_at(p: &Parser<'_>) -> Option<(usize, usize)> {
+    if !(p.at(IDENT) && p.nth_text(0).eq_ignore_ascii_case("select")) {
+        return None;
+    }
+    let mut from = None;
+    let mut depth = 0u32;
+    let mut i = p.pos + 1;
+    while let Some(t) = p.tokens.get(i) {
+        match t.kind {
+            L_PAREN | L_BRACK => depth += 1,
+            R_PAREN | R_BRACK => depth = depth.saturating_sub(1),
+            SEMICOLON | LET_KW if depth == 0 => break,
+            IDENT
+                if depth == 0 && from.is_none() && t.text(p.text).eq_ignore_ascii_case("from") =>
+            {
+                from = Some(i);
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    from.map(|from| (from, i))
 }
 
 /// An expression, wrapped in a `PIPELINE` if a `|` follows. Used where the parser cannot tell
@@ -251,23 +297,70 @@ fn pipeline_or_expr(p: &mut Parser<'_>) -> bool {
     true
 }
 
+/// One operator of a pipeline, for checks across operators (DS0120).
+struct OpInfo {
+    /// Where the text before the operator starts: the end of the previous token, so moving the
+    /// operator takes the `|` and the space before it along.
+    lead: u32,
+    start: u32,
+    end: u32,
+    kind: Option<crate::SyntaxKind>,
+}
+
 /// `{ '|' operator }` after a source, with recovery.
 fn pipeline_tail(p: &mut Parser<'_>) {
+    let mut ops: Vec<OpInfo> = Vec::new();
     loop {
-        if p.eat(PIPE) {
-            operator(p);
+        let lead = p.prev_end();
+        if p.at(PIPE) || p.at_double_pipe() {
+            let pipe = p.pos;
+            if p.at(PIPE2) {
+                p.double_pipe_token();
+            }
+            p.bump();
+            if p.at(PIPE) || p.at_pipeline_end() || p.at(R_PAREN) {
+                p.pipe_without_operator(pipe);
+                continue;
+            }
+            let start = p.offset();
+            let kind = operator(p);
+            ops.push(OpInfo {
+                lead,
+                start,
+                end: p.prev_end(),
+                kind,
+            });
             continue;
         }
         if p.at_pipeline_end() {
             break;
         }
-        if p.at_operator_on_new_line() {
-            p.error_expected("`|` before the next operator");
-            operator(p);
+        if p.at_known_operator() {
+            // A forgotten `|`, on a new line or the same one: `where x > 1 project a`.
+            let name = p.nth_text(0).to_string();
+            p.missing_pipe(&name);
+            let start = p.offset();
+            let kind = operator(p);
+            ops.push(OpInfo {
+                lead,
+                start,
+                end: p.prev_end(),
+                kind,
+            });
             continue;
         }
         if p.at_new_statement() {
             break;
+        }
+        if p.depth == 0 && is_close_bracket(p.current()) {
+            p.stray_close_bracket();
+            p.recover(|p| {
+                p.at(PIPE)
+                    || p.at_pipeline_end()
+                    || p.at_operator_on_new_line()
+                    || p.at_new_statement()
+            });
+            continue;
         }
         let what = if p.depth > 0 {
             "`|` or `)`"
@@ -279,24 +372,69 @@ fn pipeline_tail(p: &mut Parser<'_>) {
             p.at(PIPE) || p.at_pipeline_end() || p.at_operator_on_new_line() || p.at_new_statement()
         });
     }
+    check_render_last(p, &ops);
+}
+
+/// DS0120: `render` must be the last operator of its pipeline.
+fn check_render_last(p: &mut Parser<'_>, ops: &[OpInfo]) {
+    let Some(i) = ops.iter().position(|op| op.kind == Some(RENDER_OP)) else {
+        return;
+    };
+    let Some(next) = ops.get(i + 1) else {
+        return;
+    };
+    let render = &ops[i];
+    let renders = ops.iter().filter(|op| op.kind == Some(RENDER_OP)).count();
+    let moved = (renders == 1).then_some((render.lead, render.end));
+    let end = ops.last().map_or(render.end, |op| op.end);
+    p.render_not_last(
+        (render.start, render.end),
+        (next.start, next.end),
+        moved,
+        end,
+    );
 }
 
 // --- Operators ---
 
-fn operator(p: &mut Parser<'_>) {
+/// Parses one operator after `|` and returns its node kind (`None` for an unknown operator).
+fn operator(p: &mut Parser<'_>) -> Option<crate::SyntaxKind> {
+    let saved = std::mem::replace(&mut p.eq_compares, false);
+    let kind = operator_inner(p);
+    p.eq_compares = saved;
+    kind
+}
+
+fn operator_inner(p: &mut Parser<'_>) -> Option<crate::SyntaxKind> {
     let known = p
         .op_name()
-        .filter(|(name, _)| OPERATORS.contains(&name.as_str()));
-    let Some((name, len)) = known else {
+        .filter(|(name, _, _)| OPERATORS.contains(&name.as_str()));
+    let Some((name, len, spaced)) = known else {
         unknown_operator(p);
-        return;
+        return None;
     };
+    if spaced {
+        p.spaced_operator_name(&name, len);
+    }
+    Some(operator_named(p, &name, len, false))
+}
+
+/// Parses an operator whose name, `name`, spans the next `len` tokens. `by_included` says the
+/// name tokens already include `by` (`ORDER BY` read as `sort by`).
+fn operator_named(
+    p: &mut Parser<'_>,
+    name: &str,
+    len: usize,
+    by_included: bool,
+) -> crate::SyntaxKind {
+    let op_start = p.offset();
     let m = p.start();
     for _ in 0..len {
         p.bump();
     }
-    let kind = match name.as_str() {
+    let kind = match name {
         "where" => {
+            p.eq_compares = true;
             expr(p);
             WHERE_OP
         }
@@ -321,19 +459,20 @@ fn operator(p: &mut Parser<'_>) {
             SUMMARIZE_OP
         }
         "sort" | "order" => {
-            if !p.eat_kw("by") {
-                p.error_expected(&format!("`by` after `{name}`"));
+            if by_included || p.eat_kw("by") {
+                list(p, sort_key);
+            } else {
+                without_by(p, name, op_start, |p| list(p, sort_key));
             }
-            list(p, sort_key);
             SORT_OP
         }
         "top" => {
             expr(p);
-            if !p.eat_kw("by") {
-                let what = format!("`by`{}", p.after_prev());
-                p.error_expected(&what);
+            if p.eat_kw("by") {
+                sort_key(p);
+            } else {
+                without_by(p, name, op_start, sort_key);
             }
-            sort_key(p);
             TOP_OP
         }
         "take" | "limit" => {
@@ -365,33 +504,76 @@ fn operator(p: &mut Parser<'_>) {
         _ => unreachable!("every name in OPERATORS has a branch"),
     };
     m.complete(p, kind);
+    kind
+}
+
+/// `sort` or `top` without `by` (DS0121): parses the keys anyway if they are there.
+fn without_by(p: &mut Parser<'_>, name: &str, op_start: u32, keys: impl Fn(&mut Parser<'_>)) {
+    let at = p.pos;
+    let has_keys = p.at_set(EXPR_START)
+        && !p.at_line_start()
+        && !["asc", "desc", "nulls"].contains(&p.nth_text(0));
+    if has_keys {
+        let start = p.offset();
+        keys(p);
+        let end = p.prev_end().max(start);
+        p.missing_by(name, op_start, at, Some((start, end)));
+    } else {
+        p.missing_by(name, op_start, at, None);
+    }
 }
 
 fn unknown_operator(p: &mut Parser<'_>) {
-    let mut d = p.expected("an operator after `|`");
-    if let Some((name, len)) = p.op_name() {
-        if len > 1 {
-            // A hyphenated name: report it whole.
-            let start = p.tokens[p.pos].start;
-            let end = p.tokens[p.pos + len - 1].end();
-            d = Diagnostic::error(
-                codes::DS0101,
-                format!("expected an operator after `|`, found `{name}`"),
-            )
-            .primary(p.span(start, end), "");
+    let d = match p.op_name() {
+        Some((name, len, spaced)) if spaced && LATER_OPERATORS.contains(&name.as_str()) => {
+            p.spaced_operator_name(&name, len);
+            None
         }
-        if LATER_OPERATORS.contains(&name.as_str()) {
-            d = d.note(format!("`{name}` is planned but not available yet"));
-        } else {
-            d = d.note(format!("the operators are {}", word_list(OPERATORS)));
+        Some((name, len, _)) => Some(p.unknown_operator_diagnostic(&name, len)),
+        None => Some(
+            p.expected("an operator after `|`")
+                .note(format!("the operators are {}", word_list(OPERATORS))),
+        ),
+    };
+    if let Some(d) = d {
+        let certain = certain_operator(p, &d);
+        p.report(d);
+        if let Some((name, len, by_included)) = certain {
+            // The fix is certain, so parse the rest as the operator meant: errors inside it
+            // show up now, not after the fix.
+            operator_named(p, name, len, by_included);
+            return;
         }
     }
-    p.report(d);
     // A pipe, `;` or the end right after `|` is a missing operator: leave it for the caller.
     if p.at(PIPE) || p.at_pipeline_end() || p.at(R_PAREN) {
         return;
     }
     p.recover(|p| p.at(PIPE) || p.at_pipeline_end() || p.at_operator_on_new_line());
+}
+
+/// The operator a machine-applicable fix for an unknown operator name turns it into: the name,
+/// how many tokens the fix replaces, and whether it includes `by`.
+fn certain_operator(p: &Parser<'_>, d: &Diagnostic) -> Option<(&'static str, usize, bool)> {
+    let suggestion = d.help.first()?.suggestion.as_ref()?;
+    let [edit] = suggestion.edits.as_slice() else {
+        return None;
+    };
+    if suggestion.applicability != datascript_diagnostics::Applicability::MachineApplicable
+        || edit.span.start != p.offset()
+    {
+        return None;
+    }
+    let (name, by_included) = match edit.replacement.strip_suffix(" by") {
+        Some(name) => (name, true),
+        None => (edit.replacement.as_str(), false),
+    };
+    let name = OPERATORS.iter().copied().find(|op| *op == name)?;
+    let len = p.tokens[p.pos..]
+        .iter()
+        .take_while(|t| t.end() <= edit.span.end)
+        .count();
+    Some((name, len, by_included))
 }
 
 /// `item { ',' item }`
@@ -476,8 +658,9 @@ fn summarize_body(p: &mut Parser<'_>) {
 fn sort_key(p: &mut Parser<'_>) {
     let m = p.start();
     expr(p);
-    if !p.eat_kw("asc") {
-        p.eat_kw("desc");
+    if p.at(IDENT) && ["asc", "desc"].contains(&p.nth_text(0).to_lowercase().as_str()) {
+        p.check_sort_direction_case();
+        p.bump();
     }
     if p.eat_kw("nulls") && !p.eat_kw("first") && !p.eat_kw("last") {
         p.error_expected("`first` or `last` after `nulls`");
@@ -491,21 +674,38 @@ fn join_body(p: &mut Parser<'_>) {
         let m = p.start();
         p.bump(); // kind
         p.bump(); // =
-        if !p.eat(IDENT) {
+        if p.at(IDENT) {
+            p.check_join_kind();
+            p.bump();
+        } else {
             let d = p
                 .expected("a join kind after `kind =`")
-                .note(format!("the join kinds are {JOIN_KINDS}"));
+                .note(format!("the join kinds are {}", word_list(JOIN_KINDS)));
             p.report(d);
         }
         m.complete(p, JOIN_KIND);
     }
+    let right_start = p.offset();
     right_table(p);
-    if p.eat_kw("on") {
+    let right = (p.prev_end() > right_start).then(|| (right_start, p.prev_end()));
+    let on = if p.eat_kw("on") {
+        true
+    } else {
+        p.missing_on(right);
+        // Parse the conditions after a wrong word (`using x`) or a missing `on` (`t x`).
+        let wrong_word =
+            p.at(IDENT) && matches!(p.nth_text(0).to_lowercase().as_str(), "using" | "by" | "on");
+        if wrong_word {
+            p.bump();
+        }
+        wrong_word || (p.at_set(EXPR_START) && !p.at_line_start())
+    };
+    if on {
+        p.eq_compares = true;
         list(p, |p| {
             expr(p);
         });
-    } else {
-        p.error_expected("`on` and the columns to join on");
+        p.eq_compares = false;
     }
 }
 
@@ -602,6 +802,11 @@ fn infix(p: &Parser<'_>) -> Option<(u8, Infix)> {
     let op = match p.current() {
         OR_KW => (BP_OR, Infix::Binary(1)),
         AND_KW => (BP_AND, Infix::Binary(1)),
+        // Habits from other languages parse like the operator meant, and are reported.
+        PIPE2 if !p.at_double_pipe() => (BP_OR, Infix::Binary(1)),
+        AMP2 => (BP_AND, Infix::Binary(1)),
+        EQ if p.eq_compares => (BP_CMP, Infix::Binary(1)),
+        LTGT => (BP_CMP, Infix::Binary(1)),
         EQ2 | NEQ | LT | LTEQ | GT | GTEQ | EQ_TILDE | BANG_TILDE => (BP_CMP, Infix::Binary(1)),
         IN_TILDE => (BP_CMP, Infix::In),
         NEGATED_OP => match p.nth_text(0) {
@@ -656,6 +861,7 @@ fn too_deep(p: &mut Parser<'_>) -> Option<CompletedMarker> {
         )
         .help("split it into smaller parts with `let`");
     p.report(d);
+    p.too_deep = true;
     if p.at(EOF) {
         return None;
     }
@@ -706,6 +912,7 @@ fn expr_bp_inner(p: &mut Parser<'_>, min_bp: u8) -> Option<CompletedMarker> {
             }
         };
         lhs = m.complete(p, kind);
+        p.foreign_binary_operator(op_start, start, rhs);
         if bp == BP_CMP {
             // The help rewrites the chain only for plain operators with both operands present.
             let simple = matches!(op, Infix::Binary(_)) && rhs.0 < rhs.1;
@@ -776,6 +983,18 @@ fn prefix_or_primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
             expr_bp(p, BP_NEG);
             Some(m.complete(p, PREFIX_EXPR))
         }
+        BANG => {
+            // C's `!x`: parsed as `not(x)` and reported (DS0111).
+            let m = p.start();
+            let bang = p.pos;
+            p.bump();
+            let start = p.offset();
+            let operand = expr_bp(p, BP_NEG);
+            let paren = operand.is_some_and(|o| o.kind(p) == PAREN_EXPR);
+            let range = operand.map(|_| (start, p.prev_end()));
+            p.bang_not(bang, range, paren);
+            Some(m.complete(p, PREFIX_EXPR))
+        }
         _ => {
             let primary = primary(p)?;
             Some(postfix(p, primary))
@@ -799,9 +1018,13 @@ fn primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
             Some(m.complete(p, TYPED_NULL))
         }
         IDENT if p.nth(1) == L_PAREN => {
+            let predicates = PREDICATE_FUNCTIONS.contains(&p.nth_text(0));
             let callee = name_ref(p);
             let m = callee.precede(p);
+            // Inside other calls `name = value` is a named argument, even in a `where`.
+            let saved = std::mem::replace(&mut p.eq_compares, predicates);
             arg_list(p);
+            p.eq_compares = saved;
             Some(m.complete(p, CALL_EXPR))
         }
         IDENT | QUOTED_IDENT | DOLLAR_LEFT | DOLLAR_RIGHT => Some(name_ref(p)),
@@ -869,8 +1092,10 @@ fn arg_list(p: &mut Parser<'_>) {
     p.bump(); // (
     p.depth += 1;
     if !p.at(R_PAREN) {
+        // `iff(x = 1, ...)` is a comparison: those functions take no named arguments.
+        let named_args = !p.eq_compares;
         list(p, |p| {
-            if p.at_set(NAME_START) && p.nth(1) == EQ {
+            if named_args && p.at_set(NAME_START) && p.nth(1) == EQ {
                 let m = p.start();
                 name(p);
                 p.bump(); // =
@@ -922,6 +1147,16 @@ fn expect_closing(p: &mut Parser<'_>, open: usize) {
     if p.eat(close) {
         return;
     }
+    if !closing_ahead(p, close) {
+        p.unclosed_bracket(open);
+        if p.at(EOF) || p.at(SEMICOLON) || p.at(LET_KW) {
+            return;
+        }
+        // Skip the rest of the statement quietly: the one error above explains it.
+        p.last_error_at = Some(p.pos);
+        p.recover(|p| p.at(SEMICOLON) || p.at(LET_KW));
+        return;
+    }
     let close_text = if close == R_BRACK { "]" } else { ")" };
     let open_text = if close == R_BRACK { "[" } else { "(" };
     let d = p.expected(&format!("`{close_text}`")).secondary(
@@ -929,15 +1164,31 @@ fn expect_closing(p: &mut Parser<'_>, open: usize) {
         format!("to close this `{open_text}`"),
     );
     p.report(d);
-    if p.at(EOF) || p.at(SEMICOLON) || p.at(LET_KW) {
-        return;
-    }
     p.recover(|p| p.at(close) || p.at(SEMICOLON) || p.at(LET_KW));
     p.eat(close);
 }
 
+/// Whether a `close` bracket that is not inside another bracket comes before the end of the
+/// statement.
+fn closing_ahead(p: &Parser<'_>, close: crate::SyntaxKind) -> bool {
+    let mut stack = Vec::new();
+    for t in &p.tokens[p.pos..] {
+        match t.kind {
+            SEMICOLON | LET_KW => return false,
+            L_PAREN => stack.push(R_PAREN),
+            L_BRACK => stack.push(R_BRACK),
+            kind if stack.is_empty() && kind == close => return true,
+            kind if stack.last() == Some(&kind) => {
+                stack.pop();
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 /// "`a`, `b` and `c`"
-fn word_list(words: &[&str]) -> String {
+pub(super) fn word_list(words: &[&str]) -> String {
     let quoted: Vec<String> = words.iter().map(|w| format!("`{w}`")).collect();
     match quoted.split_last() {
         Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),

@@ -1,0 +1,36 @@
+# SQL's `<>`: DS0107, with a fix to `!=`.
+mode: syntax
+---- query
+'orders.csv' | where customerId <> "c-001"
+---- expected
+PROGRAM@0..43
+  PIPELINE@0..42
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..42
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      BIN_EXPR@21..42
+        NAME_REF@21..31
+          IDENT@21..31 "customerId"
+        WHITESPACE@31..32 " "
+        LTGT@32..34 "<>"
+        WHITESPACE@34..35 " "
+        LITERAL@35..42
+          STRING@35..42 "\"c-001\""
+  WHITESPACE@42..43 "\n"
+
+error[DS0107]: `<>` is not an operator
+  --> query:1:33
+  |
+1 | 'orders.csv' | where customerId <> "c-001"
+  |                                 ^^ this is SQL's "not equal"
+  |
+  = help: use `!=` to test that values differ: `customerId != "c-001"`
+
+with the machine-applicable fixes applied:
+    'orders.csv' | where customerId != "c-001"
+which parses without errors

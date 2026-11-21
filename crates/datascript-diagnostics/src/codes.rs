@@ -221,7 +221,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS0105,
         severity: Some(Severity::Error),
-        summary: "SQL keyword used (`SELECT`, `FROM`, `GROUP BY`, …), with the DataScript equivalent",
+        summary: "SQL keyword used (`SELECT ... FROM`, `GROUP BY`, `WHERE` in caps, `DESC`, …), with the DataScript equivalent",
         status: CodeStatus::Active,
     },
     CodeInfo {

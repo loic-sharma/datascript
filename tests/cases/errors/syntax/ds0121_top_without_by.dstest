@@ -1,0 +1,26 @@
+# `top 10` with no key: DS0121 with an example.
+mode: syntax
+---- query
+'orders.csv' | top 10
+---- expected
+PROGRAM@0..22
+  PIPELINE@0..21
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    TOP_OP@15..21
+      IDENT@15..18 "top"
+      WHITESPACE@18..19 " "
+      LITERAL@19..21
+        LONG@19..21 "10"
+  WHITESPACE@21..22 "\n"
+
+error[DS0121]: missing `by` after `top`
+  --> query:1:22
+  |
+1 | 'orders.csv' | top 10
+  |                      ^ expected `by` here
+  |
+  = help: say which column to rank by: `top 10 by amount desc`
