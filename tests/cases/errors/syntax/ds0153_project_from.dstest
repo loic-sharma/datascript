@@ -1,0 +1,37 @@
+# SQL's `SELECT a FROM t` written as `| project a from t`: the table comes first (DS0153), no fix.
+mode: syntax
+---- query
+from x | project a from t
+---- expected
+PROGRAM@0..26
+  PIPELINE@0..18
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "x"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    PROJECT_OP@9..18
+      IDENT@9..16 "project"
+      WHITESPACE@16..17 " "
+      NAMED_EXPR@17..18
+        NAME_REF@17..18
+          IDENT@17..18 "a"
+  WHITESPACE@18..19 " "
+  PIPELINE@19..25
+    IDENT@19..23 "from"
+    WHITESPACE@23..24 " "
+    NAME_REF@24..25
+      IDENT@24..25 "t"
+  WHITESPACE@25..26 "\n"
+
+error[DS0153]: in DataScript the table comes first
+  --> query:1:20
+  |
+1 | from x | project a from t
+  |          --------- ^^^^ SQL's `FROM` after the column list
+  |          |
+  |          the columns are chosen here
+  |
+  = help: start the query with the table, then pipe it into the operator: `from t | project a`

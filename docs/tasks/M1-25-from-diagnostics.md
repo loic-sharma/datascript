@@ -1,6 +1,6 @@
 # M1-25 — `from` mistakes and statement starts
 
-**Status:** todo
+**Status:** done
 **Depends on:** M1-24
 **Crates:** `datascript-syntax`, `datascript-diagnostics`, `datascript-tests`
 **Diagnostic codes:** DS0152–DS0159 (D-018)
@@ -63,21 +63,27 @@ line (`range x⏎from 1 to 10`). Keep it that way, so M2-01 inherits this.
   to D-036), and note at D-033 and D-035 what it changes.
 
 ## Acceptance criteria
-- [ ] Golden cases for each new diagnostic, each with its fix, checked by `mode: syntax` (the fix
+- [x] Golden cases for each new diagnostic, each with its fix, checked by `mode: syntax` (the fix
       applied parses).
-- [ ] A missing `;` before a line starting with `from` gets a machine-applicable DS0106 fix, also
+- [x] A missing `;` before a line starting with `from` gets a machine-applicable DS0106 fix, also
       after `project`, `extend` and the other list operators, and also when the `from` line is
       indented.
-- [ ] `from t | take 5 from u` on one line gets DS0106 with a `MaybeIncorrect` fix;
+- [x] `from t | take 5 from u` on one line gets DS0106 with a `MaybeIncorrect` fix;
       `from t | project a from u` gets the SQL-order diagnostic; `f(a⏎  from t | take 1` keeps
       the second statement.
-- [ ] `t | from x`, `| FROM x`, `join from customers on id`, `union from 'b.csv'` and `FROM t` each
+- [x] `t | from x`, `| FROM x`, `join from customers on id`, `union from 'b.csv'` and `FROM t` each
       get one error with a fix.
-- [ ] Core crates still build for `wasm32-unknown-unknown`.
-- [ ] M2-01 updated with a "Carried over" item: `range x⏎from 1 to 10` stays one statement, with a
+- [x] Core crates still build for `wasm32-unknown-unknown`.
+- [x] M2-01 updated with a "Carried over" item: `range x⏎from 1 to 10` stays one statement, with a
       golden case once `range` parses.
 
 ## Carried over
-- [ ] (from M1-24) `join from t` and `union from t` get a generic DS0101 from `grammar::right_table` today, and the `from` token is left as a stray `IDENT` child of `JOIN_OP`/`UNION_OP` (`tests/cases/syntax/from_in_join.dstest`). Replace it with the targeted diagnostic and fix. `| from x` now gets a plain DS0104 (its alias is gone) and `| FROM x` a DS0105 with no help.
+- [x] (from M1-24) `join from t` and `union from t` get a generic DS0101 from `grammar::right_table` today, and the `from` token is left as a stray `IDENT` child of `JOIN_OP`/`UNION_OP` (`tests/cases/syntax/from_in_join.dstest`). Replace it with the targeted diagnostic and fix. `| from x` now gets a plain DS0104 (its alias is gone) and `| FROM x` a DS0105 with no help.
 
 ## Follow-ups
+- Landed: DS0152 (`from` after `|`, and on the right of `join`/`union`), DS0153 (SQL clause order),
+  DS0105 for `FROM` at a head, and the statement-start rule (D-037). `t | from x` gets a
+  `MaybeIncorrect` fix turning `|` into `;` rather than removing `from` (D-037 says why); removal is
+  certain before an operator name. `tests/cases/syntax/from_in_join.dstest` was replaced by
+  `ds0152_join_from` and `ds0152_union_from`.
+- `lookup` and `range` are not parsed yet: handed to M2-01.

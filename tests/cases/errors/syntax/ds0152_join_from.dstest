@@ -1,0 +1,41 @@
+# `from` on the right of `join`: removed by a certain fix (DS0152).
+mode: syntax
+---- query
+from orders | join from customers on customerId
+---- expected
+PROGRAM@0..48
+  PIPELINE@0..47
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..11
+      IDENT@5..11 "orders"
+    WHITESPACE@11..12 " "
+    PIPE@12..13 "|"
+    WHITESPACE@13..14 " "
+    JOIN_OP@14..47
+      IDENT@14..18 "join"
+      WHITESPACE@18..19 " "
+      ERROR@19..23
+        IDENT@19..23 "from"
+      WHITESPACE@23..24 " "
+      NAME_REF@24..33
+        IDENT@24..33 "customers"
+      WHITESPACE@33..34 " "
+      IDENT@34..36 "on"
+      WHITESPACE@36..37 " "
+      NAME_REF@37..47
+        IDENT@37..47 "customerId"
+  WHITESPACE@47..48 "\n"
+
+error[DS0152]: `from` is not written after `join`
+  --> query:1:20
+  |
+1 | from orders | join from customers on customerId
+  |                    ^^^^ `join` takes a table directly
+  |
+  = help: remove `from`: `join customers`
+  = note: a pipeline on the right goes in parentheses: `(from t | where x > 1)`
+
+with the machine-applicable fixes applied:
+    from orders | join customers on customerId
+which parses without errors

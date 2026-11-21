@@ -1,0 +1,46 @@
+# A bracket closed later is not cut at the `from` inside it: a plain error (D-037).
+mode: syntax
+---- query
+from T | where f(a
+  from U | take 1)
+---- expected
+PROGRAM@0..38
+  PIPELINE@0..37
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "T"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..37
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      CALL_EXPR@15..37
+        NAME_REF@15..16
+          IDENT@15..16 "f"
+        ARG_LIST@16..37
+          L_PAREN@16..17 "("
+          NAME_REF@17..18
+            IDENT@17..18 "a"
+          WHITESPACE@18..21 "\n  "
+          ERROR@21..36
+            IDENT@21..25 "from"
+            WHITESPACE@25..26 " "
+            IDENT@26..27 "U"
+            WHITESPACE@27..28 " "
+            PIPE@28..29 "|"
+            WHITESPACE@29..30 " "
+            IDENT@30..34 "take"
+            WHITESPACE@34..35 " "
+            LONG@35..36 "1"
+          R_PAREN@36..37 ")"
+  WHITESPACE@37..38 "\n"
+
+error[DS0101]: expected `)`, found `from`
+  --> query:2:3
+  |
+1 | from T | where f(a
+  |                 - to close this `(`
+2 |   from U | take 1)
+  |   ^^^^

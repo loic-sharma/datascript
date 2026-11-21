@@ -1,0 +1,48 @@
+# A trailing `|` before a new query on the next line (DS0152).
+mode: syntax
+---- query
+from t | take 5 |
+from u | take 1
+---- expected
+PROGRAM@0..34
+  PIPELINE@0..17
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    TAKE_OP@9..15
+      IDENT@9..13 "take"
+      WHITESPACE@13..14 " "
+      LITERAL@14..15
+        LONG@14..15 "5"
+    WHITESPACE@15..16 " "
+    PIPE@16..17 "|"
+  WHITESPACE@17..18 "\n"
+  PIPELINE@18..33
+    IDENT@18..22 "from"
+    WHITESPACE@22..23 " "
+    NAME_REF@23..24
+      IDENT@23..24 "u"
+    WHITESPACE@24..25 " "
+    PIPE@25..26 "|"
+    WHITESPACE@26..27 " "
+    TAKE_OP@27..33
+      IDENT@27..31 "take"
+      WHITESPACE@31..32 " "
+      LITERAL@32..33
+        LONG@32..33 "1"
+  WHITESPACE@33..34 "\n"
+
+error[DS0152]: `from` is not an operator
+  --> query:2:1
+  |
+1 | from t | take 5 |
+  |                 - this `|` has no operator after it
+2 | from u | take 1
+  | ^^^^ `from` starts a query; after `|` comes an operator
+  |
+  = help: to start a new query, end the previous one with `;` instead of `|`
+  = help: to combine two tables, use `union` or `join`: `| union t`

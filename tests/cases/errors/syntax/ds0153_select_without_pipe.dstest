@@ -1,0 +1,36 @@
+# SQL's `select` after the table, without `|`: pipe into `project` (DS0153).
+mode: syntax
+---- query
+from t select a, b
+---- expected
+PROGRAM@0..19
+  PIPELINE@0..18
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PROJECT_OP@7..18
+      IDENT@7..13 "select"
+      WHITESPACE@13..14 " "
+      NAMED_EXPR@14..15
+        NAME_REF@14..15
+          IDENT@14..15 "a"
+      COMMA@15..16 ","
+      WHITESPACE@16..17 " "
+      NAMED_EXPR@17..18
+        NAME_REF@17..18
+          IDENT@17..18 "b"
+  WHITESPACE@18..19 "\n"
+
+error[DS0153]: `select` is SQL: DataScript pipes the table into an operator
+  --> query:1:8
+  |
+1 | from t select a, b
+  |        ^^^^^^ expected `|` before this
+  |
+  = help: pipe the rows into `project`: `| project`
+
+with the machine-applicable fixes applied:
+    from t | project a, b
+which parses without errors

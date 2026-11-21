@@ -1,0 +1,32 @@
+# SQL's `FROM` in capitals at the head of a query: a certain fix to `from` (DS0105).
+mode: syntax
+---- query
+FROM orders | take 5
+---- expected
+PROGRAM@0..21
+  PIPELINE@0..20
+    IDENT@0..4 "FROM"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..11
+      IDENT@5..11 "orders"
+    WHITESPACE@11..12 " "
+    PIPE@12..13 "|"
+    WHITESPACE@13..14 " "
+    TAKE_OP@14..20
+      IDENT@14..18 "take"
+      WHITESPACE@18..19 " "
+      LITERAL@19..20
+        LONG@19..20 "5"
+  WHITESPACE@20..21 "\n"
+
+error[DS0105]: SQL keyword `FROM` in capitals
+  --> query:1:1
+  |
+1 | FROM orders | take 5
+  | ^^^^ keywords are lowercase
+  |
+  = help: write `from`
+
+with the machine-applicable fixes applied:
+    from orders | take 5
+which parses without errors

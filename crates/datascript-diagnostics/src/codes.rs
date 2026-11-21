@@ -65,7 +65,7 @@ pub const DS0103: Code = Code::new(103);
 pub const DS0104: Code = Code::new(104);
 /// SQL keyword used (`SELECT ... FROM`, rewritten as a `from` pipeline; `GROUP BY`, `WHERE` and `AND`/`OR`/`NOT` in caps, `DESC`, `IS NULL`, `LIKE`, `AS`, …), with the DataScript equivalent
 pub const DS0105: Code = Code::new(105);
-/// missing `;` between statements (machine-applicable fix, except after an operator that takes a list, where `,` is offered too and neither is certain)
+/// missing `;` between statements (machine-applicable fix, except after an operator that takes a list, where `,` is offered too and neither is certain, and before a `from` on the same line; a `from` first on its line always makes `;` certain, D-037)
 pub const DS0106: Code = Code::new(106);
 /// `<>` used instead of `!=`
 pub const DS0107: Code = Code::new(107);
@@ -109,6 +109,10 @@ pub const DS0129: Code = Code::new(129);
 pub const DS0150: Code = Code::new(150);
 /// `from` with no table after it
 pub const DS0151: Code = Code::new(151);
+/// `from` where it is not written: after `|`, or on the right of `join` or `union` (fix removes it, or turns the `|` into `;` when a new query follows, D-037)
+pub const DS0152: Code = Code::new(152);
+/// SQL clause order: a SQL keyword after the table without `|` (`from t select a`), or `FROM` after the column list (`| project a from t`)
+pub const DS0153: Code = Code::new(153);
 /// unknown column
 pub const DS1001: Code = Code::new(1001);
 /// unknown name (let/table)
@@ -259,7 +263,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS0106,
         severity: Some(Severity::Error),
-        summary: "missing `;` between statements (machine-applicable fix, except after an operator that takes a list, where `,` is offered too and neither is certain)",
+        summary: "missing `;` between statements (machine-applicable fix, except after an operator that takes a list, where `,` is offered too and neither is certain, and before a `from` on the same line; a `from` first on its line always makes `;` certain, D-037)",
         status: CodeStatus::Active,
     },
     CodeInfo {
@@ -386,6 +390,18 @@ pub const REGISTRY: &[CodeInfo] = &[
         code: DS0151,
         severity: Some(Severity::Error),
         summary: "`from` with no table after it",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0152,
+        severity: Some(Severity::Error),
+        summary: "`from` where it is not written: after `|`, or on the right of `join` or `union` (fix removes it, or turns the `|` into `;` when a new query follows, D-037)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0153,
+        severity: Some(Severity::Error),
+        summary: "SQL clause order: a SQL keyword after the table without `|` (`from t select a`), or `FROM` after the column list (`| project a from t`)",
         status: CodeStatus::Active,
     },
     CodeInfo {

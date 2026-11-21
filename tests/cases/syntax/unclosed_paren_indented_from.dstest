@@ -1,0 +1,50 @@
+# An unclosed `(` stops at an indented `from` after a complete expression: the next query is kept (D-037).
+mode: syntax
+---- query
+from T | where f(a
+  from U | take 1
+---- expected
+PROGRAM@0..37
+  PIPELINE@0..18
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "T"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..18
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      CALL_EXPR@15..18
+        NAME_REF@15..16
+          IDENT@15..16 "f"
+        ARG_LIST@16..18
+          L_PAREN@16..17 "("
+          NAME_REF@17..18
+            IDENT@17..18 "a"
+  WHITESPACE@18..21 "\n  "
+  PIPELINE@21..36
+    IDENT@21..25 "from"
+    WHITESPACE@25..26 " "
+    NAME_REF@26..27
+      IDENT@26..27 "U"
+    WHITESPACE@27..28 " "
+    PIPE@28..29 "|"
+    WHITESPACE@29..30 " "
+    TAKE_OP@30..36
+      IDENT@30..34 "take"
+      WHITESPACE@34..35 " "
+      LITERAL@35..36
+        LONG@35..36 "1"
+  WHITESPACE@36..37 "\n"
+
+error[DS0112]: unclosed `(`
+  --> query:1:17
+  |
+1 | from T | where f(a
+  |                 ^ this `(` is never closed
+2 |   from U | take 1
+  |   ---- expected `)` before this
+  |
+  = help: add `)` where the bracketed part ends

@@ -270,7 +270,8 @@ starts the next argument. **`distinct *, a`** is `DS0116`. **Recovery from an un
 stops at a line that clearly starts a new statement**: unindented, able to start an expression,
 and after a complete expression, so `f(a⏎U | take 1` keeps the second query while `f(a,⏎b)` and
 `(a⏎- b)` stay continuations. The missing `;` there is not reported separately. *(M1-19,
-2026-11-21.)*
+2026-11-21.)* *(D-037 adds a second stop: the keyword `from` after a complete expression, at any
+indentation.)*
 
 ### D-034 — Lexical gaps closed by M1-20
 `5μs` with the Greek mu (U+03BC) is accepted like the micro sign (U+00B5): the two look the same,
@@ -296,7 +297,8 @@ it would drop them. **DS0106 after an operator that takes a list** (`project`, `
 `summarize`, `sort`, `top`, `distinct`, `join`, `project-away`, `project-rename`) offers `,` first
 and `;` second, neither certain: `;` would turn a forgotten comma into a second query. The golden
 harness applies all certain fixes in one pass, a replacement before an insertion at the same
-offset. *(M1-21, 2026-11-21.)*
+offset. *(M1-21, 2026-11-21.)* *(D-037: before a `from` first on its line, `;` alone is offered
+and is certain, even after an operator that takes a list.)*
 
 ### D-036 — Every pipeline starts with `from`
 Decided by the maintainer as Q-009, landed by M1-24. A query statement, the value of a tabular
@@ -334,6 +336,35 @@ right. The cost is a habit KQL users must change, softened by a machine-applicab
   (`let r = read_csv('x');`) is a `PIPELINE` with `DS0150`, so it stays a table after the fix.
 
 Supersedes the parts of D-006, D-020 and D-029 noted there. *(M1-24, 2026-11-21.)*
+
+### D-037 — Statements start at `from` by grammar position (M1-25)
+**Rule.** After a complete expression, where only `|`, `;`, `)` or the end could come next, the
+keyword `from` (D-036: `from` followed by an expression start other than `-` and `not`) starts a
+new statement, whatever line it is on and however it is indented: `from` as a name cannot follow a
+complete expression. The parser checks this in `pipeline_tail`, in the statement loop, and when
+recovering (`Parser::query_start_at`). The layout rule (an expression start first on its line,
+outside brackets) stays as a fallback for a query that forgot its `from`. `range x from 1 to 10`
+needs no special case: after `range x` the generator is not complete.
+- **DS0106.** A `from` first on its line gets one `MachineApplicable` `;` fix, even after an
+  operator that takes a list (overrides D-035 there). On the same line it is `MaybeIncorrect`, and
+  after `project`, `extend`, `summarize` or `distinct` it is SQL's `SELECT a FROM t`: DS0153, with
+  help but no fix, since which table was meant is unclear.
+- **Unclosed brackets.** Recovery from a bracket that is never closed stops at such a `from`, so
+  the next query is kept without D-033's "unindented" condition. `closing_ahead` still uses only
+  the unindented rule, so a bracket closed later is not cut short: the `from` inside it is a
+  plain DS0101.
+- **`from` in the wrong place is DS0152.** On the right of `join` and `union` the fix removes it
+  and is certain. After `|` the fix depends on what follows: before an operator name
+  (`| from where x`) it removes `from` and is certain; otherwise (`t | from x`) a new query most
+  likely starts there, so the fix turns the `|` into `;`, `MaybeIncorrect`, with `union`/`join`
+  mentioned as the alternative. (The task asked for removal in every case, but `t | x` does not
+  parse.) The `from x` after it is then parsed as the next statement.
+- **SQL order is DS0153.** A SQL keyword after the table without `|` (`from t select a`,
+  `from t GROUP BY a`, `from t WHERE x`) gets the fix DS0104/DS0105 would give after a `|`, with
+  the `|` inserted, and the same certainty. Operator names of the language (`order`, `where`)
+  stay DS0102.
+- **`FROM` in capitals at a pipeline head** is DS0105 with a certain fix to `from`, and parses as
+  the keyword. *(M1-25, 2026-11-21.)*
 
 ## Proposed (open questions)
 

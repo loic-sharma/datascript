@@ -103,6 +103,22 @@ const INFIX_WORDS: &[&str] = &[
 
 const NAME_START: TokenSet = TokenSet::new(&[IDENT, QUOTED_IDENT]);
 
+/// Tokens that can end a complete expression.
+const ENDS_EXPR: TokenSet = TokenSet::new(&[
+    LONG,
+    REAL,
+    STRING,
+    TIMESPAN,
+    DATETIME,
+    TRUE_KW,
+    FALSE_KW,
+    NULL_KW,
+    IDENT,
+    QUOTED_IDENT,
+    R_PAREN,
+    R_BRACK,
+]);
+
 // Binding powers, LANGUAGE.md §4 (higher binds tighter).
 const BP_OR: u8 = 1;
 const BP_AND: u8 = 2;
@@ -160,9 +176,55 @@ impl Parser<'_> {
     }
 
     /// Whether the current token clearly starts a new statement although a bracket is still open:
-    /// see [`Parser::statement_after_unclosed_at`].
+    /// a line that looks like one ([`Parser::statement_after_unclosed_at`]) or the keyword `from`
+    /// after a complete expression ([`Parser::query_start_at`]), however it is indented.
     fn at_statement_after_unclosed(&self) -> bool {
-        self.statement_after_unclosed_at(self.pos)
+        self.statement_after_unclosed_at(self.pos) || self.query_start_at(self.pos)
+    }
+
+    /// Whether the token at index `i` is the keyword `from` right after a complete expression
+    /// (D-037). `from` as a name cannot follow a complete expression, so the keyword there always
+    /// starts a new statement, on any line and at any indentation. `f(a, from t)` and
+    /// `range x from 1` are not this: a `,` or an unfinished generator comes before the `from`.
+    fn query_start_at(&self, i: usize) -> bool {
+        let (Some(token), Some(prev)) = (self.tokens.get(i), i.checked_sub(1)) else {
+            return false;
+        };
+        let next = self.tokens.get(i + 1).map_or(EOF, |t| t.kind);
+        token.kind == IDENT
+            && token.text(self.text) == "from"
+            && EXPR_START.contains(next)
+            && !matches!(next, MINUS | NOT_KW)
+            && ENDS_EXPR.contains(self.tokens[prev].kind)
+    }
+
+    /// Whether the current token is the keyword `from` in SQL's capitals at a pipeline head:
+    /// `FROM orders` (DS0105).
+    fn at_from_caps(&self) -> bool {
+        self.at(IDENT)
+            && self.nth_text(0) == "FROM"
+            && EXPR_START.contains(self.nth(1))
+            && !matches!(self.nth(1), MINUS | NOT_KW)
+    }
+
+    /// Whether the current token is a SQL keyword written where an operator goes, after a table
+    /// but without `|`: `from t select a`, `from t GROUP BY a` (DS0153). Operator names of the
+    /// language (`where`, `order`) are DS0102 instead, and `from` has its own rules.
+    fn at_sql_clause(&self) -> bool {
+        if !self.at(IDENT) || self.nth_line_start(1) {
+            return false;
+        }
+        let lower = self.nth_text(0).to_lowercase();
+        if lower == "from" || !super::targeted::SQL_WORDS.contains(&lower.as_str()) {
+            return false;
+        }
+        let next = self.nth(1);
+        let by = matches!(lower.as_str(), "group" | "order")
+            && next == IDENT
+            && self.nth_text(1).eq_ignore_ascii_case("by");
+        let operand = next == STAR || (EXPR_START.contains(next) && !matches!(next, MINUS));
+        // `t⏎SELECT a FROM u` is a whole SQL query on its own line (DS0105).
+        (by || operand) && !(self.at_line_start() && sql_select_at(self).is_some())
     }
 
     /// Whether the token at index `i` clearly starts a new statement even inside brackets, so an
@@ -170,20 +232,6 @@ impl Parser<'_> {
     /// indentation, and follows a complete expression (`f(a⏎U | take 1`). A continuation such
     /// as `f(a,⏎b)` or `(a⏎- b)` does not count.
     fn statement_after_unclosed_at(&self, i: usize) -> bool {
-        const ENDS_EXPR: TokenSet = TokenSet::new(&[
-            LONG,
-            REAL,
-            STRING,
-            TIMESPAN,
-            DATETIME,
-            TRUE_KW,
-            FALSE_KW,
-            NULL_KW,
-            IDENT,
-            QUOTED_IDENT,
-            R_PAREN,
-            R_BRACK,
-        ]);
         const CONTINUATIONS: &[&str] = &[
             "asc",
             "between",
@@ -232,7 +280,7 @@ impl Parser<'_> {
     /// Whether the current token is the keyword `from` at a pipeline head (D-036): the word
     /// `from` followed by something that can start an expression, other than `-` and `not`.
     /// Anywhere else `from` is an ordinary name (`let y = from - 1`, `where from > 3`).
-    fn at_from_kw(&self) -> bool {
+    pub(super) fn at_from_kw(&self) -> bool {
         self.at_kw("from")
             && EXPR_START.contains(self.nth(1))
             && !matches!(self.nth(1), MINUS | NOT_KW)
@@ -346,7 +394,7 @@ pub(super) fn program(p: &mut Parser<'_>) {
         if p.eat(SEMICOLON) || p.at(EOF) {
             continue;
         }
-        if p.at(LET_KW) || p.at_new_statement() {
+        if p.at(LET_KW) || p.at_new_statement() || p.at_from_kw() {
             p.missing_semicolon();
         } else {
             p.error_expected("`;` between statements");
@@ -385,6 +433,11 @@ fn let_stmt(p: &mut Parser<'_>) {
 /// A query statement: always a `PIPELINE`, even without operators.
 fn query_stmt(p: &mut Parser<'_>) {
     if p.at_from_kw() || p.at_empty_from(true) {
+        from_pipeline(p);
+        return;
+    }
+    if p.at_from_caps() {
+        p.sql_from_caps();
         from_pipeline(p);
         return;
     }
@@ -529,6 +582,11 @@ fn pipeline_or_expr(p: &mut Parser<'_>, in_let: bool) -> bool {
         from_pipeline(p);
         return true;
     }
+    if p.at_from_caps() {
+        p.sql_from_caps();
+        from_pipeline(p);
+        return true;
+    }
     if p.at_generator() {
         generator(p);
         return true;
@@ -607,7 +665,38 @@ fn pipeline_tail(p: &mut Parser<'_>, start: usize) {
             });
             continue;
         }
-        if p.at_new_statement() || (p.depth > 0 && p.at_statement_after_unclosed()) {
+        if p.at_sql_clause() {
+            // `from t select a`: SQL's clause order, without `|` (DS0153).
+            let (name, len, _) = p.op_name().expect("at an identifier");
+            let start = p.offset();
+            let certain = p.sql_clause_without_pipe(&name, len);
+            let kind = match certain {
+                Some((name, len, by_included)) => Some(operator_named(p, name, len, by_included)),
+                None => {
+                    p.recover(|p| {
+                        p.at(PIPE)
+                            || p.at_pipeline_end()
+                            || p.at_operator_on_new_line()
+                            || p.at_new_statement()
+                            || p.at_from_kw()
+                    });
+                    None
+                }
+            };
+            ops.push(OpInfo {
+                lead,
+                start,
+                end: p.prev_end(),
+                kind,
+            });
+            continue;
+        }
+        // The keyword `from` after a complete expression starts a new statement wherever it is
+        // (D-037); inside brackets, only if they are never closed.
+        if p.at_new_statement()
+            || (p.depth == 0 && p.at_from_kw())
+            || (p.depth > 0 && p.at_statement_after_unclosed())
+        {
             break;
         }
         if p.depth == 0 && is_close_bracket(p.current()) {
@@ -627,11 +716,15 @@ fn pipeline_tail(p: &mut Parser<'_>, start: usize) {
         };
         p.error_expected(what);
         p.recover(|p| {
-            p.at(PIPE) || p.at_pipeline_end() || p.at_operator_on_new_line() || p.at_new_statement()
+            p.at(PIPE)
+                || p.at_pipeline_end()
+                || p.at_operator_on_new_line()
+                || p.at_new_statement()
+                || (p.depth == 0 && p.query_start_at(p.pos))
         });
     }
     p.pipeline_start = saved_start;
-    p.last_op = ops.last().and_then(|op| op.kind);
+    p.last_op = ops.last().and_then(|op| Some((op.kind?, op.start)));
     check_render_last(p, &ops);
 }
 
@@ -826,6 +919,10 @@ fn without_by(p: &mut Parser<'_>, name: &str, op_start: u32, keys: impl Fn(&mut 
 }
 
 fn unknown_operator(p: &mut Parser<'_>) {
+    if p.at(IDENT) && p.nth_text(0).eq_ignore_ascii_case("from") {
+        from_after_pipe(p);
+        return;
+    }
     if let Some((from, end)) = sql_select_at(p) {
         // A whole SQL query after a pipe: `t | SELECT a FROM t`.
         p.sql_select(p.pipeline_start, from, end);
@@ -860,9 +957,32 @@ fn unknown_operator(p: &mut Parser<'_>) {
     p.recover(|p| p.at(PIPE) || p.at_pipeline_end() || p.at_operator_on_new_line());
 }
 
+/// `| from x` (DS0152): `from` is not an operator. The current token is `from`, in any case.
+fn from_after_pipe(p: &mut Parser<'_>) {
+    let before_operator = p.nth(1) == IDENT && OPERATORS.contains(&p.nth_text(1));
+    p.report_from_after_pipe(before_operator);
+    if before_operator {
+        // `| from where x`: the fix removes `from`, so parse the operator after it.
+        let m = p.start();
+        p.bump(); // from
+        m.complete(p, ERROR);
+        operator(p);
+        return;
+    }
+    if p.at_from_kw() && p.depth == 0 {
+        // `| from x` most likely starts a new query: leave it for the statement loop, which
+        // does not report the missing `;` again.
+        return;
+    }
+    p.recover(|p| p.at(PIPE) || p.at_pipeline_end() || p.at_operator_on_new_line());
+}
+
 /// The operator a machine-applicable fix for an unknown operator name turns it into: the name,
 /// how many tokens the fix replaces, and whether it includes `by`.
-fn certain_operator(p: &Parser<'_>, d: &Diagnostic) -> Option<(&'static str, usize, bool)> {
+pub(super) fn certain_operator(
+    p: &Parser<'_>,
+    d: &Diagnostic,
+) -> Option<(&'static str, usize, bool)> {
     let suggestion = d.help.first()?.suggestion.as_ref()?;
     let [edit] = suggestion.edits.as_slice() else {
         return None;
@@ -1043,15 +1163,15 @@ fn join_body(p: &mut Parser<'_>) {
 /// pipeline. Any expression parses here; the binder rejects the ones that are not tables.
 /// `from` is not written here (D-036): it is reported, and the table after it parsed.
 fn right_table(p: &mut Parser<'_>, op: &str) {
-    if p.at_from_kw() {
-        let d = p
-            .expected(&format!("a table after `{op}`"))
-            .primary(p.current_span(), "`from` starts a query, not a table here")
-            .help(
-                "write the table directly, or put a pipeline in parentheses: `(from t | take 5)`",
-            );
-        p.report(d);
+    let from = p.at(IDENT)
+        && p.nth_text(0).eq_ignore_ascii_case("from")
+        && EXPR_START.contains(p.nth(1))
+        && !matches!(p.nth(1), MINUS | NOT_KW);
+    if from {
+        p.report_from_before_right_table(op);
+        let m = p.start();
         p.bump(); // from
+        m.complete(p, ERROR);
     }
     if p.at_set(EXPR_START) {
         expr(p);

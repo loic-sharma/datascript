@@ -139,7 +139,7 @@ design decision and implemented by the task named in the allocation table.
 | DS0103 | error | pipe with no operator after it |
 | DS0104 | error | unknown operator (with did-you-mean; also `project - away` with spaces, D-026, and a row generator such as `range` before M2-01) |
 | DS0105 | error | SQL keyword used (`SELECT ... FROM`, rewritten as a `from` pipeline; `GROUP BY`, `WHERE` and `AND`/`OR`/`NOT` in caps, `DESC`, `IS NULL`, `LIKE`, `AS`, …), with the DataScript equivalent |
-| DS0106 | error | missing `;` between statements (machine-applicable fix, except after an operator that takes a list, where `,` is offered too and neither is certain) |
+| DS0106 | error | missing `;` between statements (machine-applicable fix, except after an operator that takes a list, where `,` is offered too and neither is certain, and before a `from` on the same line; a `from` first on its line always makes `;` certain, D-037) |
 | DS0107 | error | `<>` used instead of `!=` |
 | DS0110 | error | `=` used for comparison (also `===` and `= =`, reported once with a fix to `==`) |
 | DS0111 | error | `&&`/`||`/`!` used instead of `and`/`or`/`not` |
@@ -161,6 +161,8 @@ design decision and implemented by the task named in the allocation table.
 | DS0129 | error | `in ~` / `!in ~` written with a space (machine-applicable fix to `in~`) |
 | DS0150 | error | query or pipeline does not start with `from` (machine-applicable fix inserts it when the head is clearly a table, D-036) |
 | DS0151 | error | `from` with no table after it |
+| DS0152 | error | `from` where it is not written: after `|`, or on the right of `join` or `union` (fix removes it, or turns the `|` into `;` when a new query follows, D-037) |
+| DS0153 | error | SQL clause order: a SQL keyword after the table without `|` (`from t select a`), or `FROM` after the column list (`| project a from t`) |
 | DS1001 | error | unknown column |
 | DS1002 | error | unknown name (let/table) |
 | DS1003 | error | name already defined |

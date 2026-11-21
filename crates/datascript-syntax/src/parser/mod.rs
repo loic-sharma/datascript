@@ -140,8 +140,9 @@ struct Parser<'t> {
     last_unclosed: Option<(usize, usize)>,
     /// Token index where the innermost pipeline being parsed starts (its source).
     pipeline_start: usize,
-    /// The last operator of the last pipeline parsed in this statement, for DS0106.
-    last_op: Option<SyntaxKind>,
+    /// The last operator of the last pipeline parsed in this statement and the byte offset
+    /// where it starts, for DS0106 and DS0153.
+    last_op: Option<(SyntaxKind, u32)>,
     /// The token index of the `(` of the last parenthesized expression completed, if its
     /// content was a pipeline: such a `(...)` is a table and needs no `from` (D-036).
     paren_pipeline: Option<usize>,

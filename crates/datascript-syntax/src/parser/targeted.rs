@@ -1,4 +1,4 @@
-//! Targeted syntax diagnostics (DS0102–DS0151): habits from SQL, KQL and C-like languages, and
+//! Targeted syntax diagnostics (DS0102–DS0153): habits from SQL, KQL and C-like languages, and
 //! the mistakes people make most, each with a concrete fix where we can give one.
 //!
 //! The grammar decides *where* a mistake is; the functions here decide what to say about it.
@@ -7,13 +7,13 @@ use datascript_diagnostics::{
     Applicability, Diagnostic, Suggestion, TextEdit, codes, did_you_mean,
 };
 
-use super::grammar::{Head, LATER_OPERATORS, OPERATORS, word_list};
+use super::grammar::{Head, LATER_OPERATORS, OPERATORS, certain_operator, word_list};
 use super::{Parser, TokenSet};
 use crate::SyntaxKind::{self, *};
 
 /// SQL words that people write as an operator, matched ignoring case. Written in capitals they
 /// are DS0105.
-const SQL_WORDS: &[&str] = &[
+pub(super) const SQL_WORDS: &[&str] = &[
     "distinct", "from", "group", "having", "join", "limit", "order", "select", "top", "union",
     "where",
 ];
@@ -179,6 +179,9 @@ const WORDLIKE: TokenSet = TokenSet::new(&[
 /// Tokens that another fix rewrites into a word (`&&` to `and`, `!` to `not(`), so a replacement
 /// word next to them needs a space too: `a&&!b` becomes `a and not(b)`, not `a andnot(b)`.
 const FIXED_TO_WORD: TokenSet = TokenSet::new(&[AMP2, PIPE2, BANG]);
+
+/// Operators after which `from` on the same line is most likely SQL's `SELECT a FROM t` (DS0153).
+const COLUMN_OPERATORS: &[SyntaxKind] = &[PROJECT_OP, EXTEND_OP, SUMMARIZE_OP, DISTINCT_OP];
 
 /// Operators that take a list, where an item on the next line without `,` is likely a forgotten
 /// comma rather than a new statement (DS0106).
@@ -416,7 +419,7 @@ impl Parser<'_> {
                         Applicability::MaybeIncorrect,
                     ),
                 ),
-                // `| FROM x`: M1-25 gives it a targeted fix.
+                // `| FROM x` is DS0152, reported before this is called.
                 "from" => d,
                 _ => d.help_with(
                     format!("operator names are lowercase: write `{lower}`"),
@@ -1914,6 +1917,159 @@ impl Parser<'_> {
             })
     }
 
+    // --- `from` ---
+
+    /// DS0105 for `FROM` in SQL's capitals at a pipeline head: `FROM orders | take 5`. The
+    /// current token is `FROM`.
+    pub(super) fn sql_from_caps(&mut self) {
+        let span = self.current_span();
+        let d = Diagnostic::error(codes::DS0105, "SQL keyword `FROM` in capitals")
+            .primary(span, "keywords are lowercase")
+            .help_with("write `from`", Suggestion::replace(span, "from"));
+        self.report(d);
+    }
+
+    /// DS0152: `from` after `|`, where an operator goes. The current token is `from`, in any
+    /// case. `before_operator` says an operator name follows it (`| from where x`): then the
+    /// fix removes `from`. Otherwise a new query most likely starts there, and the fix turns
+    /// the `|` into `;`.
+    pub(super) fn report_from_after_pipe(&mut self, before_operator: bool) {
+        let from = self.current_span();
+        let d = Diagnostic::error(codes::DS0152, "`from` is not an operator")
+            .primary(from, "`from` starts a query; after `|` comes an operator");
+        let d = if before_operator {
+            let next = self.tokens[self.pos + 1];
+            let op = next.text(self.text);
+            d.help_with(
+                format!("remove `from` and pipe into `{op}`"),
+                Suggestion::replace(self.span(from.start, next.start), ""),
+            )
+        } else {
+            let pipe = self.token_span(self.pos - 1);
+            let d = d.secondary(pipe, "this `|` has no operator after it");
+            let mut edits = vec![TextEdit::new(pipe, ";")];
+            if self.nth_text(0) != "from" {
+                edits.push(TextEdit::new(from, "from"));
+            }
+            d.help_with(
+                "to start a new query, end the previous one with `;` instead of `|`",
+                Suggestion::new(edits, Applicability::MaybeIncorrect),
+            )
+            .help("to combine two tables, use `union` or `join`: `| union t`")
+        };
+        self.report(d);
+    }
+
+    /// DS0152: `from` on the right of `join` or `union` (`op`), which is already a table. The
+    /// current token is `from`, in any case.
+    pub(super) fn report_from_before_right_table(&mut self, op: &str) {
+        let from = self.current_span();
+        let next = self.tokens[self.pos + 1];
+        let d = Diagnostic::error(codes::DS0152, format!("`from` is not written after `{op}`"))
+            .primary(from, format!("`{op}` takes a table directly"))
+            .help_with(
+                format!("remove `from`: `{op} {}`", next.text(self.text)),
+                Suggestion::replace(self.span(from.start, next.start), ""),
+            )
+            .note("a pipeline on the right goes in parentheses: `(from t | where x > 1)`");
+        self.report(d);
+    }
+
+    /// DS0153: a SQL keyword after a table without `|` (`from t select a`). The current token
+    /// is the keyword; `name` and `len` come from `op_name`. Reuses what DS0104/DS0105 would say
+    /// after a `|`, with the `|` added. Returns the operator to parse the rest as when the fix
+    /// is certain, as [`certain_operator`] does.
+    pub(super) fn sql_clause_without_pipe(
+        &mut self,
+        name: &str,
+        len: usize,
+    ) -> Option<(&'static str, usize, bool)> {
+        let inner = self.unknown_operator_diagnostic(name, len);
+        let certain = certain_operator(self, &inner);
+        let span = inner
+            .primary
+            .as_ref()
+            .map_or(self.current_span(), |label| label.span);
+        let written = self.source(span.start, span.end).to_string();
+        let at = self.offset();
+        let mut d = Diagnostic::error(
+            codes::DS0153,
+            format!("`{written}` is SQL: DataScript pipes the table into an operator"),
+        )
+        .primary(span, "expected `|` before this");
+        let help = inner.help.into_iter().next();
+        d = match help {
+            Some(help) => match help.suggestion {
+                Some(suggestion) => {
+                    let op = suggestion
+                        .edits
+                        .first()
+                        .map_or(String::new(), |e| e.replacement.clone());
+                    let mut edits = vec![TextEdit::new(self.span(at, at), "| ")];
+                    edits.extend(suggestion.edits);
+                    d.help_with(
+                        format!("pipe the rows into `{op}`: `| {op}`"),
+                        Suggestion::new(edits, suggestion.applicability),
+                    )
+                }
+                None if name.eq_ignore_ascii_case("group") => {
+                    // `GROUP BY a`: quote the keys in the `summarize` to write.
+                    let keys_end = self.tokens[self.pos..]
+                        .iter()
+                        .take_while(|t| !matches!(t.kind, PIPE | SEMICOLON | LET_KW))
+                        .last()
+                        .map_or(span.end, |t| t.end());
+                    let keys = self.snippet(span.end, keys_end).map(str::trim);
+                    match keys {
+                        Some(keys) if !keys.is_empty() => d.help(format!(
+                            "group with `summarize ... by` after a `|`: \
+                             `| summarize count() by {keys}`"
+                        )),
+                        _ => d.help(format!("add `|` before it; {}", help.message)),
+                    }
+                }
+                None => d.help(format!("add `|` before it; {}", help.message)),
+            },
+            None => d.help("add `|` before it, and use the DataScript operator"),
+        };
+        self.report(d);
+        certain
+    }
+
+    /// DS0153: SQL's `FROM` after the column list, on the same line: `| project a from t`. The
+    /// current token is `from`; the operator before it starts at byte `op_start`.
+    pub(super) fn sql_from_after_columns(&mut self, op_start: u32) {
+        let from = self.current_span();
+        let op_text = self.snippet(op_start, self.prev_end());
+        // The table: the rest of the line up to `|`, `;` or `let`.
+        let table_end = self.tokens[self.pos + 1..]
+            .iter()
+            .enumerate()
+            .take_while(|(k, t)| {
+                !matches!(t.kind, PIPE | SEMICOLON | LET_KW) && !self.line_start[self.pos + 1 + k]
+            })
+            .last()
+            .map(|(_, t)| t.end());
+        let table = table_end.and_then(|e| self.snippet(self.tokens[self.pos + 1].start, e));
+        let help = match (table, op_text) {
+            (Some(table), Some(op)) => format!(
+                "start the query with the table, then pipe it into the operator: \
+                 `from {table} | {op}`"
+            ),
+            _ => "start the query with the table, then pipe it into the operator: \
+                  `from t | project a`"
+                .to_string(),
+        };
+        let d = Diagnostic::error(codes::DS0153, "in DataScript the table comes first")
+            .primary(from, "SQL's `FROM` after the column list")
+            .secondary(
+                self.span(op_start, self.prev_end()),
+                "the columns are chosen here",
+            )
+            .help(help);
+        self.report(d);
+    }
+
     // --- Brackets and statements ---
 
     /// DS0112: the bracket at token index `open` is never closed. The current token is where the
@@ -1976,14 +2132,43 @@ impl Parser<'_> {
         self.report(d);
     }
 
-    /// DS0106: a new statement starts without `;` after the previous one.
+    /// DS0106: a new statement starts without `;` after the previous one. Where the new
+    /// statement starts with the keyword `from` (D-037), its place decides: first on its line,
+    /// `;` is certain; on the same line it is not, and after `project` and the like it is SQL's
+    /// `SELECT a FROM t` (DS0153).
     pub(super) fn missing_semicolon(&mut self) {
         let end = self.prev_end();
         let d = Diagnostic::error(codes::DS0106, "missing `;` between statements");
-        let list = self.last_op.filter(|kind| LIST_OPERATORS.contains(kind));
+        let from = self.at_from_kw();
+        if from && !self.at_line_start() {
+            match self.last_op {
+                Some((kind, op_start)) if COLUMN_OPERATORS.contains(&kind) => {
+                    self.sql_from_after_columns(op_start);
+                }
+                _ => {
+                    let d = d
+                        .primary(self.span(end, end), "expected `;` here")
+                        .secondary(self.current_span(), "`from` starts a new query")
+                        .help_with(
+                            "if a new query starts here, end the previous one with `;`",
+                            Suggestion::new(
+                                vec![TextEdit::new(self.span(end, end), ";")],
+                                Applicability::MaybeIncorrect,
+                            ),
+                        );
+                    self.report(d);
+                }
+            }
+            return;
+        }
+        let list = self
+            .last_op
+            .map(|(kind, _)| kind)
+            .filter(|kind| LIST_OPERATORS.contains(kind));
         let d = match list {
-            // `| project a⏎  b`: more likely a forgotten comma than a second query.
-            Some(_) if !self.at(LET_KW) => {
+            // `| project a⏎  b`: more likely a forgotten comma than a second query. A `from`
+            // first on its line is a new query for certain.
+            Some(_) if !self.at(LET_KW) && !from => {
                 let d = d
                     .primary(self.span(end, end), "expected `,` or `;` here")
                     .secondary(self.current_span(), "this is read as a new statement");

@@ -1,0 +1,55 @@
+# `FROM` in capitals at the head of a `let` value (DS0105).
+mode: syntax
+---- query
+let t = FROM orders | where a > 1;
+from t
+---- expected
+PROGRAM@0..42
+  LET_STMT@0..33
+    LET_KW@0..3 "let"
+    WHITESPACE@3..4 " "
+    NAME@4..5
+      IDENT@4..5 "t"
+    WHITESPACE@5..6 " "
+    EQ@6..7 "="
+    WHITESPACE@7..8 " "
+    PIPELINE@8..33
+      IDENT@8..12 "FROM"
+      WHITESPACE@12..13 " "
+      NAME_REF@13..19
+        IDENT@13..19 "orders"
+      WHITESPACE@19..20 " "
+      PIPE@20..21 "|"
+      WHITESPACE@21..22 " "
+      WHERE_OP@22..33
+        IDENT@22..27 "where"
+        WHITESPACE@27..28 " "
+        BIN_EXPR@28..33
+          NAME_REF@28..29
+            IDENT@28..29 "a"
+          WHITESPACE@29..30 " "
+          GT@30..31 ">"
+          WHITESPACE@31..32 " "
+          LITERAL@32..33
+            LONG@32..33 "1"
+  SEMICOLON@33..34 ";"
+  WHITESPACE@34..35 "\n"
+  PIPELINE@35..41
+    IDENT@35..39 "from"
+    WHITESPACE@39..40 " "
+    NAME_REF@40..41
+      IDENT@40..41 "t"
+  WHITESPACE@41..42 "\n"
+
+error[DS0105]: SQL keyword `FROM` in capitals
+  --> query:1:9
+  |
+1 | let t = FROM orders | where a > 1;
+  |         ^^^^ keywords are lowercase
+  |
+  = help: write `from`
+
+with the machine-applicable fixes applied:
+    let t = from orders | where a > 1;
+    from t
+which parses without errors

@@ -1,0 +1,48 @@
+# A `from` after a `,` is a pipeline argument, not a new statement.
+mode: syntax
+---- query
+from t | where f(a,
+  from u | take 1) > 0
+---- expected
+PROGRAM@0..43
+  PIPELINE@0..42
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..42
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..42
+        CALL_EXPR@15..38
+          NAME_REF@15..16
+            IDENT@15..16 "f"
+          ARG_LIST@16..38
+            L_PAREN@16..17 "("
+            NAME_REF@17..18
+              IDENT@17..18 "a"
+            COMMA@18..19 ","
+            WHITESPACE@19..22 "\n  "
+            PIPELINE@22..37
+              IDENT@22..26 "from"
+              WHITESPACE@26..27 " "
+              NAME_REF@27..28
+                IDENT@27..28 "u"
+              WHITESPACE@28..29 " "
+              PIPE@29..30 "|"
+              WHITESPACE@30..31 " "
+              TAKE_OP@31..37
+                IDENT@31..35 "take"
+                WHITESPACE@35..36 " "
+                LITERAL@36..37
+                  LONG@36..37 "1"
+            R_PAREN@37..38 ")"
+        WHITESPACE@38..39 " "
+        GT@39..40 ">"
+        WHITESPACE@40..41 " "
+        LITERAL@41..42
+          LONG@41..42 "0"
+  WHITESPACE@42..43 "\n"

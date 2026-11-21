@@ -133,10 +133,15 @@ from big | summarize count() by customerId                // query statement (pr
   Each statement runs as its own query. A tabular `let` used by two statements is evaluated in
   each (no materialization).
 - A missing `;` between statements is the most common mistake for KQL users. When a pipeline is
-  followed by something that can only start a new statement (`let`, or `from` on a new line),
-  the parser reports `DS0106` with a machine-applicable fix inserting `;`. When the pipeline
-  ends in an operator that takes a list (`project a⏎  b`), a forgotten `,` is as likely, so both
-  fixes are offered and neither is machine-applicable.
+  followed by something that can only start a new statement, the parser reports `DS0106`. The
+  keyword `from` after a complete expression always starts a new statement, whatever line it is
+  on and however it is indented, because `from` as a name cannot follow a complete expression
+  (D-037). A `let`, or a `from` first on its line, gets a machine-applicable fix inserting `;`. A
+  `from` on the same line (`take 5 from u`) gets a fix that is not certain, and after `project`,
+  `extend`, `summarize` or `distinct` it is SQL's `SELECT a FROM t` (`DS0153`). Any other
+  expression first on a line also starts a statement (a query that forgot its `from`); when the
+  pipeline ends in an operator that takes a list (`project a⏎  b`), a forgotten `,` is as likely,
+  so both fixes are offered and neither is machine-applicable.
 - A program with no query statement is valid for `ds check`. `ds run` warns that there is nothing
   to run (`DS0004`).
 - `now()` has one value for the whole run of a program (D-015).

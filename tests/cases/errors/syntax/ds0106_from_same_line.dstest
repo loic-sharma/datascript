@@ -1,0 +1,36 @@
+# A `from` on the same line after `take`: a new query, but the `;` fix is not certain (D-037).
+mode: syntax
+---- query
+from t | take 5 from u
+---- expected
+PROGRAM@0..23
+  PIPELINE@0..15
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    TAKE_OP@9..15
+      IDENT@9..13 "take"
+      WHITESPACE@13..14 " "
+      LITERAL@14..15
+        LONG@14..15 "5"
+  WHITESPACE@15..16 " "
+  PIPELINE@16..22
+    IDENT@16..20 "from"
+    WHITESPACE@20..21 " "
+    NAME_REF@21..22
+      IDENT@21..22 "u"
+  WHITESPACE@22..23 "\n"
+
+error[DS0106]: missing `;` between statements
+  --> query:1:16
+  |
+1 | from t | take 5 from u
+  |                ^---- `from` starts a new query
+  |                |
+  |                expected `;` here
+  |
+  = help: if a new query starts here, end the previous one with `;`

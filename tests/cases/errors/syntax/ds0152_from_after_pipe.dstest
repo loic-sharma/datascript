@@ -1,0 +1,31 @@
+# `from` after `|` where a new query starts: the fix turns `|` into `;` (DS0152).
+mode: syntax
+---- query
+from t | from x
+---- expected
+PROGRAM@0..16
+  PIPELINE@0..8
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+  WHITESPACE@8..9 " "
+  PIPELINE@9..15
+    IDENT@9..13 "from"
+    WHITESPACE@13..14 " "
+    NAME_REF@14..15
+      IDENT@14..15 "x"
+  WHITESPACE@15..16 "\n"
+
+error[DS0152]: `from` is not an operator
+  --> query:1:10
+  |
+1 | from t | from x
+  |        - ^^^^ `from` starts a query; after `|` comes an operator
+  |        |
+  |        this `|` has no operator after it
+  |
+  = help: to start a new query, end the previous one with `;` instead of `|`
+  = help: to combine two tables, use `union` or `join`: `| union t`

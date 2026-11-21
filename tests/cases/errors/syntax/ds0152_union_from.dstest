@@ -1,0 +1,36 @@
+# `from` on the right of `union`: removed by a certain fix (DS0152).
+mode: syntax
+---- query
+from a | union from 'b.csv'
+---- expected
+PROGRAM@0..28
+  PIPELINE@0..27
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "a"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    UNION_OP@9..27
+      IDENT@9..14 "union"
+      WHITESPACE@14..15 " "
+      ERROR@15..19
+        IDENT@15..19 "from"
+      WHITESPACE@19..20 " "
+      LITERAL@20..27
+        STRING@20..27 "'b.csv'"
+  WHITESPACE@27..28 "\n"
+
+error[DS0152]: `from` is not written after `union`
+  --> query:1:16
+  |
+1 | from a | union from 'b.csv'
+  |                ^^^^ `union` takes a table directly
+  |
+  = help: remove `from`: `union 'b.csv'`
+  = note: a pipeline on the right goes in parentheses: `(from t | where x > 1)`
+
+with the machine-applicable fixes applied:
+    from a | union 'b.csv'
+which parses without errors

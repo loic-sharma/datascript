@@ -1,0 +1,27 @@
+# `GROUP BY` after the table, without `|`: pipe into `summarize ... by` (DS0153).
+mode: syntax
+---- query
+from t GROUP BY a
+---- expected
+PROGRAM@0..18
+  PIPELINE@0..17
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    ERROR@7..17
+      IDENT@7..12 "GROUP"
+      WHITESPACE@12..13 " "
+      IDENT@13..15 "BY"
+      WHITESPACE@15..16 " "
+      IDENT@16..17 "a"
+  WHITESPACE@17..18 "\n"
+
+error[DS0153]: `GROUP BY` is SQL: DataScript pipes the table into an operator
+  --> query:1:8
+  |
+1 | from t GROUP BY a
+  |        ^^^^^^^^ expected `|` before this
+  |
+  = help: group with `summarize ... by` after a `|`: `| summarize count() by a`

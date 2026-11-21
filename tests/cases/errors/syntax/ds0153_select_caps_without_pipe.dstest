@@ -1,0 +1,31 @@
+# `SELECT` in capitals after the table, without `|` (DS0153).
+mode: syntax
+---- query
+from t SELECT a
+---- expected
+PROGRAM@0..16
+  PIPELINE@0..15
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PROJECT_OP@7..15
+      IDENT@7..13 "SELECT"
+      WHITESPACE@13..14 " "
+      NAMED_EXPR@14..15
+        NAME_REF@14..15
+          IDENT@14..15 "a"
+  WHITESPACE@15..16 "\n"
+
+error[DS0153]: `SELECT` is SQL: DataScript pipes the table into an operator
+  --> query:1:8
+  |
+1 | from t SELECT a
+  |        ^^^^^^ expected `|` before this
+  |
+  = help: pipe the rows into `project`: `| project`
+
+with the machine-applicable fixes applied:
+    from t | project a
+which parses without errors

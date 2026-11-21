@@ -1,0 +1,44 @@
+# `WHERE` in capitals after the table, without `|`: a certain fix (DS0153).
+mode: syntax
+---- query
+from t WHERE x > 1 | take 5
+---- expected
+PROGRAM@0..28
+  PIPELINE@0..27
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    WHERE_OP@7..18
+      IDENT@7..12 "WHERE"
+      WHITESPACE@12..13 " "
+      BIN_EXPR@13..18
+        NAME_REF@13..14
+          IDENT@13..14 "x"
+        WHITESPACE@14..15 " "
+        GT@15..16 ">"
+        WHITESPACE@16..17 " "
+        LITERAL@17..18
+          LONG@17..18 "1"
+    WHITESPACE@18..19 " "
+    PIPE@19..20 "|"
+    WHITESPACE@20..21 " "
+    TAKE_OP@21..27
+      IDENT@21..25 "take"
+      WHITESPACE@25..26 " "
+      LITERAL@26..27
+        LONG@26..27 "5"
+  WHITESPACE@27..28 "\n"
+
+error[DS0153]: `WHERE` is SQL: DataScript pipes the table into an operator
+  --> query:1:8
+  |
+1 | from t WHERE x > 1 | take 5
+  |        ^^^^^ expected `|` before this
+  |
+  = help: pipe the rows into `where`: `| where`
+
+with the machine-applicable fixes applied:
+    from t | where x > 1 | take 5
+which parses without errors
