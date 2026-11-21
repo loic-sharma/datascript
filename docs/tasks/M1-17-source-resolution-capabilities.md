@@ -35,5 +35,7 @@ M1-05. Split out of M1-05 so each task fits one session.
 
 ## Carried over
 - [ ] (from M1-15) A table name as a source works (DS9001 in the skeleton); columns with no DataScript type give DS2008 instead of a silent error type; `caps` is consulted.
+- [ ] (from M1-24) Table positions are the operand of `from` (`Pipeline::source()`, after `Pipeline::from_token()`) and the right side of `join`/`union`/`lookup`. A constant string or a scalar `let` bound to one is a path there (D-020, D-036).
+- [ ] (from M1-24) When the reader definitions land, replace the check in `catalog_tests::syntax_readers_match_the_compiler` with a comparison of `datascript_syntax::READERS` against them (today it only checks each name reads a known `SourceFormat`).
 
 ## Follow-ups

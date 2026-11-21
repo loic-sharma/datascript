@@ -41,5 +41,8 @@ diagnostics. Operator schemas and joins are M1-16; sources and capabilities are 
 - [ ] (from review of M1-04) Functions can return the internal `Null` type (`abs(null)`, `iff(p, null, null)`, `coalesce(null, null)`, …). Turn it into DS2009 or a default type so Arrow `Null` never reaches `to_arrow`, with a golden case.
 - [ ] (from M1-22) Once `let` binds, `ds run` on a program of only `let` statements gives the DS0004 warning (`Session::run` already emits it when the program has no query). Add the golden `tests/cases/skeleton/ds0004_let_only.dstest` (`let x = 1;`, `mode: run`); today it gives DS9001.
 - [ ] (from review of M1-04) Use M1-23's planned-function list so `make_list` etc. say "not available yet (M2)" instead of DS1004 "unknown function".
+- [ ] (from M1-24) A `let`'s kind is syntactic (D-036): it is tabular iff its value is a `PIPELINE` or one in parentheses (`LetStmt::is_tabular`). Bind table `let`s and scalar `let`s from that, not from the right side's names or types.
+- [ ] (from M1-24) `let alias = orders;` where `orders` is a table is a scalar `let` now. Report it with a binder code from this task's block, with a hint and a fix to write `let alias = from orders;`, and a golden case.
+- [ ] (from M1-24) `let x = (from t | count) + 1` and other scalar expressions that contain a pipeline: reject them with a clear error (a table is not a value), with a golden case.
 
 ## Follow-ups

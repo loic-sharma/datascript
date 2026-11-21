@@ -15,5 +15,6 @@ Add the simpler ○ operators and sources from LANGUAGE.md: `lookup`, `as`, `sam
 
 ## Carried over
 - [ ] (from M1-02) These operators currently parse as an unknown-operator error with a "planned" note; replace that with real parsing.
+- [ ] (from M1-24) Generators start a query without `from` (D-036). The parser already sends `range`, `datatable` and `print` at a pipeline head to `grammar::generator` (via `Parser::at_generator`), which reports DS0104 "not available yet" and skips them; replace that with their grammar, so a generator is a `PIPELINE` whose first child is the generator node. Update `tests/cases/syntax/generator_at_head.dstest`. `range(1, 5)` with no space must stay a call.
 
 ## Follow-ups

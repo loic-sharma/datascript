@@ -77,4 +77,7 @@ line (`range x⏎from 1 to 10`). Keep it that way, so M2-01 inherits this.
 - [ ] M2-01 updated with a "Carried over" item: `range x⏎from 1 to 10` stays one statement, with a
       golden case once `range` parses.
 
+## Carried over
+- [ ] (from M1-24) `join from t` and `union from t` get a generic DS0101 from `grammar::right_table` today, and the `from` token is left as a stray `IDENT` child of `JOIN_OP`/`UNION_OP` (`tests/cases/syntax/from_in_join.dstest`). Replace it with the targeted diagnostic and fix. `| from x` now gets a plain DS0104 (its alias is gone) and `| FROM x` a DS0105 with no help.
+
 ## Follow-ups

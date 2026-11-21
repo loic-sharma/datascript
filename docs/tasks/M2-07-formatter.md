@@ -13,4 +13,7 @@ and comments preserved.
 - [ ] Idempotent and comment-preserving over the whole golden corpus (an automated test).
 - [ ] Refuses to format files with syntax errors, saying why.
 
+## Carried over
+- [ ] (from M1-24) The formatter keeps `from <source>` on the first line of a pipeline, with operators on the following lines: `from orders⏎| where …`, never `from⏎orders`.
+
 ## Follow-ups

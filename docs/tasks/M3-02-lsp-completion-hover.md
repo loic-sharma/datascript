@@ -13,4 +13,7 @@ inside source strings. Hover shows types and catalog docs. Signature help for fu
 - [ ] Completion works in incomplete code (`orders | where am|`), relying on parser recovery.
 - [ ] LSP tests for each completion context.
 
+## Carried over
+- [ ] (from M1-24) Completion after `from ` (a `PIPELINE` whose `from_token()` is followed by nothing or by a partial name) offers only tables and paths: table `let`s, host tables, scalar `let`s bound to strings, reader functions and files. The right side of `join`/`union`/`lookup` is the same kind of position, without `from`.
+
 ## Follow-ups

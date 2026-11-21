@@ -1,6 +1,6 @@
 # M1-24 — Require `from` at the start of a query
 
-**Status:** in-progress
+**Status:** done — `from` is required at every pipeline head (DS0150/DS0151), golden cases migrated, D-036 recorded.
 **Depends on:** M1-22
 **Crates:** `datascript-syntax`, `datascript-diagnostics`, `datascript-compiler` (only where the
 AST shape changes), `datascript-tests`
@@ -162,26 +162,37 @@ that checks it matches the catalog's readers.
     DS0125 summaries.
 
 ## Acceptance criteria
-- [ ] Every example in LANGUAGE.md, README.md and `examples/` starts its queries with `from` (or a
-      generator) and passes `ds check`.
-- [ ] Golden cases for DS0150 (each form above) and DS0151, each with its fix, checked by
+- [x] Every example in LANGUAGE.md, README.md and `examples/` starts its queries with `from` (or a
+      generator) and passes `ds check`. *(Syntax only: `top_customers.ds` stops at `let`/`render`,
+      which the skeleton does not bind yet; M1-13 runs it end to end. See Follow-ups.)*
+- [x] Golden cases for DS0150 (each form above) and DS0151, each with its fix, checked by
       `mode: syntax` (the fix applied parses).
-- [ ] Golden cases for: `from` with each source form (path, glob, name, scalar `let` path, reader
+- [x] Golden cases for: `from` with each source form (path, glob, name, scalar `let` path, reader
       call, parenthesized pipeline); `from x` alone as a query, a `let` value, in parentheses and as
       a call argument (each a `PIPELINE` in the tree); a table `let`; a scalar `let` bound to a
       string and to a bare name (no error); `join`/`union` with a bare table and with a
       parenthesized `from` pipeline; a column named `from`; `from ['from']`; `from from`;
       `let y = from - 1`; a generator at a head before M2-01.
-- [ ] DS0104 no longer mentions `from`; the DS0105 rewrite and every help that quotes a query
+- [x] DS0104 no longer mentions `from`; the DS0105 rewrite and every help that quotes a query
       produce valid `from` syntax.
-- [ ] Accepting `from`, migrating the `.dstest` files, and requiring `from` are separate commits;
+- [x] Accepting `from`, migrating the `.dstest` files, and requiring `from` are separate commits;
       the migration's blessed diff changes no diagnostic code or message.
-- [ ] The syntax crate's `READERS` list is checked against the catalog by a test.
-- [ ] Core crates still build for `wasm32-unknown-unknown`.
-- [ ] Downstream tasks updated with a "Carried over" item each: M1-05 (table `let` kind is syntactic:
+- [x] The syntax crate's `READERS` list is checked against the catalog by a test.
+- [x] Core crates still build for `wasm32-unknown-unknown`.
+- [x] Downstream tasks updated with a "Carried over" item each: M1-05 (table `let` kind is syntactic:
       the value is a `PIPELINE`; hint for `let alias = orders`), M1-17 (table positions are the
       `from` operand and the right side of `join`/`union`/`lookup`), M2-01 (generators start a
       query without `from`), M2-07 (formatter keeps `from <source>` on the first line), M3-02
       (completion after `from`).
 
 ## Follow-ups
+- `from` is a direct child token of `PIPELINE` (no `FROM_CLAUSE` node); see D-036.
+- The catalog has no reader definitions yet, so `READERS` is checked against `SourceFormat` and the
+  scalar catalog; M1-17 has a carried-over item to compare it with the readers it adds.
+- The literal-head lexer cases (numbers, timespans, datetimes) moved into `| extend` in their own
+  commit; string-head lexer cases kept `from '...'`, which reads as a path.
+- `ds check examples/top_customers.ds` still stops at `render` / `let` not implemented (the walking
+  skeleton, as before this task); its syntax parses without errors, as do all `ds` blocks in
+  LANGUAGE.md and README.md.
+- Harness unit tests in `datascript-tests` (`pipeline.rs`, `fixes.rs`, `case.rs`) and some
+  diagnostics render tests still use bare sources in strings; they never parse them as programs.
