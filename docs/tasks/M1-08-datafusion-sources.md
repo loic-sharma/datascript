@@ -51,5 +51,7 @@ Design-review additions:
 - [ ] (from M1-15) Replace the temporary `SourceError::Unreadable { reason }` (reported as DS9001) with specific cases and DS3008.
 - [ ] (from M1-15) Read all supported extensions (not only `.csv`), globs, reader options and host tables; the scan reuses the schema read during checking instead of reading it again.
 - [ ] (from M0-04) Confirm DataFusion's CSV inference reads `2024-02-29T23:59:59Z` timestamps as UTC timestamps, not strings, with a golden case.
+- [ ] (from review of M1-04) Struct, List and Map columns must not be widened to `arrow.json` text by `widen()` in M1 (the text is not JSON, or the cast fails); report them as unsupported (DS2008) until M2-03, matching M1-23.
+- [ ] (from review of M1-04) A `UInt64` value above `i64::MAX` fails the scan cast with a generic DS4002. Report DS4003 naming the column, as LANGUAGE.md §5.1 requires.
 
 ## Follow-ups

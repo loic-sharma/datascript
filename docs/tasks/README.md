@@ -21,6 +21,9 @@ M1 starts with a walking skeleton (M1-15): one query runs through every layer be
 built out, so interface mistakes show up early. Later M1 tasks extend that code.
 M1-16 and M1-17 both edit the binder; they run in parallel only if each keeps to its own modules
 (operators and joins vs. sources and capabilities).
+M1-18…M1-23 came out of a review of M1-01…M1-04. M1-18, M1-19, M1-21 and M1-22 all edit the
+parser in `datascript-syntax`. M1-19 and M1-21 run in parallel only if each keeps to its own code
+(grammar and recovery vs. fixes in `targeted.rs`).
 
 Two shared files are touched by many tasks:
 - **This index.** Status-only conflicts in the table are expected when parallel branches merge.
@@ -47,6 +50,12 @@ Two shared files are touched by many tasks:
 | [M1-03](M1-03-syntax-diagnostics.md) | Syntax diagnostics quality pass | M1-02 | done | M1-05 and later |
 | [M1-04](M1-04-types-function-catalog.md) | Type system and function catalog | M0-02 | done | M1-01, M1-02 |
 | [M1-15](M1-15-walking-skeleton.md) | Walking skeleton: one query through every layer | M1-02, M1-04, M0-04, M0-05 | done | M1-03 |
+| [M1-18](M1-18-parser-long-input.md) | Parser: long and deep input | M1-03 | todo | M1-20, M1-23, M1-05 and later |
+| [M1-19](M1-19-parser-grammar-recovery.md) | Parser: grammar fixes and recovery | M1-18 | todo | M1-20, M1-23, M1-05 and later |
+| [M1-20](M1-20-lexer-literal-fixes.md) | Lexer and literal fixes | M1-03 | todo | M1-18, M1-19, M1-21, M1-23 |
+| [M1-21](M1-21-syntax-fix-correctness.md) | Syntax suggestions that produce valid code | M1-18 | todo | M1-19, M1-20, M1-23 |
+| [M1-22](M1-22-syntax-diagnostics-coverage.md) | Syntax diagnostics: more habits and style fixes | M1-21, M1-19 | todo | M1-23, M1-05 and later |
+| [M1-23](M1-23-type-system-fixes.md) | Type system and catalog fixes | M1-04 | todo | M1-18…M1-22 |
 | [M1-05](M1-05-binder.md) | Binder core and expression checking | M1-15 | todo | M1-03 |
 | [M1-16](M1-16-operator-schemas-joins.md) | Binder: operator schemas, column naming, joins | M1-05 | todo | M1-03, M1-17 |
 | [M1-17](M1-17-source-resolution-capabilities.md) | Binder: source resolution and capability pass | M1-05 | todo | M1-03, M1-16 |
@@ -57,7 +66,7 @@ Two shared files are touched by many tasks:
 | [M1-10](M1-10-render-operator.md) | `render` operator semantics | M1-16, M1-06 | todo | M1-07…M1-09 |
 | [M1-11](M1-11-cli.md) | CLI: check, run, explain | M1-09 | todo | |
 | [M1-12](M1-12-repl.md) | REPL | M1-11 | todo | |
-| [M1-13](M1-13-m1-acceptance.md) | M1 acceptance and polish | M1-03, M1-10, M1-11, M1-12, M1-14 | todo | |
+| [M1-13](M1-13-m1-acceptance.md) | M1 acceptance and polish | M1-03, M1-10, M1-11, M1-12, M1-14, M1-18…M1-23 | todo | |
 | [M1-14](M1-14-lints.md) | Warning lints | M1-16 | todo | M1-06…M1-12 |
 
 ## M2 — Language breadth
