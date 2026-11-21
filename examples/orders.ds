@@ -1,0 +1,1 @@
+'../tests/data/orders.csv' | where amount > 100 | project orderId, amount | take 5
