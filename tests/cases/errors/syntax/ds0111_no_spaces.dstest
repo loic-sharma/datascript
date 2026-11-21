@@ -25,7 +25,7 @@ error[DS0111]: `&&` is not an operator
   --> query:1:23
   |
 1 | 'orders.csv' | where a&&b
-  |                       ^^
+  |                       ^^ this is C's "and"
   |
   = help: use `and` to require both conditions: `a and b`
 

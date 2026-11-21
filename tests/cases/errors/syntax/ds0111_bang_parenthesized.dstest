@@ -44,7 +44,7 @@ error[DS0111]: `!` is not an operator
   --> query:1:22
   |
 1 | 'orders.csv' | where !(amount > 10 or amount < 1)
-  |                      ^
+  |                      ^ this is C's "not"
   |
   = help: negate it with `not(...)`: `not(amount > 10 or amount < 1)`
 

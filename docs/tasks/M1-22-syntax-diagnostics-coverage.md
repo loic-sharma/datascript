@@ -1,6 +1,6 @@
 # M1-22 — Syntax diagnostics: more habits and style fixes
 
-**Status:** todo
+**Status:** done — targeted diagnostics for SQL habits, a missing table, reserved names, trailing commas, `in [...]`, `in ~` and `1.2.3`; DS0004 from `ds run`; label, tab and long-line fixes
 **Depends on:** M1-21, M1-19
 **Crates:** `datascript-syntax`, `datascript-diagnostics`
 **Diagnostic codes:** DS0102–DS0149 (D-018); also implements the registered DS0004 (owned by the
@@ -35,12 +35,32 @@ Style fixes:
   the span.
 
 ## Acceptance criteria
-- [ ] A golden case for each item above, including an empty program and a comments-only program
+- [x] A golden case for each item above, including an empty program and a comments-only program
       (DS0004).
-- [ ] New codes added to DIAGNOSTICS.md's registry and `codes.rs`, from this block only.
-- [ ] A golden case with tabs in the source and in help text.
+- [x] New codes added to DIAGNOSTICS.md's registry and `codes.rs`, from this block only.
+- [x] A golden case with tabs in the source and in help text.
 
 ## Carried over
-- [ ] (from M1-20) `x !in ~ ('a')` gives a bare DS0101 ("expected `(` ... found `~`") with no help. Recognize `!in ~` / `in ~` with a space and suggest `!in~` / `in~` (machine-applicable). Golden: `tests/cases/lexer/negated_in_tilde_with_space.dstest`.
+- [x] (from M1-20) `x !in ~ ('a')` gives a bare DS0101 ("expected `(` ... found `~`") with no help. Recognize `!in ~` / `in ~` with a space and suggest `!in~` / `in~` (machine-applicable). Golden: `tests/cases/lexer/negated_in_tilde_with_space.dstest`.
 
 ## Follow-ups
+Notes (no owner needed):
+- New codes: DS0117 (SQL forms: `count(*)`, `project *`, `''` in a string), DS0125 (query with no
+  table, including the old "expected a table before `|`"), DS0126 (reserved word as a name, with a
+  machine-applicable quote fix; replaces the help on DS0101 for `let`), DS0127 (trailing comma),
+  DS0128 (`in [...]`, also `in ['a']`, which lexes as a quoted name), DS0129 (`in ~` / `!in ~`).
+  SQL keyword habits (`AND`/`OR`/`NOT`/`IN` in capitals, `IS [NOT] NULL`, `[NOT] LIKE`, `AS`,
+  `NOT IN`) use DS0105, whose summary now lists them.
+- `1.2.3` reuses the registered DS0003 (invalid number literal) rather than a new code: the
+  parser emits it, because the lexer reads `1.2` and `.3` as two valid tokens.
+- DS0004 is emitted by `Session::run` (engine), not the parser: LANGUAGE.md says a program with
+  no query is valid for `ds check`. The harness rejects an empty `---- query` section, so the
+  "empty program" golden is `;`; the engine unit test `run_warns_when_there_is_no_query` covers
+  truly empty and whitespace-only text.
+- The `SELECT` rewrite now handles `WHERE` (with `=`/`<>`/`AND`/`OR` translated), `GROUP BY`,
+  `ORDER BY`, `LIMIT`, `x AS y` and `count(*)`; anything else (`HAVING`, `LIKE`, joins) falls
+  back to the generic example.
+- Only all-caps SQL words are DS0105. Title case (`Where`, `Select`) is DS0104 with the
+  case-sensitive or alias help; title-case `And`/`Or` are not recognized as habits.
+- Long source lines (over 120 columns) are cut to a window of about 100 columns around the
+  labels, with `...` (`…` in the terminal) where text was left out.

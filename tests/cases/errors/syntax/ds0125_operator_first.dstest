@@ -1,0 +1,35 @@
+# A query that starts with an operator: DS0125 says a query starts with a table.
+mode: syntax
+---- query
+where amount > 1 | take 5
+---- expected
+PROGRAM@0..26
+  PIPELINE@0..25
+    WHERE_OP@0..16
+      IDENT@0..5 "where"
+      WHITESPACE@5..6 " "
+      BIN_EXPR@6..16
+        NAME_REF@6..12
+          IDENT@6..12 "amount"
+        WHITESPACE@12..13 " "
+        GT@13..14 ">"
+        WHITESPACE@14..15 " "
+        LITERAL@15..16
+          LONG@15..16 "1"
+    WHITESPACE@16..17 " "
+    PIPE@17..18 "|"
+    WHITESPACE@18..19 " "
+    TAKE_OP@19..25
+      IDENT@19..23 "take"
+      WHITESPACE@23..24 " "
+      LITERAL@24..25
+        LONG@24..25 "5"
+  WHITESPACE@25..26 "\n"
+
+error[DS0125]: a query starts with a table, not with `where`
+  --> query:1:1
+  |
+1 | where amount > 1 | take 5
+  | ^^^^^ `where` is an operator
+  |
+  = help: start with the table and pipe it into `where`: `'data.csv' | where amount > 1 | take 5`

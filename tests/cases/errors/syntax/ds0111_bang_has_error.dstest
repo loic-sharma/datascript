@@ -23,7 +23,7 @@ error[DS0111]: `!` is not an operator
   --> query:1:22
   |
 1 | 'events.csv' | where !has_error
-  |                      ^
+  |                      ^ this is C's "not"
   |
   = help: negate it with `not(...)`: `not(has_error)`
   = note: `!has_error` is `!` followed by the name `has_error`; the negated operator `!has` goes between two values: `a !has b`

@@ -1,0 +1,32 @@
+# SQL's `LIKE` with a pattern that has no fixed-text equivalent: DS0105 with help but no fix.
+mode: syntax
+---- query
+'orders.csv' | where customerId LIKE 'c_%2'
+---- expected
+PROGRAM@0..44
+  PIPELINE@0..43
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..43
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      BIN_EXPR@21..43
+        NAME_REF@21..31
+          IDENT@21..31 "customerId"
+        WHITESPACE@31..32 " "
+        IDENT@32..36 "LIKE"
+        WHITESPACE@36..37 " "
+        LITERAL@37..43
+          STRING@37..43 "'c_%2'"
+  WHITESPACE@43..44 "\n"
+
+error[DS0105]: `LIKE` is SQL, not DataScript
+  --> query:1:33
+  |
+1 | 'orders.csv' | where customerId LIKE 'c_%2'
+  |                                 ^^^^ this is SQL's pattern match
+  |
+  = help: use `startswith`, `endswith` or `contains` for a fixed text, or `matches regex` for a pattern

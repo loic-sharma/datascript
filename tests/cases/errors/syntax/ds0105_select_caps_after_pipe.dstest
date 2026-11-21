@@ -27,7 +27,7 @@ error[DS0105]: SQL keyword `SELECT` is not an operator
   --> query:1:16
   |
 1 | 'orders.csv' | SELECT customerId, amount
-  |                ^^^^^^
+  |                ^^^^^^ this is SQL
   |
   = help: choose or compute columns with `project`: `project a, b`
 

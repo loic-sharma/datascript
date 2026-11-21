@@ -1,0 +1,10 @@
+# A program with only comments runs nothing: DS0004.
+mode: run
+---- query
+// just a comment
+/* and another */
+---- expected
+warning[DS0004]: program has no query to run
+  --> query
+  |
+  = help: add a query, such as `'data.csv' | take 10`

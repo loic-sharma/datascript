@@ -39,6 +39,7 @@ diagnostics. Operator schemas and joins are M1-16; sources and capabilities are 
 - [ ] (from M0-03) Replace the stand-in DataScript ↔ Arrow type-name mapping in `datascript-tests::schema` with M1-04's mapping (`arrow.rs`).
 - [ ] (from review of M1-03) Run the binder only on a usable tree (ARCHITECTURE.md), or skip subtrees with syntax errors, so a syntax error adds no semantic errors. Today `where 1 < a < 3` also gives DS2003, `summerize count()` also gives DS9001 (D-030 says bind it as `summarize`), `t > 1x` also gives DS9001, and `project let, true` gives 3 errors.
 - [ ] (from review of M1-04) Functions can return the internal `Null` type (`abs(null)`, `iff(p, null, null)`, `coalesce(null, null)`, …). Turn it into DS2009 or a default type so Arrow `Null` never reaches `to_arrow`, with a golden case.
+- [ ] (from M1-22) Once `let` binds, `ds run` on a program of only `let` statements gives the DS0004 warning (`Session::run` already emits it when the program has no query). Add the golden `tests/cases/skeleton/ds0004_let_only.dstest` (`let x = 1;`, `mode: run`); today it gives DS9001.
 - [ ] (from review of M1-04) Use M1-23's planned-function list so `make_list` etc. say "not available yet (M2)" instead of DS1004 "unknown function".
 
 ## Follow-ups

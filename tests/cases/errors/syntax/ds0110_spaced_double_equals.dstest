@@ -29,7 +29,7 @@ error[DS0110]: `= =` is not an operator
   --> query:1:13
   |
 1 | t | where a = = 1
-  |             ^^^
+  |             ^^^ two `=` with a space between them
   |
   = help: use `==` to compare values: `a == 1`
 

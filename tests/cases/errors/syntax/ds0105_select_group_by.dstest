@@ -1,0 +1,38 @@
+# A SQL `GROUP BY` query gets the concrete rewrite to `summarize ... by`.
+mode: syntax
+---- query
+SELECT customerId, count(*) FROM 'orders.csv' GROUP BY customerId
+---- expected
+PROGRAM@0..66
+  PIPELINE@0..65
+    ERROR@0..65
+      IDENT@0..6 "SELECT"
+      WHITESPACE@6..7 " "
+      IDENT@7..17 "customerId"
+      COMMA@17..18 ","
+      WHITESPACE@18..19 " "
+      IDENT@19..24 "count"
+      L_PAREN@24..25 "("
+      STAR@25..26 "*"
+      R_PAREN@26..27 ")"
+      WHITESPACE@27..28 " "
+      IDENT@28..32 "FROM"
+      WHITESPACE@32..33 " "
+      STRING@33..45 "'orders.csv'"
+      WHITESPACE@45..46 " "
+      IDENT@46..51 "GROUP"
+      WHITESPACE@51..52 " "
+      IDENT@52..54 "BY"
+      WHITESPACE@54..55 " "
+      IDENT@55..65 "customerId"
+  WHITESPACE@65..66 "\n"
+
+error[DS0105]: `SELECT ... FROM` is SQL, not DataScript
+  --> query:1:1
+  |
+1 | SELECT customerId, count(*) FROM 'orders.csv' GROUP BY customerId
+  | ^^^^^^                      ---- in DataScript the table comes first
+  | |
+  | this is SQL
+  |
+  = help: start with the table and pipe it into operators: `'orders.csv' | summarize count() by customerId`

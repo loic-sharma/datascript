@@ -5,7 +5,10 @@
 //! the format of golden tests (TESTING.md), so its output must stay byte-stable.
 //!
 //! - Columns in the location line count characters; a tab counts as one.
-//! - In the snippet, a tab is shown as four spaces and markers line up with that.
+//! - In the snippet, a tab is shown as four spaces and markers line up with that. Help and notes
+//!   show tabs the same way.
+//! - A source line wider than [`MAX_LINE_WIDTH`] columns is cut to a window around its labels,
+//!   with an ellipsis where text was left out.
 //! - Output lines never end with whitespace.
 //! - Help is printed before notes. Only the help text is printed: a [`Suggestion`] is for tools
 //!   (JSON, LSP), so the help message itself must spell out the rewrite (style rule 4).
@@ -20,6 +23,13 @@ use crate::span::FileId;
 
 const TAB: &str = "    ";
 
+/// Source lines up to this many columns are shown whole.
+const MAX_LINE_WIDTH: usize = 120;
+/// How many columns a cut line shows, at least.
+const WINDOW: usize = 100;
+/// How many columns of context a cut line keeps before its first label.
+const CONTEXT: usize = 40;
+
 /// Renders diagnostics as text, for terminals and golden tests.
 #[derive(Debug, Clone, Copy)]
 pub struct Renderer {
@@ -33,6 +43,8 @@ struct Chars {
     border: char,
     connector: char,
     ellipsis: &'static str,
+    /// Marks text left out of a long source line.
+    cut: &'static str,
     primary: char,
     secondary: char,
 }
@@ -42,6 +54,7 @@ const UNICODE: Chars = Chars {
     border: '│',
     connector: '│',
     ellipsis: "·",
+    cut: "…",
     primary: '^',
     secondary: '-',
 };
@@ -51,6 +64,7 @@ const ASCII: Chars = Chars {
     border: '|',
     connector: '|',
     ellipsis: "...",
+    cut: "...",
     primary: '^',
     secondary: '-',
 };
@@ -147,7 +161,7 @@ impl Renderer {
                 } else {
                     line.push(&indent, Style::Plain);
                 }
-                line.push(text, Style::Plain);
+                line.push(&text.replace('\t', TAB), Style::Plain);
             }
         }
     }
@@ -304,7 +318,12 @@ impl<'a> Snippet<'a> {
             if let Some(previous) = previous {
                 match index - previous {
                     1 => {}
-                    2 => self.source_line(out, previous + 1, gutter),
+                    2 => {
+                        let text = self.file.line_text(previous + 1).replace('\t', TAB);
+                        let width = text.chars().count();
+                        let window = Window::new(width, 0, 0, chars.cut);
+                        self.source_line(out, &text, previous + 1, gutter, &window);
+                    }
                     _ => {
                         let line = out.line();
                         line.push(pad, Style::Plain);
@@ -313,19 +332,52 @@ impl<'a> Snippet<'a> {
                 }
             }
             previous = Some(*index);
-            self.source_line(out, *index, gutter);
-            self.markers(out, pad, segments);
+            let text = self.file.line_text(*index).replace('\t', TAB);
+            let width = text.chars().count();
+            let lo = segments.iter().map(|s| s.start).min().unwrap_or(0);
+            let hi = segments.iter().map(|s| s.end).max().unwrap_or(0);
+            let window = Window::new(width, lo, hi, chars.cut);
+            self.source_line(out, &text, *index, gutter, &window);
+            let shifted: Vec<Segment<'_>> = segments
+                .iter()
+                .map(|s| Segment {
+                    start: window.column(s.start),
+                    end: window.column(s.end),
+                    primary: s.primary,
+                    message: s.message,
+                })
+                .collect();
+            self.markers(out, pad, &shifted);
         }
     }
 
-    fn source_line(&self, out: &mut Output, index: usize, gutter: usize) {
+    /// One source line, `text`, with tabs already expanded, cut to `window`.
+    fn source_line(
+        &self,
+        out: &mut Output,
+        text: &str,
+        index: usize,
+        gutter: usize,
+        window: &Window,
+    ) {
         let line = out.line();
         let mut number = String::new();
         let _ = write!(number, "{:>gutter$} ", index + 1);
         line.push(&number, Style::Border);
         line.push_char(self.chars.border, Style::Border);
         line.push(" ", Style::Plain);
-        line.push(&self.file.line_text(index).replace('\t', TAB), Style::Plain);
+        if window.start > 0 {
+            line.push(self.chars.cut, Style::Border);
+        }
+        let shown: String = text
+            .chars()
+            .skip(window.start)
+            .take(window.end - window.start)
+            .collect();
+        line.push(&shown, Style::Plain);
+        if window.end < window.width {
+            line.push(self.chars.cut, Style::Border);
+        }
     }
 
     fn markers(&self, out: &mut Output, pad: &str, segments: &[Segment<'_>]) {
@@ -401,6 +453,48 @@ impl<'a> Snippet<'a> {
             line.push(" ", Style::Plain);
             line.cells.extend(row.cells);
         }
+    }
+}
+
+/// The columns of a source line that are shown: all of a short line, and a window around the
+/// labels (columns `lo..hi`) of a line wider than [`MAX_LINE_WIDTH`].
+#[derive(Debug)]
+struct Window {
+    /// Width of the whole line, in columns.
+    width: usize,
+    start: usize,
+    end: usize,
+    /// Columns taken by the mark of left-out text before the window (0 if nothing is cut).
+    lead: usize,
+}
+
+impl Window {
+    fn new(width: usize, lo: usize, hi: usize, cut: &str) -> Self {
+        if width <= MAX_LINE_WIDTH {
+            return Window {
+                width,
+                start: 0,
+                end: width,
+                lead: 0,
+            };
+        }
+        let mut start = lo.saturating_sub(CONTEXT);
+        let end = (hi + CONTEXT).max(start + WINDOW).min(width);
+        if end - start < WINDOW {
+            start = end.saturating_sub(WINDOW).min(lo);
+        }
+        let lead = if start > 0 { cut.chars().count() } else { 0 };
+        Window {
+            width,
+            start,
+            end,
+            lead,
+        }
+    }
+
+    /// Where line column `column` is shown.
+    fn column(&self, column: usize) -> usize {
+        column.saturating_sub(self.start) + self.lead
     }
 }
 
@@ -564,5 +658,51 @@ mod tests {
         let d = Diagnostic::error(Code::new(1), "m").primary(Span::new(f, 0, 1), "");
         let out = Renderer::plain().render(&d, &sources);
         assert!(out.lines().all(|l| l == l.trim_end()), "{out:?}");
+    }
+
+    #[test]
+    fn long_lines_are_cut_around_the_label() {
+        let mut sources = SourceMap::new();
+        let text = format!("{}xyz{}\n", "a".repeat(300), "b".repeat(300));
+        let f = sources.add("q", text.as_str());
+        let d = Diagnostic::error(Code::new(1), "m").primary(Span::new(f, 300, 303), "here");
+        let out = Renderer::plain().render(&d, &sources);
+        let lines: Vec<&str> = out.lines().collect();
+        let source = lines[3];
+        let marker = lines[4];
+        assert!(
+            source.starts_with("1 | ...") && source.ends_with("..."),
+            "{out}"
+        );
+        assert!(source.chars().count() < 120, "{out}");
+        let column = source.find("xyz").unwrap();
+        assert_eq!(marker.find('^'), Some(column), "{out}");
+        assert!(marker.ends_with("^^^ here"), "{out}");
+    }
+
+    #[test]
+    fn short_lines_are_not_cut() {
+        let mut sources = SourceMap::new();
+        let text = "a".repeat(120);
+        let f = sources.add("q", text.as_str());
+        let d = Diagnostic::error(Code::new(1), "m").primary(Span::new(f, 119, 120), "");
+        let out = Renderer::plain().render(&d, &sources);
+        assert!(!out.contains("..."), "{out}");
+    }
+
+    #[test]
+    fn tabs_in_help_are_expanded() {
+        let mut sources = SourceMap::new();
+        let f = sources.add("q", "x\n");
+        let d = Diagnostic::error(Code::new(1), "m")
+            .primary(Span::new(f, 0, 1), "")
+            .help("write `a\tb`")
+            .note("c\td");
+        let out = Renderer::plain().render(&d, &sources);
+        assert!(!out.contains('\t'), "{out:?}");
+        assert!(
+            out.contains("write `a    b`") && out.contains("c    d"),
+            "{out}"
+        );
     }
 }

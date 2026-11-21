@@ -77,7 +77,7 @@ error[DS0120]: `render` must be the last operator
   --> query:3:3
   |
 3 | | render barchart with (title = "Totals")
-  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the chart is drawn at this point
 4 | | sort by total desc
   |   ------------------ this operator comes after `render`
   |

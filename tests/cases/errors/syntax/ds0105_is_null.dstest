@@ -1,0 +1,35 @@
+# SQL's `IS NULL`: DS0105 with a fix to `isnull(...)`.
+mode: syntax
+---- query
+'orders.csv' | where amount is null
+---- expected
+PROGRAM@0..36
+  PIPELINE@0..35
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..35
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      BIN_EXPR@21..35
+        NAME_REF@21..27
+          IDENT@21..27 "amount"
+        WHITESPACE@27..28 " "
+        IDENT@28..30 "is"
+        WHITESPACE@30..31 " "
+        NULL_KW@31..35 "null"
+  WHITESPACE@35..36 "\n"
+
+error[DS0105]: `is null` is SQL, not DataScript
+  --> query:1:29
+  |
+1 | 'orders.csv' | where amount is null
+  |                             ^^^^^^^ this is SQL's null test
+  |
+  = help: test for null with `isnull(...)`: `isnull(amount)`
+
+with the machine-applicable fixes applied:
+    'orders.csv' | where isnull(amount)
+which parses without errors

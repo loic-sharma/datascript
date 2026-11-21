@@ -1,0 +1,21 @@
+# A table whose name is an operator, used alone, is a table: no DS0125.
+mode: syntax
+---- query
+count;
+take | count
+---- expected
+PROGRAM@0..20
+  PIPELINE@0..5
+    NAME_REF@0..5
+      IDENT@0..5 "count"
+  SEMICOLON@5..6 ";"
+  WHITESPACE@6..7 "\n"
+  PIPELINE@7..19
+    NAME_REF@7..11
+      IDENT@7..11 "take"
+    WHITESPACE@11..12 " "
+    PIPE@12..13 "|"
+    WHITESPACE@13..14 " "
+    COUNT_OP@14..19
+      IDENT@14..19 "count"
+  WHITESPACE@19..20 "\n"

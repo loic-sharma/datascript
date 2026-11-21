@@ -1,0 +1,53 @@
+# `1.2.3` is one bad number, not `1.2` followed by `.3`.
+mode: syntax
+---- query
+'orders.csv' | extend version = 1.2.3, ip = 10.0.0.1
+---- expected
+PROGRAM@0..53
+  PIPELINE@0..52
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    EXTEND_OP@15..52
+      IDENT@15..21 "extend"
+      WHITESPACE@21..22 " "
+      NAMED_EXPR@22..37
+        NAME@22..29
+          IDENT@22..29 "version"
+        WHITESPACE@29..30 " "
+        EQ@30..31 "="
+        WHITESPACE@31..32 " "
+        LITERAL@32..37
+          REAL@32..35 "1.2"
+          REAL@35..37 ".3"
+      COMMA@37..38 ","
+      WHITESPACE@38..39 " "
+      NAMED_EXPR@39..52
+        NAME@39..41
+          IDENT@39..41 "ip"
+        WHITESPACE@41..42 " "
+        EQ@42..43 "="
+        WHITESPACE@43..44 " "
+        LITERAL@44..52
+          REAL@44..48 "10.0"
+          REAL@48..50 ".0"
+          REAL@50..52 ".1"
+  WHITESPACE@52..53 "\n"
+
+error[DS0003]: invalid number `1.2.3`
+  --> query:1:33
+  |
+1 | 'orders.csv' | extend version = 1.2.3, ip = 10.0.0.1
+  |                                 ^^^^^ a number has at most one decimal point
+  |
+  = help: if this is a version or an address, write it as a string: `'1.2.3'`
+
+error[DS0003]: invalid number `10.0.0.1`
+  --> query:1:45
+  |
+1 | 'orders.csv' | extend version = 1.2.3, ip = 10.0.0.1
+  |                                             ^^^^^^^^ a number has at most one decimal point
+  |
+  = help: if this is a version or an address, write it as a string: `'10.0.0.1'`

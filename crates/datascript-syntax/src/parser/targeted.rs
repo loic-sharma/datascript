@@ -11,8 +11,8 @@ use super::grammar::{LATER_OPERATORS, OPERATORS, word_list};
 use super::{Parser, TokenSet};
 use crate::SyntaxKind::{self, *};
 
-/// SQL words that people write as an operator, matched ignoring case. Written in any other case
-/// than lowercase they are DS0105.
+/// SQL words that people write as an operator, matched ignoring case. Written in capitals they
+/// are DS0105.
 const SQL_WORDS: &[&str] = &[
     "distinct", "from", "group", "having", "join", "limit", "order", "select", "top", "union",
     "where",
@@ -118,6 +118,9 @@ const OPERATOR_ALIASES: &[(&str, Option<&str>, &str, bool)] = &[
         false,
     ),
 ];
+
+/// SQL aggregate functions that have the same name in DataScript, matched ignoring case.
+const SQL_AGGREGATES: &[&str] = &["avg", "count", "max", "min", "sum"];
 
 const GROUP_HELP: &str = "to group rows, use `summarize ... by`: `summarize count() by customerId`";
 const FROM_HELP: &str = "a query starts with its table, without `from`: `'orders.csv' | take 10`";
@@ -334,7 +337,7 @@ impl Parser<'_> {
             codes::DS0104,
             format!("operator name `{written}` has spaces in it"),
         )
-        .primary(span, "");
+        .primary(span, "an operator name is one word");
         if LATER_OPERATORS.contains(&name) {
             d = d.note(format!("`{name}` is planned but not available yet"));
         } else {
@@ -359,8 +362,9 @@ impl Parser<'_> {
         }
         let lower = name.to_lowercase();
 
-        // SQL keywords in SQL's uppercase (DS0105). `GROUP BY` and `ORDER BY` are one keyword.
-        if lower != name && SQL_WORDS.contains(&lower.as_str()) {
+        // SQL keywords in SQL's capitals (DS0105). `GROUP BY` and `ORDER BY` are one keyword.
+        // Other mixed case (`Where`) is just the wrong case, below.
+        if lower != name && name == name.to_uppercase() && SQL_WORDS.contains(&lower.as_str()) {
             let mut written = name.to_string();
             if matches!(lower.as_str(), "group" | "order")
                 && self.nth(len) == IDENT
@@ -373,7 +377,7 @@ impl Parser<'_> {
                 codes::DS0105,
                 format!("SQL keyword `{written}` is not an operator"),
             )
-            .primary(span, "");
+            .primary(span, "this is SQL");
             let has_by = written.contains(char::is_whitespace);
             return match lower.as_str() {
                 // `| SELECT *` keeps every column, which the rows have already.
@@ -426,7 +430,7 @@ impl Parser<'_> {
 
         // Operator names from other languages.
         if let Some(&(_, replacement, help, certain)) =
-            OPERATOR_ALIASES.iter().find(|(alias, ..)| *alias == name)
+            OPERATOR_ALIASES.iter().find(|(alias, ..)| *alias == lower)
         {
             let d = d.primary(span, "not a DataScript operator");
             return match replacement {
@@ -455,7 +459,7 @@ impl Parser<'_> {
                 );
         }
 
-        let d = d.primary(span, "");
+        let d = d.primary(span, "not an operator");
         let close = did_you_mean(name, OPERATORS.iter().copied());
         // A misspelled name from another language (`filtr`): say what it is called here, but
         // leave the fix to the user.
@@ -521,43 +525,272 @@ impl Parser<'_> {
         self.report(d);
     }
 
-    /// `SELECT cols FROM table [WHERE cond]` as a pipeline, when it is that simple.
+    /// `SELECT items FROM table [WHERE cond] [GROUP BY keys] [ORDER BY keys] [LIMIT n]` as a
+    /// pipeline, when every part has a plain DataScript equivalent.
     fn sql_rewrite(&self, select: usize, from: usize, end: usize) -> Option<String> {
-        let cols = &self.tokens[select + 1..from];
-        let star = matches!(cols, [t] if t.kind == STAR);
-        let names = !cols.is_empty()
-            && cols
-                .iter()
-                .all(|t| matches!(t.kind, IDENT | QUOTED_IDENT | COMMA));
-        if !(star || names) || from + 1 >= end {
+        let table = *self.tokens.get(from + 1)?;
+        if from + 1 >= end || !matches!(table.kind, IDENT | QUOTED_IDENT | STRING) {
             return None;
         }
-        let table = self.tokens[from + 1];
-        if !matches!(table.kind, IDENT | QUOTED_IDENT | STRING) {
-            return None;
-        }
-        let mut rewrite = table.text(self.text).to_string();
-        let rest = &self.tokens[from + 2..end];
-        if let Some((kw, cond)) = rest.split_first() {
-            let is_where = kw.kind == IDENT && kw.text(self.text).eq_ignore_ascii_case("where");
-            let plain = !cond.is_empty()
-                && cond.iter().all(|t| {
-                    !matches!(t.kind, EQ | LTGT | AMP2 | PIPE2 | BANG | ERROR)
-                        && !(t.kind == IDENT
-                            && SQL_WORDS.contains(&t.text(self.text).to_lowercase().as_str()))
-                });
-            if !(is_where && plain) {
-                return None;
+        // The clauses after the table, split at their keywords (outside brackets).
+        let mut clauses: Vec<(&str, usize, usize)> = Vec::new();
+        let mut i = from + 2;
+        let mut depth = 0u32;
+        let mut current: Option<(&str, usize)> = None;
+        while i < end {
+            let t = self.tokens[i];
+            match t.kind {
+                L_PAREN | L_BRACK => depth += 1,
+                R_PAREN | R_BRACK => depth = depth.saturating_sub(1),
+                _ => {}
             }
-            let cond_text = self.source(cond[0].start, cond[cond.len() - 1].end());
-            rewrite = format!("{rewrite} | where {cond_text}");
+            let word = (t.kind == IDENT && depth == 0).then(|| t.text(self.text).to_lowercase());
+            let by = |j: usize| {
+                self.tokens.get(j).is_some_and(|t| {
+                    t.kind == IDENT && t.text(self.text).eq_ignore_ascii_case("by")
+                })
+            };
+            let clause = match word.as_deref() {
+                Some("where") => Some(("where", 1)),
+                Some("group") if by(i + 1) => Some(("group", 2)),
+                Some("order") if by(i + 1) => Some(("order", 2)),
+                Some("limit") => Some(("limit", 1)),
+                Some("having" | "join" | "union" | "offset") => return None,
+                _ => None,
+            };
+            match clause {
+                Some((name, len)) => {
+                    if let Some((prev, start)) = current {
+                        clauses.push((prev, start, i));
+                    }
+                    if clauses.iter().any(|(c, ..)| *c == name) {
+                        return None;
+                    }
+                    current = Some((name, i + len));
+                    i += len;
+                }
+                None if current.is_none() => return None,
+                None => i += 1,
+            }
         }
-        if names {
-            let cols_text = self.source(cols[0].start, cols[cols.len() - 1].end());
-            rewrite = format!("{rewrite} | project {cols_text}");
+        if let Some((name, start)) = current {
+            clauses.push((name, start, end));
+        }
+        let clause = |name: &str| {
+            clauses
+                .iter()
+                .find(|(c, ..)| *c == name)
+                .map(|&(_, start, end)| (start, end))
+        };
+
+        // The select list: `*`, or items split at commas outside brackets.
+        let cols = select + 1..from;
+        let star = cols.len() == 1 && self.tokens[select + 1].kind == STAR;
+        let mut items: Vec<(String, bool)> = Vec::new();
+        if !star {
+            let mut start = cols.start;
+            let mut depth = 0u32;
+            for i in cols.clone() {
+                match self.tokens[i].kind {
+                    L_PAREN => depth += 1,
+                    R_PAREN => depth = depth.saturating_sub(1),
+                    COMMA if depth == 0 => {
+                        items.push(self.sql_item(start, i)?);
+                        start = i + 1;
+                    }
+                    _ => {}
+                }
+            }
+            items.push(self.sql_item(start, cols.end)?);
+        }
+
+        let mut rewrite = table.text(self.text).to_string();
+        if let Some((start, end)) = clause("where") {
+            rewrite = format!("{rewrite} | where {}", self.sql_expr(start, end)?);
+        }
+        let sort = match clause("order") {
+            Some((start, end)) => {
+                let keys = self.sql_list(start, end, true)?;
+                Some(format!(" | sort by {}", keys.join(", ")))
+            }
+            None => None,
+        };
+        let take = match clause("limit") {
+            Some((start, end)) if end == start + 1 && self.tokens[start].kind == LONG => {
+                Some(format!(" | take {}", self.tokens[start].text(self.text)))
+            }
+            Some(_) => return None,
+            None => None,
+        };
+        let aggregates: Vec<&str> = items
+            .iter()
+            .filter(|(_, agg)| *agg)
+            .map(|(text, _)| text.as_str())
+            .collect();
+        match clause("group") {
+            Some((start, end)) => {
+                let keys = self.sql_list(start, end, false)?;
+                // Every item that is not an aggregate must be a key.
+                if star || items.iter().any(|(text, agg)| !agg && !keys.contains(text)) {
+                    return None;
+                }
+                rewrite = if aggregates.is_empty() {
+                    format!("{rewrite} | summarize by {}", keys.join(", "))
+                } else {
+                    format!(
+                        "{rewrite} | summarize {} by {}",
+                        aggregates.join(", "),
+                        keys.join(", ")
+                    )
+                };
+                rewrite.push_str(sort.as_deref().unwrap_or(""));
+                rewrite.push_str(take.as_deref().unwrap_or(""));
+            }
+            None if !aggregates.is_empty() => {
+                if aggregates.len() != items.len() || sort.is_some() {
+                    return None;
+                }
+                rewrite = format!("{rewrite} | summarize {}", aggregates.join(", "));
+                rewrite.push_str(take.as_deref().unwrap_or(""));
+            }
+            None => {
+                // Sort before `project`, which may drop the sort keys.
+                rewrite.push_str(sort.as_deref().unwrap_or(""));
+                rewrite.push_str(take.as_deref().unwrap_or(""));
+                if !star {
+                    let names: Vec<&str> = items.iter().map(|(text, _)| text.as_str()).collect();
+                    rewrite = format!("{rewrite} | project {}", names.join(", "));
+                }
+            }
         }
         (rewrite.chars().count() <= 2 * MAX_SNIPPET && !rewrite.contains(['\n', '\r']))
             .then_some(rewrite)
+    }
+
+    /// One item of a SQL select list, tokens `start..end`, as DataScript: `count(*)` becomes
+    /// `count()` and `x AS y` becomes `y = x`. The flag says whether it is an aggregate.
+    fn sql_item(&self, start: usize, end: usize) -> Option<(String, bool)> {
+        if start >= end {
+            return None;
+        }
+        let (value_end, alias) = match &self.tokens[start..end] {
+            [.., kw, name]
+                if end - start >= 3
+                    && kw.kind == IDENT
+                    && kw.text(self.text).eq_ignore_ascii_case("as")
+                    && matches!(name.kind, IDENT | QUOTED_IDENT) =>
+            {
+                (end - 2, Some(name.text(self.text)))
+            }
+            _ => (end, None),
+        };
+        let value = self.sql_expr(start, value_end)?;
+        let aggregate = self.tokens[start..value_end].windows(2).any(|pair| {
+            pair[0].kind == IDENT
+                && pair[1].kind == L_PAREN
+                && SQL_AGGREGATES.contains(&pair[0].text(self.text).to_lowercase().as_str())
+        });
+        let text = match alias {
+            Some(alias) => format!("{alias} = {value}"),
+            None => value,
+        };
+        Some((text, aggregate))
+    }
+
+    /// Comma-separated SQL expressions, tokens `start..end`, as DataScript. With `directions`,
+    /// each may end in `ASC` or `DESC`, written in lowercase.
+    fn sql_list(&self, start: usize, end: usize, directions: bool) -> Option<Vec<String>> {
+        let mut out = Vec::new();
+        let mut item_start = start;
+        let mut depth = 0u32;
+        for i in start..=end {
+            let at_end = i == end;
+            if !at_end {
+                match self.tokens[i].kind {
+                    L_PAREN => depth += 1,
+                    R_PAREN => depth = depth.saturating_sub(1),
+                    _ => {}
+                }
+            }
+            if at_end || (self.tokens[i].kind == COMMA && depth == 0) {
+                let mut item_end = i;
+                let mut direction = "";
+                if directions && item_end > item_start {
+                    let last = self.tokens[item_end - 1];
+                    let word = last.text(self.text).to_lowercase();
+                    if last.kind == IDENT && (word == "asc" || word == "desc") {
+                        direction = if word == "asc" { " asc" } else { " desc" };
+                        item_end -= 1;
+                    }
+                }
+                out.push(format!(
+                    "{}{direction}",
+                    self.sql_expr(item_start, item_end)?
+                ));
+                item_start = i + 1;
+            }
+        }
+        Some(out)
+    }
+
+    /// A SQL expression, tokens `start..end`, as DataScript text: `=` becomes `==`, `<>` becomes
+    /// `!=`, `AND`/`OR`/`NOT` are lowercased and `count(*)` becomes `count()`. `None` if it uses
+    /// SQL that has no direct equivalent (`LIKE`, `IS NULL`, a subquery, …).
+    fn sql_expr(&self, start: usize, end: usize) -> Option<String> {
+        if start >= end {
+            return None;
+        }
+        let mut out = String::new();
+        let mut at = self.tokens[start].start;
+        let mut i = start;
+        while i < end {
+            let t = self.tokens[i];
+            let text = t.text(self.text);
+            let lower = text.to_lowercase();
+            let replacement = match t.kind {
+                EQ => Some("==".to_string()),
+                LTGT => Some("!=".to_string()),
+                AMP2 | PIPE2 | BANG | ERROR | SEMICOLON | PIPE => return None,
+                IDENT if matches!(lower.as_str(), "and" | "or" | "not") => Some(lower.clone()),
+                IDENT
+                    if matches!(
+                        lower.as_str(),
+                        "like" | "ilike" | "is" | "between" | "case" | "exists" | "as"
+                    ) || SQL_WORDS.contains(&lower.as_str()) =>
+                {
+                    return None;
+                }
+                IDENT
+                    if lower == "count"
+                        && self.tokens.get(i + 1).is_some_and(|t| t.kind == L_PAREN)
+                        && self.tokens.get(i + 2).is_some_and(|t| t.kind == STAR)
+                        && self.tokens.get(i + 3).is_some_and(|t| t.kind == R_PAREN)
+                        && i + 3 < end =>
+                {
+                    out.push_str(self.source(at, t.start));
+                    out.push_str("count()");
+                    at = self.tokens[i + 3].end();
+                    i += 4;
+                    continue;
+                }
+                IDENT
+                    if SQL_AGGREGATES.contains(&lower.as_str())
+                        && self.tokens.get(i + 1).is_some_and(|t| t.kind == L_PAREN) =>
+                {
+                    Some(lower.clone())
+                }
+                STAR if i == start => return None,
+                _ => None,
+            };
+            if let Some(replacement) = replacement {
+                out.push_str(self.source(at, t.start));
+                out.push_str(&replacement);
+                at = t.end();
+            }
+            i += 1;
+        }
+        out.push_str(self.source(at, self.tokens[end - 1].end()));
+        Some(out)
     }
 
     /// DS0120: `render` at token range `render.0..render.1` is followed by `next`. `moved` is
@@ -572,7 +805,10 @@ impl Parser<'_> {
     ) {
         let text = self.snippet(render.0, render.1).unwrap_or("render ...");
         let mut d = Diagnostic::error(codes::DS0120, "`render` must be the last operator")
-            .primary(self.span(render.0, render.1), "")
+            .primary(
+                self.span(render.0, render.1),
+                "the chart is drawn at this point",
+            )
             .secondary(
                 self.span(next.0, next.1),
                 "this operator comes after `render`",
@@ -644,7 +880,7 @@ impl Parser<'_> {
             codes::DS0105,
             format!("SQL keyword `{word}` is not a sort direction"),
         )
-        .primary(self.current_span(), "")
+        .primary(self.current_span(), "this is SQL")
         .help_with(
             format!("keywords are lowercase: write `{lower}`"),
             Suggestion::replace(self.current_span(), lower.clone()),
@@ -663,7 +899,7 @@ impl Parser<'_> {
         {
             let word = self.nth_text(0).to_string();
             let d = Diagnostic::error(codes::DS0122, format!("`join` uses `on`, not `{word}`"))
-                .primary(self.current_span(), "")
+                .primary(self.current_span(), "expected `on` here")
                 .help_with(
                     "write `on` before the columns to match",
                     Suggestion::replace(self.current_span(), "on"),
@@ -726,7 +962,7 @@ impl Parser<'_> {
             return;
         }
         let d = Diagnostic::error(codes::DS0123, format!("unknown join kind `{word}`"))
-            .primary(span, "");
+            .primary(span, "not a join kind");
         let lower = word.to_lowercase();
         let alias = JOIN_KIND_ALIASES
             .iter()
@@ -760,11 +996,33 @@ impl Parser<'_> {
             .source(token.start, self.tokens[last].end())
             .to_string();
         let triple = format!("`{written}` is not an operator");
+        let sql = format!("SQL keyword `{written}` in capitals");
         let (code, message, label, word, verb): (_, &str, &str, &str, &str) = match token.kind {
-            EQ | EQ2 if len == 2 => (
+            IDENT if written == "AND" => (
+                codes::DS0105,
+                &sql,
+                "this is SQL",
+                "and",
+                "write `and` in lowercase",
+            ),
+            IDENT if written == "OR" => (
+                codes::DS0105,
+                &sql,
+                "this is SQL",
+                "or",
+                "write `or` in lowercase",
+            ),
+            EQ2 if len == 2 => (
                 codes::DS0110,
                 &triple,
-                "",
+                "this is JavaScript's strict equality",
+                "==",
+                "use `==` to compare values",
+            ),
+            EQ if len == 2 => (
+                codes::DS0110,
+                &triple,
+                "two `=` with a space between them",
                 "==",
                 "use `==` to compare values",
             ),
@@ -785,14 +1043,14 @@ impl Parser<'_> {
             AMP2 => (
                 codes::DS0111,
                 "`&&` is not an operator",
-                "",
+                "this is C's \"and\"",
                 "and",
                 "use `and` to require both conditions",
             ),
             PIPE2 => (
                 codes::DS0111,
                 "`||` is not an operator",
-                "",
+                "this is C's \"or\"",
                 "or",
                 "use `or` to accept either condition",
             ),
@@ -808,7 +1066,10 @@ impl Parser<'_> {
         let clean = self.tokens[first..past.max(first)]
             .iter()
             .filter(|t| t.start < token.start || t.start > op_last_start)
-            .all(|t| !matches!(t.kind, EQ | LTGT | AMP2 | PIPE2 | BANG));
+            .all(|t| {
+                !matches!(t.kind, EQ | LTGT | AMP2 | PIPE2 | BANG)
+                    && !(t.kind == IDENT && matches!(t.text(self.text), "AND" | "OR" | "NOT"))
+            });
         let help = match self
             .snippet(lhs_start, token.start)
             .zip(self.snippet(edit.span.end, rhs.1))
@@ -835,7 +1096,7 @@ impl Parser<'_> {
     /// parenthesized expression if `paren`.
     pub(super) fn bang_not(&mut self, bang: usize, operand: Option<(u32, u32)>, paren: bool) {
         let mut d = Diagnostic::error(codes::DS0111, "`!` is not an operator")
-            .primary(self.token_span(bang), "");
+            .primary(self.token_span(bang), "this is C's \"not\"");
         let Some((start, end)) = operand else {
             d = d.help("negate a condition with `not(...)`: `not(x > 1)`");
             self.report(d);
@@ -1031,6 +1292,536 @@ impl Parser<'_> {
                     Applicability::MaybeIncorrect,
                 ),
             );
+        self.report(d);
+    }
+
+    // --- SQL habits in expressions and lists ---
+
+    /// DS0105 for SQL's `NOT` in capitals. The current token is `NOT`.
+    pub(super) fn sql_not(&mut self) {
+        let span = self.current_span();
+        let d = Diagnostic::error(codes::DS0105, "SQL keyword `NOT` in capitals")
+            .primary(span, "this is SQL")
+            .help_with(
+                "keywords are lowercase: write `not`",
+                Suggestion::new(
+                    vec![self.word_edit(self.pos, "not")],
+                    Applicability::MachineApplicable,
+                ),
+            );
+        self.report(d);
+    }
+
+    /// DS0105 for SQL's `IN` or `NOT IN` (in any case) and for `not in`. `op` is the token index
+    /// of the first word; the operator spans `len` tokens. Nothing for DataScript's own forms.
+    pub(super) fn sql_in(&mut self, op: usize, len: usize) {
+        let token = self.tokens[op];
+        let last = op + len - 1;
+        let written = self
+            .source(token.start, self.tokens[last].end())
+            .to_string();
+        let replacement = match (len, written.as_str()) {
+            (1, "IN") => "in",
+            (2, _) => "!in",
+            _ => return,
+        };
+        let edit = self.words_edit(op, last, replacement);
+        let message = if len == 1 {
+            "SQL keyword `IN` in capitals".to_string()
+        } else {
+            format!("`{written}` is SQL, not DataScript")
+        };
+        let help = if len == 1 {
+            "keywords are lowercase: write `in`".to_string()
+        } else {
+            "write `!in` to test that a value is not in a list".to_string()
+        };
+        let d = Diagnostic::error(codes::DS0105, message)
+            .primary(edit.span, "this is SQL")
+            .help_with(
+                help,
+                Suggestion::new(vec![edit], Applicability::MachineApplicable),
+            );
+        self.errors.push(d);
+    }
+
+    /// DS0105 for SQL's `IS NULL` / `IS NOT NULL`. The operand starts at byte `lhs_start`; `op` is
+    /// the token index of `is` and the test spans `len` tokens, all consumed.
+    pub(super) fn sql_is_null(&mut self, lhs_start: u32, op: usize, len: usize) {
+        let token = self.tokens[op];
+        let end = self.tokens[op + len - 1].end();
+        let written = self.source(token.start, end).to_string();
+        let function = if len == 3 { "isnotnull" } else { "isnull" };
+        let mut operand = self.source(lhs_start, token.start).trim_end().to_string();
+        // `(a + 1) is null` becomes `isnull(a + 1)`, not `isnull((a + 1))`.
+        let first = self.tokens.partition_point(|t| t.start < lhs_start);
+        if self.tokens[first].kind == L_PAREN
+            && self.matching_close(first) == Some(op - 1)
+            && op - 1 > first
+        {
+            operand = self
+                .source(self.tokens[first].end(), self.tokens[op - 1].start)
+                .trim()
+                .to_string();
+        }
+        let mut d = Diagnostic::error(codes::DS0105, format!("`{written}` is SQL, not DataScript"))
+            .primary(self.span(token.start, end), "this is SQL's null test");
+        if operand.is_empty() || operand.contains(['\n', '\r']) {
+            d = d.help(format!("test for null with `{function}(...)`"));
+        } else {
+            let rewrite = format!("{function}({operand})");
+            let help = if rewrite.chars().count() <= MAX_SNIPPET {
+                format!("test for null with `{function}(...)`: `{rewrite}`")
+            } else {
+                format!("test for null with `{function}(...)`")
+            };
+            d = d.help_with(
+                help,
+                Suggestion::replace(self.span(lhs_start, end), rewrite),
+            );
+        }
+        self.errors.push(d);
+    }
+
+    /// DS0105 for SQL's `LIKE` (also `NOT LIKE` and `ILIKE`). `op` is the token index of the
+    /// first word, the operator spans `len` tokens and the pattern spans `rhs`.
+    pub(super) fn sql_like(&mut self, op: usize, len: usize, rhs: Option<(u32, u32)>) {
+        let token = self.tokens[op];
+        let op_end = self.tokens[op + len - 1].end();
+        let written = self.source(token.start, op_end).to_string();
+        let negated = len == 2;
+        let mut d = Diagnostic::error(codes::DS0105, format!("`{written}` is SQL, not DataScript"))
+            .primary(
+                self.span(token.start, op_end),
+                "this is SQL's pattern match",
+            );
+        // A pattern that is one plain string: say which operator does the same thing.
+        let pattern = rhs.and_then(|(start, end)| {
+            let i = self.tokens.partition_point(|t| t.start < start);
+            let t = self.tokens.get(i)?;
+            (t.kind == STRING && t.end() == end).then_some(t.text(self.text))
+        });
+        let rewrite = pattern.and_then(|pattern| {
+            let quote = pattern.chars().next().filter(|q| matches!(q, '\'' | '"'))?;
+            let body = pattern.get(1..pattern.len() - 1)?;
+            if body.contains(['_', '\\']) {
+                return None;
+            }
+            let (op_name, value) = match (body.strip_prefix('%'), body.strip_suffix('%')) {
+                (Some(rest), _) if rest.strip_suffix('%').is_some_and(|v| !v.contains('%')) => {
+                    ("contains", rest.strip_suffix('%')?)
+                }
+                (Some(rest), _) if !rest.contains('%') => ("endswith", rest),
+                (None, Some(rest)) if !rest.contains('%') => ("startswith", rest),
+                (None, None) if !body.contains('%') => ("==", body),
+                _ => return None,
+            };
+            if value.is_empty() {
+                return None;
+            }
+            let op_name = match (op_name, negated) {
+                ("==", true) => "!=".to_string(),
+                (name, true) => format!("!{name}"),
+                (name, false) => name.to_string(),
+            };
+            Some((op_name, format!("{quote}{value}{quote}")))
+        });
+        match (rewrite, rhs) {
+            (Some((op_name, value)), Some((_, end))) => {
+                let text = format!("{op_name} {value}");
+                let left = self.snippet(self.pipeline_line_start(op), token.start);
+                let help = match left {
+                    Some(left) if text.chars().count() <= MAX_SNIPPET => {
+                        format!("use `{op_name}`: `{}{text}`", left.trim_start())
+                    }
+                    _ => format!("use `{op_name}`"),
+                };
+                d = d.help_with(
+                    help,
+                    Suggestion::new(
+                        vec![TextEdit::new(self.span(token.start, end), text)],
+                        Applicability::MaybeIncorrect,
+                    ),
+                );
+                if op_name.trim_start_matches('!') != "==" {
+                    d = d.note(format!(
+                        "`{0}` ignores case; `{0}_cs` matches case exactly",
+                        op_name.trim_start_matches('!')
+                    ));
+                }
+            }
+            _ => {
+                d = d.help(
+                    "use `startswith`, `endswith` or `contains` for a fixed text, or \
+                     `matches regex` for a pattern",
+                );
+            }
+        }
+        self.errors.push(d);
+    }
+
+    /// The token index of the bracket that closes the one at token index `open`.
+    fn matching_close(&self, open: usize) -> Option<usize> {
+        let mut depth = 0usize;
+        for (i, t) in self.tokens.iter().enumerate().skip(open) {
+            match t.kind {
+                L_PAREN | L_BRACK => depth += 1,
+                R_PAREN | R_BRACK => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(i);
+                    }
+                }
+                SEMICOLON | LET_KW => return None,
+                _ => {}
+            }
+        }
+        None
+    }
+
+    /// Where the operand before token `op` starts, for quoting it in help: the first token after
+    /// the operator name or pipe that leads up to `op`, on the same line.
+    fn pipeline_line_start(&self, op: usize) -> u32 {
+        let mut i = op;
+        while i > 0 {
+            let prev = self.tokens[i - 1];
+            if matches!(
+                prev.kind,
+                PIPE | SEMICOLON | L_PAREN | COMMA | AND_KW | OR_KW
+            ) || self.line_start[i]
+                || (prev.kind == IDENT && OPERATORS.contains(&prev.text(self.text)))
+            {
+                break;
+            }
+            i -= 1;
+        }
+        self.tokens[i].start
+    }
+
+    /// DS0105 for SQL's `a AS b`. The expression starts at byte `start`; the current token is
+    /// `as` and the name follows it.
+    pub(super) fn sql_as(&mut self, start: u32) {
+        let as_token = self.tokens[self.pos];
+        let name_token = self.tokens[self.pos + 1];
+        let value_end = self.prev_end();
+        let value = self.source(start, value_end).to_string();
+        let name = name_token.text(self.text).to_string();
+        let written = as_token.text(self.text).to_string();
+        let rewrite = format!("{name} = {value}");
+        let help = if rewrite.chars().count() <= MAX_SNIPPET && !rewrite.contains(['\n', '\r']) {
+            format!("name a column with `=`, name first: `{rewrite}`")
+        } else {
+            "name a column with `=`, name first".to_string()
+        };
+        let d = Diagnostic::error(codes::DS0105, format!("`{written}` is SQL, not DataScript"))
+            .primary(self.current_span(), "this names a column in SQL")
+            .help_with(
+                help,
+                Suggestion::new(
+                    vec![
+                        TextEdit::new(self.span(start, start), format!("{name} = ")),
+                        TextEdit::new(self.span(value_end, name_token.end()), ""),
+                    ],
+                    Applicability::MachineApplicable,
+                ),
+            );
+        self.report(d);
+    }
+
+    /// DS0117 for SQL's `count(*)`. The current token is `count`, followed by `(*)`.
+    pub(super) fn count_star(&mut self) {
+        let star = self.token_span(self.pos + 2);
+        let call = self.span(self.offset(), self.tokens[self.pos + 3].end());
+        let d = Diagnostic::error(codes::DS0117, "`count(*)` is SQL, not DataScript")
+            .primary(star, "`count()` counts rows without a `*`")
+            .help_with("write `count()`", Suggestion::replace(call, "count()"));
+        self.errors.push(d);
+    }
+
+    /// DS0117 for SQL's `project *`. The current token is `*`; `alone` says nothing follows it in
+    /// the operator.
+    pub(super) fn project_star(&mut self, op_start: u32, alone: bool) {
+        let star = self.current_span();
+        let mut d = Diagnostic::error(codes::DS0117, "`project *` is SQL's `SELECT *`")
+            .primary(star, "`project` lists the columns to keep");
+        // The `|` before `project`, so the fix removes the whole step.
+        let op = self.tokens.partition_point(|t| t.start < op_start);
+        let pipe = op
+            .checked_sub(1)
+            .filter(|&i| i > 0 && self.tokens[i].kind == PIPE);
+        d = match (alone, pipe) {
+            (true, Some(pipe)) => d.help_with(
+                "every column is kept already: remove `| project *`",
+                Suggestion::replace(self.span(self.tokens[pipe - 1].end(), star.end), ""),
+            ),
+            (true, None) => d.help("every column is kept already: remove `project *`"),
+            (false, _) => {
+                // `project *, x = 1` becomes `extend x = 1`.
+                let rest = self.pos + 2;
+                let end = self.tokens[rest.min(self.tokens.len())..]
+                    .iter()
+                    .take_while(|t| !matches!(t.kind, PIPE | SEMICOLON | LET_KW))
+                    .last()
+                    .map(|t| t.end());
+                match (self.tokens.get(rest), end) {
+                    (Some(first), Some(end)) if self.nth(1) == COMMA => {
+                        let help = match self.snippet(first.start, end) {
+                            Some(columns) => format!(
+                                "to keep every column and add computed ones, use `extend`: \
+                                 `extend {columns}`"
+                            ),
+                            None => "to keep every column and add computed ones, use `extend`"
+                                .to_string(),
+                        };
+                        d.help_with(
+                            help,
+                            Suggestion::new(
+                                vec![TextEdit::new(self.span(op_start, first.start), "extend ")],
+                                Applicability::MaybeIncorrect,
+                            ),
+                        )
+                    }
+                    _ => d.help("to keep every column and add computed ones, use `extend`"),
+                }
+            }
+        };
+        self.report(d);
+    }
+
+    /// DS0117 for SQL's `'it''s'`. `first` is the token index of the first string; the strings
+    /// after it, side by side, have been consumed.
+    pub(super) fn doubled_quotes(&mut self, first: usize) {
+        let strings = &self.tokens[first..self.pos];
+        let start = strings[0].start;
+        let end = strings[strings.len() - 1].end();
+        let text = self.source(start, end).to_string();
+        let mut d = Diagnostic::error(codes::DS0117, "`''` does not put a quote in a string");
+        let quote = text.chars().find(|c| matches!(c, '\'' | '"'));
+        let verbatim = text.starts_with('@');
+        // Every string must use the same quote and start right where the one before ends.
+        let same = quote.is_some_and(|q| {
+            strings.iter().enumerate().all(|(i, t)| {
+                let t = t.text(self.text);
+                let body = if i == 0 && verbatim { &t[1..] } else { t };
+                body.len() >= 2 && body.starts_with(q) && body.ends_with(q)
+            })
+        });
+        let second = strings[1];
+        d = d.primary(
+            self.span(second.start - 1, second.start + 1),
+            "this ends the string and starts another",
+        );
+        let Some(q) = quote.filter(|_| same && strings.len() >= 2) else {
+            d = d.help("escape a quote inside a string with a backslash: `'it\\'s'`");
+            self.errors.push(d);
+            return;
+        };
+        let doubled = format!("{q}{q}");
+        let other = if q == '\'' { '"' } else { '\'' };
+        let (help, rewrite) = if verbatim {
+            // No escapes in `@'...'`: use the other quote, if the text has none.
+            let body = &text[2..text.len() - 1].replace(&doubled, &q.to_string());
+            if body.contains(other) {
+                (None, None)
+            } else {
+                let rewrite = format!("@{other}{body}{other}");
+                (
+                    Some(format!(
+                        "a verbatim string has no escapes; use the other quote: `{rewrite}`"
+                    )),
+                    Some(rewrite),
+                )
+            }
+        } else {
+            let rewrite = text.replace(&doubled, &format!("\\{q}"));
+            (
+                Some(format!("escape the quote with a backslash: `{rewrite}`")),
+                Some(rewrite),
+            )
+        };
+        match (help, rewrite) {
+            (Some(help), Some(rewrite)) => {
+                let help = if rewrite.chars().count() <= MAX_SNIPPET {
+                    help
+                } else {
+                    help.split(": `").next().unwrap_or_default().to_string()
+                };
+                d = d.help_with(help, Suggestion::replace(self.span(start, end), rewrite));
+            }
+            _ => d = d.help("escape a quote inside a string with a backslash: `'it\\'s'`"),
+        }
+        self.errors.push(d);
+    }
+
+    /// DS0003 for a number with more than one decimal point, `1.2.3`, read as `1.2` then `.3`.
+    /// `first` is the token index of the number; the parts after it have been consumed.
+    pub(super) fn dotted_number(&mut self, first: usize) {
+        let start = self.tokens[first].start;
+        let end = self.prev_end();
+        let text = self.source(start, end).to_string();
+        let mut d = Diagnostic::error(codes::DS0003, format!("invalid number `{text}`")).primary(
+            self.span(start, end),
+            "a number has at most one decimal point",
+        );
+        if text.chars().all(|c| c.is_ascii_digit() || c == '.') {
+            d = d.help_with(
+                format!("if this is a version or an address, write it as a string: `'{text}'`"),
+                Suggestion::new(
+                    vec![TextEdit::new(self.span(start, end), format!("'{text}'"))],
+                    Applicability::MaybeIncorrect,
+                ),
+            );
+        }
+        self.errors.push(d);
+    }
+
+    // --- Names, lists and sources ---
+
+    /// DS0126: a reserved word where a name belongs. The current token is the word.
+    pub(super) fn reserved_word_as_name(&mut self) {
+        let word = self.nth_text(0).to_string();
+        let span = self.current_span();
+        let quoted = format!("['{word}']");
+        let d = Diagnostic::error(codes::DS0126, format!("`{word}` is a reserved word"))
+            .primary(span, "a reserved word cannot be a name without quotes")
+            .help_with(
+                format!("to use it as a name, quote it: `{quoted}`"),
+                Suggestion::replace(span, quoted),
+            );
+        self.report(d);
+    }
+
+    /// DS0127: a `,` with nothing after it at the end of a list. The current token is the comma.
+    pub(super) fn trailing_comma(&mut self) {
+        let comma = self.current_span();
+        let after = match self.nth(1) {
+            PIPE => "before `|`",
+            SEMICOLON => "before `;`",
+            R_PAREN => "before `)`",
+            R_BRACK => "before `]`",
+            _ => "at the end of the input",
+        };
+        // Before a closing bracket, remove the space after the comma too: `f(a, )` → `f(a)`.
+        let removed = match self.tokens.get(self.pos + 1) {
+            Some(next) if matches!(next.kind, R_PAREN | R_BRACK) => {
+                self.span(comma.start, next.start)
+            }
+            _ => comma,
+        };
+        let d = Diagnostic::error(codes::DS0127, format!("trailing `,` {after}"))
+            .primary(comma, "nothing follows this `,` in the list")
+            .help_with("remove the `,`", Suggestion::replace(removed, ""));
+        self.report(d);
+    }
+
+    /// DS0125: a query that starts with an operator, `where a > 1`. The current token is the
+    /// operator name.
+    pub(super) fn operator_without_source(&mut self) {
+        let name = self.op_name_text();
+        let span = self.span(self.offset(), self.tokens[self.pos + name.1 - 1].end());
+        let end = self.tokens[self.pos..]
+            .iter()
+            .take_while(|t| !matches!(t.kind, SEMICOLON | LET_KW))
+            .last()
+            .map_or(span.end, |t| t.end());
+        let help = match self.snippet(span.start, end) {
+            Some(query) => format!(
+                "start with the table and pipe it into `{0}`: `'data.csv' | {query}`",
+                name.0
+            ),
+            None => format!(
+                "start with the table and pipe it into `{0}`: `'data.csv' | {0} ...`",
+                name.0
+            ),
+        };
+        let d = Diagnostic::error(
+            codes::DS0125,
+            format!("a query starts with a table, not with `{}`", name.0),
+        )
+        .primary(span, format!("`{}` is an operator", name.0))
+        .help(help);
+        self.report(d);
+    }
+
+    /// The operator name at the current token, as written (hyphenated names joined), and how
+    /// many tokens it spans.
+    fn op_name_text(&self) -> (String, usize) {
+        if self.nth(1) == MINUS && self.nth(2) == IDENT {
+            let name = format!("{}-{}", self.nth_text(0), self.nth_text(2));
+            if OPERATORS.contains(&name.as_str()) {
+                return (name, 3);
+            }
+        }
+        (self.nth_text(0).to_string(), 1)
+    }
+
+    /// DS0128: `in [1, 2]`. `open` is the token index of `[`; the list has been parsed.
+    pub(super) fn in_brackets(&mut self, open: usize) {
+        let open_span = self.token_span(open);
+        let mut d = Diagnostic::error(codes::DS0128, "the list after `in` goes in parentheses")
+            .primary(open_span, "expected `(`");
+        let closed = self.tokens[self.pos - 1].kind == R_BRACK && self.pos - 1 > open;
+        if closed {
+            let close_span = self.token_span(self.pos - 1);
+            let list = self.source(open_span.end, close_span.start);
+            let op = match self.tokens[open - 1].kind {
+                TILDE => format!("{}~", self.tokens[open - 2].text(self.text)),
+                _ => self.tokens[open - 1].text(self.text).to_string(),
+            };
+            let help = match self.snippet(open_span.end, close_span.start) {
+                Some(_) => format!("write the list in parentheses: `{op} ({list})`"),
+                None => "write the list in parentheses".to_string(),
+            };
+            d = d.help_with(
+                help,
+                Suggestion::new(
+                    vec![
+                        TextEdit::new(open_span, "("),
+                        TextEdit::new(close_span, ")"),
+                    ],
+                    Applicability::MachineApplicable,
+                ),
+            );
+        } else {
+            d = d.help("write the list in parentheses: `x in (1, 2)`");
+        }
+        if !self.errors_at(open) {
+            self.errors.push(d);
+        }
+    }
+
+    /// DS0128 for `in ['a']`, which the lexer reads as the quoted name `['a']`. The current
+    /// token is that name.
+    pub(super) fn in_quoted_brackets(&mut self) {
+        let span = self.current_span();
+        let text = self.nth_text(0);
+        let list = &text[1..text.len() - 1];
+        let op = self.prev_text().unwrap_or("in").to_string();
+        let rewrite = format!("({list})");
+        let d = Diagnostic::error(codes::DS0128, "the list after `in` goes in parentheses")
+            .primary(span, "this is read as a quoted name")
+            .help_with(
+                format!("write the list in parentheses: `{op} {rewrite}`"),
+                Suggestion::replace(span, rewrite),
+            );
+        self.report(d);
+    }
+
+    /// DS0129: `in ~` or `!in ~` with a space before `~`. `op` is the token index of the
+    /// operator; the current token is `~`.
+    pub(super) fn spaced_in_tilde(&mut self, op: usize) {
+        let op_text = self.tokens[op].text(self.text).to_string();
+        let span = self.span(self.tokens[op].start, self.current_span().end);
+        let joined = format!("{op_text}~");
+        let d = Diagnostic::error(
+            codes::DS0129,
+            format!("`{joined}` is written without a space"),
+        )
+        .primary(span, format!("read as `{op_text}` followed by `~`"))
+        .help_with(
+            format!("write `{joined}` to match the list ignoring case"),
+            Suggestion::replace(span, joined.clone()),
+        );
         self.report(d);
     }
 

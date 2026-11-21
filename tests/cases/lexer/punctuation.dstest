@@ -73,7 +73,7 @@ PROGRAM@0..85
     DOLLAR_RIGHT@78..84 "$right"
   WHITESPACE@84..85 "\n"
 
-error[DS0101]: expected a table before `|`
+error[DS0125]: a query starts with a table, not with `|`
   --> query:1:1
   |
 1 | | ; , ( ) [ ] { } . .. : = == != < <= > >= <> =~ !~ + - * / % ! ~ && || $left $right

@@ -6,15 +6,16 @@ let = 2;
 let x 3
 ---- expected
 PROGRAM@0..30
-  LET_STMT@0..3
+  LET_STMT@0..11
     LET_KW@0..3 "let"
-  WHITESPACE@3..4 " "
-  ERROR@4..11
-    AND_KW@4..7 "and"
+    WHITESPACE@3..4 " "
+    NAME@4..7
+      AND_KW@4..7 "and"
     WHITESPACE@7..8 " "
     EQ@8..9 "="
     WHITESPACE@9..10 " "
-    LONG@10..11 "1"
+    LITERAL@10..11
+      LONG@10..11 "1"
   SEMICOLON@11..12 ";"
   WHITESPACE@12..13 "\n"
   LET_STMT@13..20
@@ -36,13 +37,13 @@ PROGRAM@0..30
       LONG@28..29 "3"
   WHITESPACE@29..30 "\n"
 
-error[DS0101]: expected a name after `let`, found `and`
+error[DS0126]: `and` is a reserved word
   --> query:1:5
   |
 1 | let and = 1;
-  |     ^^^
+  |     ^^^ a reserved word cannot be a name without quotes
   |
-  = help: `and` is a reserved word; to use it as a name, quote it: `['and']`
+  = help: to use it as a name, quote it: `['and']`
 
 error[DS0101]: expected a name after `let`, found `=`
   --> query:2:5
@@ -52,6 +53,24 @@ error[DS0101]: expected a name after `let`, found `=`
 
 error[DS0101]: expected `=` after `x`, found `3`
   --> query:3:7
+  |
+3 | let x 3
+  |       ^
+
+with the machine-applicable fixes applied:
+    let ['and'] = 1;
+    let = 2;
+    let x 3
+which still has errors:
+
+error[DS0101]: expected a name after `let`, found `=`
+  --> fixed:2:5
+  |
+2 | let = 2;
+  |     ^
+
+error[DS0101]: expected `=` after `x`, found `3`
+  --> fixed:3:7
   |
 3 | let x 3
   |       ^

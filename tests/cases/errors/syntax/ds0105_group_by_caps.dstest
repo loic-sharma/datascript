@@ -22,6 +22,6 @@ error[DS0105]: SQL keyword `GROUP BY` is not an operator
   --> query:1:16
   |
 1 | 'orders.csv' | GROUP BY customerId
-  |                ^^^^^^^^
+  |                ^^^^^^^^ this is SQL
   |
   = help: to group rows, use `summarize ... by`: `summarize count() by customerId`

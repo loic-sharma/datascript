@@ -1,0 +1,63 @@
+# `in [1, 2]`: DS0128 with a fix to parentheses.
+mode: syntax
+---- query
+'orders.csv' | where amount in [1, 2] and customerId !in~ ['a']
+---- expected
+PROGRAM@0..64
+  PIPELINE@0..63
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..63
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      BIN_EXPR@21..63
+        IN_EXPR@21..37
+          NAME_REF@21..27
+            IDENT@21..27 "amount"
+          WHITESPACE@27..28 " "
+          IDENT@28..30 "in"
+          WHITESPACE@30..31 " "
+          ARG_LIST@31..37
+            L_BRACK@31..32 "["
+            LITERAL@32..33
+              LONG@32..33 "1"
+            COMMA@33..34 ","
+            WHITESPACE@34..35 " "
+            LITERAL@35..36
+              LONG@35..36 "2"
+            R_BRACK@36..37 "]"
+        WHITESPACE@37..38 " "
+        AND_KW@38..41 "and"
+        WHITESPACE@41..42 " "
+        IN_EXPR@42..63
+          NAME_REF@42..52
+            IDENT@42..52 "customerId"
+          WHITESPACE@52..53 " "
+          NEGATED_OP@53..57 "!in~"
+          WHITESPACE@57..58 " "
+          ARG_LIST@58..63
+            QUOTED_IDENT@58..63 "['a']"
+  WHITESPACE@63..64 "\n"
+
+error[DS0128]: the list after `in` goes in parentheses
+  --> query:1:32
+  |
+1 | 'orders.csv' | where amount in [1, 2] and customerId !in~ ['a']
+  |                                ^ expected `(`
+  |
+  = help: write the list in parentheses: `in (1, 2)`
+
+error[DS0128]: the list after `in` goes in parentheses
+  --> query:1:59
+  |
+1 | 'orders.csv' | where amount in [1, 2] and customerId !in~ ['a']
+  |                                                           ^^^^^ this is read as a quoted name
+  |
+  = help: write the list in parentheses: `!in~ ('a')`
+
+with the machine-applicable fixes applied:
+    'orders.csv' | where amount in (1, 2) and customerId !in~ ('a')
+which parses without errors

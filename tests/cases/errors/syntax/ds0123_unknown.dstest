@@ -33,6 +33,6 @@ error[DS0123]: unknown join kind `cross`
   --> query:1:28
   |
 1 | 'orders.csv' | join kind = cross 'customers.csv' on customerId
-  |                            ^^^^^
+  |                            ^^^^^ not a join kind
   |
   = note: the join kinds are `inner`, `leftouter`, `rightouter`, `fullouter`, `leftsemi`, `leftanti`, `rightsemi` and `rightanti`

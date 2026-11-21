@@ -1,0 +1,58 @@
+# SQL's `IS NOT NULL` after a parenthesized operand, inside `and`: the fix drops the extra parentheses.
+mode: syntax
+---- query
+'orders.csv' | where (amount + 1) IS NOT NULL and amount > 2
+---- expected
+PROGRAM@0..61
+  PIPELINE@0..60
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..60
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      BIN_EXPR@21..60
+        BIN_EXPR@21..45
+          PAREN_EXPR@21..33
+            L_PAREN@21..22 "("
+            BIN_EXPR@22..32
+              NAME_REF@22..28
+                IDENT@22..28 "amount"
+              WHITESPACE@28..29 " "
+              PLUS@29..30 "+"
+              WHITESPACE@30..31 " "
+              LITERAL@31..32
+                LONG@31..32 "1"
+            R_PAREN@32..33 ")"
+          WHITESPACE@33..34 " "
+          IDENT@34..36 "IS"
+          WHITESPACE@36..37 " "
+          IDENT@37..40 "NOT"
+          WHITESPACE@40..41 " "
+          IDENT@41..45 "NULL"
+        WHITESPACE@45..46 " "
+        AND_KW@46..49 "and"
+        WHITESPACE@49..50 " "
+        BIN_EXPR@50..60
+          NAME_REF@50..56
+            IDENT@50..56 "amount"
+          WHITESPACE@56..57 " "
+          GT@57..58 ">"
+          WHITESPACE@58..59 " "
+          LITERAL@59..60
+            LONG@59..60 "2"
+  WHITESPACE@60..61 "\n"
+
+error[DS0105]: `IS NOT NULL` is SQL, not DataScript
+  --> query:1:35
+  |
+1 | 'orders.csv' | where (amount + 1) IS NOT NULL and amount > 2
+  |                                   ^^^^^^^^^^^ this is SQL's null test
+  |
+  = help: test for null with `isnotnull(...)`: `isnotnull(amount + 1)`
+
+with the machine-applicable fixes applied:
+    'orders.csv' | where isnotnull(amount + 1) and amount > 2
+which parses without errors

@@ -1,0 +1,11 @@
+# A program with no statements (only `;`) runs nothing: DS0004 warning, with no location.
+# Truly empty text cannot be a golden case (the harness rejects an empty query section); the
+# engine unit test `run_warns_when_there_is_no_query` covers it.
+mode: run
+---- query
+;
+---- expected
+warning[DS0004]: program has no query to run
+  --> query
+  |
+  = help: add a query, such as `'data.csv' | take 10`

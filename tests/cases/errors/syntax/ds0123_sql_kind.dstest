@@ -33,7 +33,7 @@ error[DS0123]: unknown join kind `left`
   --> query:1:28
   |
 1 | 'orders.csv' | join kind = left 'customers.csv' on customerId
-  |                            ^^^^
+  |                            ^^^^ not a join kind
   |
   = help: write `kind = leftouter`
 

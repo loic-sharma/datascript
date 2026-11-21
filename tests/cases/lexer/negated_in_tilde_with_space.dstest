@@ -10,25 +10,32 @@ PROGRAM@0..24
     WHITESPACE@1..2 " "
     PIPE@2..3 "|"
     WHITESPACE@3..4 " "
-    WHERE_OP@4..15
+    WHERE_OP@4..23
       IDENT@4..9 "where"
       WHITESPACE@9..10 " "
-      IN_EXPR@10..15
+      IN_EXPR@10..23
         NAME_REF@10..11
           IDENT@10..11 "x"
         WHITESPACE@11..12 " "
         NEGATED_OP@12..15 "!in"
-    WHITESPACE@15..16 " "
-    ERROR@16..23
-      TILDE@16..17 "~"
-      WHITESPACE@17..18 " "
-      L_PAREN@18..19 "("
-      STRING@19..22 "'a'"
-      R_PAREN@22..23 ")"
+        WHITESPACE@15..16 " "
+        TILDE@16..17 "~"
+        WHITESPACE@17..18 " "
+        ARG_LIST@18..23
+          L_PAREN@18..19 "("
+          LITERAL@19..22
+            STRING@19..22 "'a'"
+          R_PAREN@22..23 ")"
   WHITESPACE@23..24 "\n"
 
-error[DS0101]: expected `(` and a list of values after `!in`, found `~`
-  --> query:1:17
+error[DS0129]: `!in~` is written without a space
+  --> query:1:13
   |
 1 | t | where x !in ~ ('a')
-  |                 ^
+  |             ^^^^^ read as `!in` followed by `~`
+  |
+  = help: write `!in~` to match the list ignoring case
+
+with the machine-applicable fixes applied:
+    t | where x !in~ ('a')
+which parses without errors

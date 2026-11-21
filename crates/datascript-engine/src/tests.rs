@@ -2,7 +2,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use arrow_array::{ArrayRef, Float64Array};
 use arrow_schema::{DataType, Field, Schema};
-use datascript_diagnostics::codes::{DS3001, DS9001};
+use datascript_diagnostics::Severity;
+use datascript_diagnostics::codes::{DS0004, DS3001, DS9001};
 use futures::executor::block_on;
 
 use super::*;
@@ -146,4 +147,27 @@ fn not_implemented_is_a_diagnostic() {
     let output = block_on(session.run(&source("'orders.csv' | count"), FileId(0), &ctx));
     let codes: Vec<_> = output.diagnostics.iter().map(|d| d.code).collect();
     assert_eq!(codes, [DS9001]);
+}
+
+#[test]
+fn run_warns_when_there_is_no_query() {
+    let (session, _) = session();
+    let ctx = session.exec_context(Path::new("."));
+    for text in ["", "   \n", "// only a comment\n", ";"] {
+        let output = block_on(session.run(&source(text), FileId(0), &ctx));
+        let found: Vec<_> = output
+            .diagnostics
+            .iter()
+            .map(|d| (d.code, d.severity, d.primary.is_none()))
+            .collect();
+        assert_eq!(found, [(DS0004, Severity::Warning, true)], "{text:?}");
+        assert!(output.results.is_empty());
+    }
+    // `check` accepts a program with no query.
+    let analysis = block_on(session.check(&source(""), FileId(0), &ctx));
+    assert!(
+        analysis.diagnostics.is_empty(),
+        "{:?}",
+        analysis.diagnostics
+    );
 }

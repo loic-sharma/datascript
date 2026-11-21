@@ -26,7 +26,7 @@ error[DS0105]: SQL keyword `DESC` is not a sort direction
   --> query:1:15
   |
 1 | T | sort by a DESC
-  |               ^^^^
+  |               ^^^^ this is SQL
   |
   = help: keywords are lowercase: write `desc`
 

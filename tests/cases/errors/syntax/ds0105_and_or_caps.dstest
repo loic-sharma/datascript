@@ -1,0 +1,68 @@
+# SQL's `AND` and `OR` in capitals: DS0105 for each, with a fix to lowercase, parsed as `and`/`or`.
+mode: syntax
+---- query
+'orders.csv' | where amount > 1 AND amount < 5 OR customerId == 'c'
+---- expected
+PROGRAM@0..68
+  PIPELINE@0..67
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..67
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      BIN_EXPR@21..67
+        BIN_EXPR@21..46
+          BIN_EXPR@21..31
+            NAME_REF@21..27
+              IDENT@21..27 "amount"
+            WHITESPACE@27..28 " "
+            GT@28..29 ">"
+            WHITESPACE@29..30 " "
+            LITERAL@30..31
+              LONG@30..31 "1"
+          WHITESPACE@31..32 " "
+          IDENT@32..35 "AND"
+          WHITESPACE@35..36 " "
+          BIN_EXPR@36..46
+            NAME_REF@36..42
+              IDENT@36..42 "amount"
+            WHITESPACE@42..43 " "
+            LT@43..44 "<"
+            WHITESPACE@44..45 " "
+            LITERAL@45..46
+              LONG@45..46 "5"
+        WHITESPACE@46..47 " "
+        IDENT@47..49 "OR"
+        WHITESPACE@49..50 " "
+        BIN_EXPR@50..67
+          NAME_REF@50..60
+            IDENT@50..60 "customerId"
+          WHITESPACE@60..61 " "
+          EQ2@61..63 "=="
+          WHITESPACE@63..64 " "
+          LITERAL@64..67
+            STRING@64..67 "'c'"
+  WHITESPACE@67..68 "\n"
+
+error[DS0105]: SQL keyword `AND` in capitals
+  --> query:1:33
+  |
+1 | 'orders.csv' | where amount > 1 AND amount < 5 OR customerId == 'c'
+  |                                 ^^^ this is SQL
+  |
+  = help: write `and` in lowercase: `amount > 1 and amount < 5`
+
+error[DS0105]: SQL keyword `OR` in capitals
+  --> query:1:48
+  |
+1 | 'orders.csv' | where amount > 1 AND amount < 5 OR customerId == 'c'
+  |                                                ^^ this is SQL
+  |
+  = help: write `or` in lowercase
+
+with the machine-applicable fixes applied:
+    'orders.csv' | where amount > 1 and amount < 5 or customerId == 'c'
+which parses without errors

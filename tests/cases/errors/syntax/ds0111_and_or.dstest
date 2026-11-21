@@ -51,7 +51,7 @@ error[DS0111]: `&&` is not an operator
   --> query:1:34
   |
 1 | 'orders.csv' | where amount > 10 && amount < 100 || customerId == "c-001"
-  |                                  ^^
+  |                                  ^^ this is C's "and"
   |
   = help: use `and` to require both conditions: `amount > 10 and amount < 100`
 
@@ -59,7 +59,7 @@ error[DS0111]: `||` is not an operator
   --> query:1:50
   |
 1 | 'orders.csv' | where amount > 10 && amount < 100 || customerId == "c-001"
-  |                                                  ^^
+  |                                                  ^^ this is C's "or"
   |
   = help: use `or` to accept either condition
 

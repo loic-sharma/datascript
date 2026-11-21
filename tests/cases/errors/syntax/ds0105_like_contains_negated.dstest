@@ -1,0 +1,35 @@
+# SQL's `NOT LIKE` with `%x%`: DS0105 suggesting `!contains`.
+mode: syntax
+---- query
+'orders.csv' | where customerId NOT LIKE '%42%'
+---- expected
+PROGRAM@0..48
+  PIPELINE@0..47
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..47
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      BIN_EXPR@21..47
+        NAME_REF@21..31
+          IDENT@21..31 "customerId"
+        WHITESPACE@31..32 " "
+        IDENT@32..35 "NOT"
+        WHITESPACE@35..36 " "
+        IDENT@36..40 "LIKE"
+        WHITESPACE@40..41 " "
+        LITERAL@41..47
+          STRING@41..47 "'%42%'"
+  WHITESPACE@47..48 "\n"
+
+error[DS0105]: `NOT LIKE` is SQL, not DataScript
+  --> query:1:33
+  |
+1 | 'orders.csv' | where customerId NOT LIKE '%42%'
+  |                                 ^^^^^^^^ this is SQL's pattern match
+  |
+  = help: use `!contains`: `customerId !contains '42'`
+  = note: `contains` ignores case; `contains_cs` matches case exactly

@@ -1,0 +1,37 @@
+# `''` in a verbatim string: no escapes there, so the fix switches quotes.
+mode: syntax
+---- query
+'orders.csv' | where customerId != @'it''s'
+---- expected
+PROGRAM@0..44
+  PIPELINE@0..43
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..43
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      BIN_EXPR@21..43
+        NAME_REF@21..31
+          IDENT@21..31 "customerId"
+        WHITESPACE@31..32 " "
+        NEQ@32..34 "!="
+        WHITESPACE@34..35 " "
+        LITERAL@35..43
+          STRING@35..40 "@'it'"
+          STRING@40..43 "'s'"
+  WHITESPACE@43..44 "\n"
+
+error[DS0117]: `''` does not put a quote in a string
+  --> query:1:40
+  |
+1 | 'orders.csv' | where customerId != @'it''s'
+  |                                        ^^ this ends the string and starts another
+  |
+  = help: a verbatim string has no escapes; use the other quote: `@"it's"`
+
+with the machine-applicable fixes applied:
+    'orders.csv' | where customerId != @"it's"
+which parses without errors

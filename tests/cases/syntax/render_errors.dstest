@@ -36,6 +36,8 @@ error[DS0120]: `render` must be the last operator
   |
 1 | t | render | render chart with title = 1
   |     ^^^^^^   ----------------- this operator comes after `render`
+  |     |
+  |     the chart is drawn at this point
   |
   = help: a query draws one chart: keep only the last `render`
 

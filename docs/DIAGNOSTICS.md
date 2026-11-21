@@ -136,7 +136,7 @@ design decision and implemented by the task named in the allocation table.
 | DS0102 | error | missing `|` between operators |
 | DS0103 | error | pipe with no operator after it |
 | DS0104 | error | unknown operator (with did-you-mean; also `project - away` with spaces, D-026) |
-| DS0105 | error | SQL keyword used (`SELECT ... FROM`, `GROUP BY`, `WHERE` in caps, `DESC`, …), with the DataScript equivalent |
+| DS0105 | error | SQL keyword used (`SELECT ... FROM`, `GROUP BY`, `WHERE` and `AND`/`OR`/`NOT` in caps, `DESC`, `IS NULL`, `LIKE`, `AS`, …), with the DataScript equivalent |
 | DS0106 | error | missing `;` between statements (machine-applicable fix, except after an operator that takes a list, where `,` is offered too and neither is certain) |
 | DS0107 | error | `<>` used instead of `!=` |
 | DS0110 | error | `=` used for comparison (also `===` and `= =`, reported once with a fix to `==`) |
@@ -146,11 +146,17 @@ design decision and implemented by the task named in the allocation table.
 | DS0114 | error | prefix `not` without parentheses as the operand of a tighter operator (`1 + not x`) |
 | DS0115 | error | `where` with conditions separated by commas |
 | DS0116 | error | `distinct *` with other columns |
+| DS0117 | error | SQL form with no DataScript equivalent: `count(*)`, `project *`, `''` inside a string |
 | DS0120 | error | `render` is not the last operator |
 | DS0121 | error | missing `by` in `sort`/`top` |
 | DS0122 | error | missing `on` in `join`/`lookup` |
 | DS0123 | error | unknown join kind (did-you-mean) |
 | DS0124 | error | `innerunique` is not supported (explains D-004) |
+| DS0125 | error | query does not start with a table (`where a > 1`, or a pipe with nothing before it) |
+| DS0126 | error | reserved word used as a name (help: quote it, `['null']`) |
+| DS0127 | error | trailing comma at the end of a list |
+| DS0128 | error | list after `in` written in square brackets |
+| DS0129 | error | `in ~` / `!in ~` written with a space (machine-applicable fix to `in~`) |
 | DS1001 | error | unknown column |
 | DS1002 | error | unknown name (let/table) |
 | DS1003 | error | name already defined |

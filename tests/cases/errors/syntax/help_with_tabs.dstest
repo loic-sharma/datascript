@@ -1,0 +1,50 @@
+# Tabs in the source and in help text are shown as four spaces.
+mode: syntax
+---- query
+'orders.csv'
+|	where	amount > 1	AND	amount < 5
+---- expected
+PROGRAM@0..47
+  PIPELINE@0..46
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 "\n"
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 "\t"
+    WHERE_OP@15..46
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 "\t"
+      BIN_EXPR@21..46
+        BIN_EXPR@21..31
+          NAME_REF@21..27
+            IDENT@21..27 "amount"
+          WHITESPACE@27..28 " "
+          GT@28..29 ">"
+          WHITESPACE@29..30 " "
+          LITERAL@30..31
+            LONG@30..31 "1"
+        WHITESPACE@31..32 "\t"
+        IDENT@32..35 "AND"
+        WHITESPACE@35..36 "\t"
+        BIN_EXPR@36..46
+          NAME_REF@36..42
+            IDENT@36..42 "amount"
+          WHITESPACE@42..43 " "
+          LT@43..44 "<"
+          WHITESPACE@44..45 " "
+          LITERAL@45..46
+            LONG@45..46 "5"
+  WHITESPACE@46..47 "\n"
+
+error[DS0105]: SQL keyword `AND` in capitals
+  --> query:2:20
+  |
+2 | |    where    amount > 1    AND    amount < 5
+  |                             ^^^ this is SQL
+  |
+  = help: write `and` in lowercase: `amount > 1    and    amount < 5`
+
+with the machine-applicable fixes applied:
+    'orders.csv'
+    |	where	amount > 1	and	amount < 5
+which parses without errors

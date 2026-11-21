@@ -34,7 +34,7 @@ error[DS0104]: unknown operator `summerize`
   --> query:1:5
   |
 1 | t | summerize count() | take 5
-  |     ^^^^^^^^^
+  |     ^^^^^^^^^ not an operator
   |
   = help: an operator with a similar name exists: `summarize`
 

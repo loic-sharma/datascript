@@ -85,6 +85,22 @@ pub(super) const EXPR_START: TokenSet = TokenSet::new(&[
     NOT_KW,
 ]);
 
+/// Words that continue an expression as an infix operator: after an operator name they mean the
+/// name is a column (`take in (1, 2)`), not an operator.
+const INFIX_WORDS: &[&str] = &[
+    "between",
+    "contains",
+    "contains_cs",
+    "endswith",
+    "endswith_cs",
+    "has",
+    "has_cs",
+    "in",
+    "matches",
+    "startswith",
+    "startswith_cs",
+];
+
 const NAME_START: TokenSet = TokenSet::new(&[IDENT, QUOTED_IDENT]);
 
 // Binding powers, LANGUAGE.md §4 (higher binds tighter).
@@ -223,16 +239,46 @@ impl Parser<'_> {
         self.error_expected(&what);
     }
 
-    /// Reports a missing name, with help when the user wrote a reserved word.
-    fn error_expected_name(&mut self, what: &str) {
-        let mut d = self.expected(what);
+    /// Reports a missing name. Returns `true` if the user wrote a reserved word (DS0126): the
+    /// caller then parses it as the name meant.
+    fn error_expected_name(&mut self, what: &str) -> bool {
         if self.current().is_reserved_word() {
-            let word = self.nth_text(0);
-            d = d.help(format!(
-                "`{word}` is a reserved word; to use it as a name, quote it: `['{word}']`"
-            ));
+            self.reserved_word_as_name();
+            return true;
         }
-        self.report(d);
+        self.error_expected(what);
+        false
+    }
+
+    /// Whether a name followed by `=` starts here: a named column or argument. A reserved word
+    /// counts (`extend null = 1`, DS0126).
+    fn at_name_eq(&self) -> bool {
+        (self.at_set(NAME_START) || self.current().is_reserved_word()) && self.nth(1) == EQ
+    }
+
+    /// Parses the name of `name =`, reporting a reserved word (DS0126).
+    fn name_before_eq(&mut self) {
+        if self.current().is_reserved_word() {
+            self.reserved_word_as_name();
+        }
+        name(self);
+    }
+
+    /// Whether the current token is an operator name that starts a query with no table before
+    /// it (`where a > 1`, DS0125): something follows it on the same line that can only be the
+    /// operator's arguments.
+    fn at_operator_without_source(&self) -> bool {
+        let Some((name, len, spaced)) = self.op_name() else {
+            return false;
+        };
+        if spaced || !OPERATORS.contains(&name.as_str()) || self.nth_line_start(len) {
+            return false;
+        }
+        let next = self.nth(len);
+        next == STAR
+            || (EXPR_START.contains(next)
+                && !(next == L_PAREN && self.nth_joined(len))
+                && !(next == IDENT && INFIX_WORDS.contains(&self.nth_text(len))))
     }
 }
 
@@ -285,10 +331,8 @@ fn statement(p: &mut Parser<'_>) -> bool {
 fn let_stmt(p: &mut Parser<'_>) {
     let m = p.start();
     p.bump(); // let
-    if p.at_set(NAME_START) {
+    if p.at_set(NAME_START) || p.error_expected_name("a name after `let`") {
         name(p);
-    } else {
-        p.error_expected_name("a name after `let`");
     }
     if !p.eat(EQ) {
         let what = format!("`=`{}", p.after_prev());
@@ -303,10 +347,14 @@ fn query_stmt(p: &mut Parser<'_>) {
     let m = p.start();
     let start = p.pos;
     if p.at(PIPE) {
-        let d = Diagnostic::error(codes::DS0101, "expected a table before `|`")
+        let d = Diagnostic::error(codes::DS0125, "a query starts with a table, not with `|`")
             .primary(p.current_span(), "this pipe has nothing to read from")
             .help("start the query with a file path such as `'data.csv'`, or a table name");
         p.report(d);
+    } else if p.at_operator_without_source() {
+        // `where a > 1`: parse the operator, so errors inside it show up too.
+        p.operator_without_source();
+        operator(p);
     } else if let Some((from, end)) = sql_select_at(p) {
         p.sql_select(p.pos, from, end);
         p.recover(|p| p.at(SEMICOLON) || p.at(LET_KW));
@@ -507,7 +555,10 @@ fn operator_named(
             WHERE_OP
         }
         "project" => {
-            list(p, named_expr);
+            // `project *` (DS0117): parse the columns after `*,` too.
+            if !p.at(STAR) || project_star(p, op_start) {
+                list(p, named_expr);
+            }
             PROJECT_OP
         }
         "extend" => {
@@ -599,6 +650,19 @@ fn where_commas(p: &mut Parser<'_>, start: u32) {
     }
 }
 
+/// `project *` (DS0117): SQL's `SELECT *`. Wraps `*` and a comma after it in an `ERROR` node, and
+/// returns whether there was a comma, so more columns follow.
+fn project_star(p: &mut Parser<'_>, op_start: u32) -> bool {
+    let alone =
+        matches!(p.nth(1), PIPE | SEMICOLON | LET_KW | EOF) || (p.nth(1) == R_PAREN && p.depth > 0);
+    p.project_star(op_start, alone);
+    let m = p.start();
+    p.bump(); // *
+    let comma = p.eat(COMMA);
+    m.complete(p, ERROR);
+    comma
+}
+
 /// `sort` or `top` without `by` (DS0121): parses the keys anyway if they are there.
 fn without_by(p: &mut Parser<'_>, name: &str, op_start: u32, keys: impl Fn(&mut Parser<'_>)) {
     let at = p.pos;
@@ -675,13 +739,19 @@ fn certain_operator(p: &Parser<'_>, d: &Diagnostic) -> Option<(&'static str, usi
     (len > 0).then_some((name, len, by_included))
 }
 
-/// `item { ',' item }`
+/// `item { ',' item }`. A trailing `,` before the end of the list is reported (DS0127).
 fn list(p: &mut Parser<'_>, item: impl Fn(&mut Parser<'_>)) {
     loop {
         item(p);
-        if !p.eat(COMMA) {
+        if !p.at(COMMA) {
             break;
         }
+        if matches!(p.nth(1), PIPE | SEMICOLON | EOF | R_PAREN | R_BRACK) {
+            p.trailing_comma();
+            p.bump();
+            break;
+        }
+        p.bump();
     }
 }
 
@@ -689,14 +759,28 @@ fn list(p: &mut Parser<'_>, item: impl Fn(&mut Parser<'_>)) {
 fn named_expr(p: &mut Parser<'_>) {
     let m = p.start();
     let saved = p.eq_compares;
-    if p.at_set(NAME_START) && p.nth(1) == EQ {
-        name(p);
+    let named = p.at_name_eq();
+    if named {
+        p.name_before_eq();
         p.bump(); // =
         // After `a =`, another `=` can only be a mistyped comparison: `a = b = c` (DS0110).
         p.eq_compares = true;
     }
     // Unlike in call arguments, a `|` here belongs to the outer pipeline.
-    expr(p);
+    let start = p.offset();
+    let value = expr(p);
+    // SQL's `a AS b` (DS0105): parsed as the name it gives.
+    if !named
+        && value.is_some()
+        && p.at(IDENT)
+        && p.nth_text(0).eq_ignore_ascii_case("as")
+        && NAME_START.contains(p.nth(1))
+        && !p.at_line_start()
+    {
+        p.sql_as(start);
+        p.bump(); // as
+        name(p);
+    }
     p.eq_compares = saved;
     m.complete_if_nonempty(p, NAMED_EXPR);
 }
@@ -706,8 +790,9 @@ fn column_pattern(p: &mut Parser<'_>) {
     const PARTS: TokenSet = TokenSet::new(&[IDENT, QUOTED_IDENT, STAR, LONG]);
     if !(p.at_set(NAME_START) || p.at(STAR)) {
         let what = format!("a column name{}", p.after_prev());
-        p.error_expected_name(&what);
-        return;
+        if !p.error_expected_name(&what) {
+            return;
+        }
     }
     let m = p.start();
     p.bump();
@@ -720,20 +805,16 @@ fn column_pattern(p: &mut Parser<'_>) {
 /// `new = old` in `project-rename`.
 fn rename_item(p: &mut Parser<'_>) {
     let m = p.start();
-    if p.at_set(NAME_START) {
+    let what = format!("a new column name{}", p.after_prev());
+    if p.at_set(NAME_START) || p.error_expected_name(&what) {
         name(p);
-    } else {
-        let what = format!("a new column name{}", p.after_prev());
-        p.error_expected_name(&what);
     }
     if !p.eat(EQ) {
         let what = format!("`=`{}", p.after_prev());
         p.error_expected(&what);
     }
-    if p.at_set(NAME_START) {
+    if p.at_set(NAME_START) || p.error_expected_name("the column to rename after `=`") {
         name_ref(p);
-    } else {
-        p.error_expected_name("the column to rename after `=`");
     }
     m.complete_if_nonempty(p, RENAME_ITEM);
 }
@@ -857,12 +938,12 @@ fn render_body(p: &mut Parser<'_>) {
 /// `name '=' value { ',' value }`. Extra values are for list properties such as `ycolumns`;
 /// a `name =` after a comma starts the next property.
 fn render_prop(p: &mut Parser<'_>) {
-    if !(p.at_set(NAME_START) && p.nth(1) == EQ) {
+    if !p.at_name_eq() {
         p.error_expected("a property such as `title = \"...\"`");
         return;
     }
     let m = p.start();
-    name(p);
+    p.name_before_eq();
     p.bump(); // =
     expr(p);
     while p.at(COMMA) && !(NAME_START.contains(p.nth(1)) && p.nth(2) == EQ) && p.nth(1) != R_PAREN {
@@ -896,8 +977,32 @@ fn expr(p: &mut Parser<'_>) -> Option<CompletedMarker> {
 enum Infix {
     /// A binary operator spelled with this many tokens (`matches regex` has two).
     Binary(usize),
-    In,
+    /// `in` and its forms, spelled with this many tokens (SQL's `NOT IN` has two).
+    In(usize),
     Between,
+    /// SQL's `LIKE` or `NOT LIKE` (DS0105), spelled with this many tokens.
+    Like(usize),
+    /// SQL's `IS NULL` or `IS NOT NULL` (DS0105), spelled with this many tokens.
+    IsNull(usize),
+}
+
+/// Whether the `n`th token is the word `word` in any case.
+fn nth_word(p: &Parser<'_>, n: usize, word: &str) -> bool {
+    matches!(p.nth(n), IDENT | NOT_KW | NULL_KW) && p.nth_text(n).eq_ignore_ascii_case(word)
+}
+
+/// How many tokens SQL's `IS [NOT] NULL` takes, if it starts at the current token.
+fn is_null_len(p: &Parser<'_>) -> Option<usize> {
+    if !nth_word(p, 0, "is") {
+        return None;
+    }
+    if nth_word(p, 1, "null") {
+        Some(2)
+    } else if nth_word(p, 1, "not") && nth_word(p, 2, "null") {
+        Some(3)
+    } else {
+        None
+    }
 }
 
 /// The infix operator at the current token and its binding power.
@@ -917,14 +1022,27 @@ fn infix(p: &Parser<'_>) -> Option<(u8, Infix)> {
         EQ if p.eq_compares => (BP_CMP, Infix::Binary(1)),
         LTGT => (BP_CMP, Infix::Binary(1)),
         EQ2 | NEQ | LT | LTEQ | GT | GTEQ | EQ_TILDE | BANG_TILDE => (BP_CMP, Infix::Binary(1)),
-        IN_TILDE => (BP_CMP, Infix::In),
+        IN_TILDE => (BP_CMP, Infix::In(1)),
+        // SQL's `not in` and `not like`, in any case.
+        NOT_KW if nth_word(p, 1, "in") => (BP_CMP, Infix::In(2)),
+        NOT_KW if nth_word(p, 1, "like") => (BP_CMP, Infix::Like(2)),
         NEGATED_OP => match p.nth_text(0) {
-            "!in" | "!in~" => (BP_CMP, Infix::In),
+            "!in" | "!in~" => (BP_CMP, Infix::In(1)),
             "!between" => (BP_CMP, Infix::Between),
             _ => (BP_CMP, Infix::Binary(1)),
         },
         IDENT => match p.nth_text(0) {
-            "in" => (BP_CMP, Infix::In),
+            "in" => (BP_CMP, Infix::In(1)),
+            // SQL keywords in capitals (DS0105) parse like the operator meant.
+            "AND" => (BP_AND, Infix::Binary(1)),
+            "OR" => (BP_OR, Infix::Binary(1)),
+            "IN" => (BP_CMP, Infix::In(1)),
+            "NOT" if nth_word(p, 1, "in") => (BP_CMP, Infix::In(2)),
+            "NOT" if nth_word(p, 1, "like") => (BP_CMP, Infix::Like(2)),
+            word if word.eq_ignore_ascii_case("like") || word.eq_ignore_ascii_case("ilike") => {
+                (BP_CMP, Infix::Like(1))
+            }
+            _ if is_null_len(p).is_some() => (BP_CMP, Infix::IsNull(is_null_len(p)?)),
             "between" => (BP_CMP, Infix::Between),
             "has" | "has_cs" | "contains" | "contains_cs" | "startswith" | "startswith_cs"
             | "endswith" | "endswith_cs" => (BP_CMP, Infix::Binary(1)),
@@ -1047,16 +1165,51 @@ fn expr_bp_inner(p: &mut Parser<'_>, min_bp: u8) -> Option<CompletedMarker> {
                 expr_bp(p, bp + 1);
                 (BIN_EXPR, (rhs_start, p.prev_end().max(rhs_start)))
             }
-            Infix::In => {
-                p.bump();
+            Infix::In(len) => {
+                for _ in 0..len {
+                    p.bump();
+                }
+                if p.at(TILDE) && matches!(p.prev_text(), Some("in" | "!in")) {
+                    // `in ~ (...)`: `in~` with a space in it (DS0129).
+                    p.spaced_in_tilde(op_start);
+                    p.bump();
+                }
                 let rhs_start = p.offset();
                 if p.at(L_PAREN) {
                     arg_list(p, true);
+                } else if p.at(L_BRACK) {
+                    // `in [1, 2]` (DS0128): parse the list as if it were in parentheses.
+                    let open = p.pos;
+                    arg_list(p, true);
+                    p.in_brackets(open);
+                } else if p.at(QUOTED_IDENT) && p.nth_text(0).starts_with("['") {
+                    // `in ['a']` is read as the quoted name `['a']` (DS0128).
+                    p.in_quoted_brackets();
+                    let m = p.start();
+                    p.bump();
+                    m.complete(p, ARG_LIST);
                 } else {
                     let what = format!("`(` and a list of values{}", p.after_prev());
                     p.error_expected(&what);
                 }
                 (IN_EXPR, (rhs_start, p.prev_end().max(rhs_start)))
+            }
+            Infix::Like(len) => {
+                for _ in 0..len {
+                    p.bump();
+                }
+                let rhs_start = p.offset();
+                let rhs = expr_bp(p, bp + 1);
+                let rhs_range = (rhs_start, p.prev_end().max(rhs_start));
+                p.sql_like(op_start, len, rhs.map(|_| rhs_range));
+                (BIN_EXPR, rhs_range)
+            }
+            Infix::IsNull(len) => {
+                for _ in 0..len {
+                    p.bump();
+                }
+                p.sql_is_null(start, op_start, len);
+                (BIN_EXPR, (p.prev_end(), p.prev_end()))
             }
             Infix::Between => {
                 p.bump();
@@ -1067,10 +1220,14 @@ fn expr_bp_inner(p: &mut Parser<'_>, min_bp: u8) -> Option<CompletedMarker> {
         };
         lhs = m.complete(p, kind);
         let op_len = match op {
-            Infix::Binary(len) => len,
-            _ => 1,
+            Infix::Binary(len) | Infix::In(len) | Infix::Like(len) | Infix::IsNull(len) => len,
+            Infix::Between => 1,
         };
-        p.foreign_binary_operator(op_start, op_len, start, rhs);
+        match op {
+            Infix::Binary(_) => p.foreign_binary_operator(op_start, op_len, start, rhs),
+            Infix::In(_) => p.sql_in(op_start, op_len),
+            _ => {}
+        }
         if bp == BP_CMP {
             // The help rewrites the chain only for plain operators with both operands present.
             let simple = matches!(op, Infix::Binary(_)) && rhs.0 < rhs.1;
@@ -1133,7 +1290,13 @@ fn report_chained_comparison(p: &mut Parser<'_>, start: u32, chain: &[Link]) {
 /// `min_bp` is the binding power of the operator this is the operand of.
 fn prefix_or_primary(p: &mut Parser<'_>, min_bp: u8) -> Option<CompletedMarker> {
     let start = p.offset();
-    match p.current() {
+    // SQL's `NOT` in capitals (DS0105) parses like `not`.
+    let sql_not = p.at(IDENT) && p.nth_text(0) == "NOT" && EXPR_START.contains(p.nth(1));
+    if sql_not {
+        p.sql_not();
+    }
+    let current = if sql_not { NOT_KW } else { p.current() };
+    match current {
         NOT_KW if p.nth(1) == L_PAREN => {
             // `not(x)` reads like a call and binds like one: `not(x) == y` is `(not x) == y`.
             let m = p.start();
@@ -1183,7 +1346,25 @@ fn primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
     let kind = p.current();
     if LITERALS.contains(kind) {
         let m = p.start();
+        let first = p.pos;
         p.bump();
+        match kind {
+            // `1.2.3`: a number with more than one decimal point, read as `1.2` then `.3`.
+            LONG | REAL if p.at(REAL) && p.nth_joined(0) && p.nth_text(0).starts_with('.') => {
+                while p.at(REAL) && p.nth_joined(0) && p.nth_text(0).starts_with('.') {
+                    p.bump();
+                }
+                p.dotted_number(first);
+            }
+            // SQL's `'it''s'`: two strings side by side.
+            STRING if p.at(STRING) && p.nth_joined(0) => {
+                while p.at(STRING) && p.nth_joined(0) {
+                    p.bump();
+                }
+                p.doubled_quotes(first);
+            }
+            _ => {}
+        }
         return Some(m.complete(p, LITERAL));
     }
     match kind {
@@ -1193,6 +1374,26 @@ fn primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
                 p.bump(); // type ( null )
             }
             Some(m.complete(p, TYPED_NULL))
+        }
+        IDENT
+            if p.nth(1) == L_PAREN
+                && p.nth(2) == STAR
+                && p.nth(3) == R_PAREN
+                && p.nth_text(0).eq_ignore_ascii_case("count") =>
+        {
+            // SQL's `count(*)` (DS0117): the `*` is wrapped in an `ERROR` node, so the call
+            // reads as `count()`.
+            p.count_star();
+            let callee = name_ref(p);
+            let m = callee.precede(p);
+            let args = p.start();
+            p.bump(); // (
+            let star = p.start();
+            p.bump(); // *
+            star.complete(p, ERROR);
+            p.bump(); // )
+            args.complete(p, ARG_LIST);
+            Some(m.complete(p, CALL_EXPR))
         }
         IDENT if p.nth(1) == L_PAREN => {
             let predicates = PREDICATE_FUNCTIONS.contains(&p.nth_text(0));
@@ -1247,11 +1448,9 @@ fn postfix(p: &mut Parser<'_>, mut lhs: CompletedMarker, start: u32) -> Complete
                 let m = lhs.precede(p);
                 let dot = p.pos;
                 p.bump();
-                if p.at_set(NAME_START) {
+                if p.at_set(NAME_START) || p.error_expected_name("a name after `.`") {
                     field = Some((dot, p.pos));
                     name_ref(p);
-                } else {
-                    p.error_expected_name("a name after `.`");
                 }
                 lhs = m.complete(p, FIELD_EXPR);
                 continue;
@@ -1290,9 +1489,10 @@ fn paren_expr(p: &mut Parser<'_>) -> CompletedMarker {
 fn arg_list(p: &mut Parser<'_>, in_list: bool) {
     let m = p.start();
     let open = p.pos;
-    p.bump(); // (
+    let close = if p.at(L_BRACK) { R_BRACK } else { R_PAREN };
+    p.bump(); // ( or the `[` of `in [...]`
     p.depth += 1;
-    if in_list && p.at(R_PAREN) {
+    if in_list && p.at(close) {
         let d = p
             .expected("a value in the list")
             .primary(p.current_span(), "the list after `in` is empty")
@@ -1300,13 +1500,13 @@ fn arg_list(p: &mut Parser<'_>, in_list: bool) {
         p.report(d);
     }
     let saved = std::mem::replace(&mut p.in_arg_list, true);
-    if !p.at(R_PAREN) {
+    if !p.at(close) {
         // `iff(x = 1, ...)` is a comparison: those functions take no named arguments.
         let named_args = !p.eq_compares;
         list(p, |p| {
-            if named_args && p.at_set(NAME_START) && p.nth(1) == EQ {
+            if named_args && p.at_name_eq() {
                 let m = p.start();
-                name(p);
+                p.name_before_eq();
                 p.bump(); // =
                 pipeline_or_expr(p);
                 m.complete(p, NAMED_EXPR);

@@ -28,7 +28,7 @@ error[DS0110]: `===` is not an operator
   --> query:1:13
   |
 1 | t | where a === 1
-  |             ^^^
+  |             ^^^ this is JavaScript's strict equality
   |
   = help: use `==` to compare values: `a == 1`
 

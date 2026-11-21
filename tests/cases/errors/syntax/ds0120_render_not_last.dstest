@@ -29,6 +29,8 @@ error[DS0120]: `render` must be the last operator
   |
 1 | 'orders.csv' | render barchart | take 5
   |                ^^^^^^^^^^^^^^^   ------ this operator comes after `render`
+  |                |
+  |                the chart is drawn at this point
   |
   = help: move `render barchart` to the end of the query
 

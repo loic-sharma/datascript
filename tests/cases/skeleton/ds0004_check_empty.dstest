@@ -1,0 +1,5 @@
+# `check` accepts a program with no query (LANGUAGE.md §2): no DS0004.
+mode: check
+---- query
+// nothing to check
+---- expected

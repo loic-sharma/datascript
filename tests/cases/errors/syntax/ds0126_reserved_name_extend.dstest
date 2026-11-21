@@ -1,0 +1,54 @@
+# A reserved word as a column name: DS0126 with a fix that quotes it.
+mode: syntax
+---- query
+'orders.csv' | extend null = 1, true = 2
+---- expected
+PROGRAM@0..41
+  PIPELINE@0..40
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    EXTEND_OP@15..40
+      IDENT@15..21 "extend"
+      WHITESPACE@21..22 " "
+      NAMED_EXPR@22..30
+        NAME@22..26
+          NULL_KW@22..26 "null"
+        WHITESPACE@26..27 " "
+        EQ@27..28 "="
+        WHITESPACE@28..29 " "
+        LITERAL@29..30
+          LONG@29..30 "1"
+      COMMA@30..31 ","
+      WHITESPACE@31..32 " "
+      NAMED_EXPR@32..40
+        NAME@32..36
+          TRUE_KW@32..36 "true"
+        WHITESPACE@36..37 " "
+        EQ@37..38 "="
+        WHITESPACE@38..39 " "
+        LITERAL@39..40
+          LONG@39..40 "2"
+  WHITESPACE@40..41 "\n"
+
+error[DS0126]: `null` is a reserved word
+  --> query:1:23
+  |
+1 | 'orders.csv' | extend null = 1, true = 2
+  |                       ^^^^ a reserved word cannot be a name without quotes
+  |
+  = help: to use it as a name, quote it: `['null']`
+
+error[DS0126]: `true` is a reserved word
+  --> query:1:33
+  |
+1 | 'orders.csv' | extend null = 1, true = 2
+  |                                 ^^^^ a reserved word cannot be a name without quotes
+  |
+  = help: to use it as a name, quote it: `['true']`
+
+with the machine-applicable fixes applied:
+    'orders.csv' | extend ['null'] = 1, ['true'] = 2
+which parses without errors

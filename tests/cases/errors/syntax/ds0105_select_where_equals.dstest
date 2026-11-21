@@ -1,0 +1,42 @@
+# A SQL query with `=` and `<>` in WHERE: the rewrite uses `==` and `!=`.
+mode: syntax
+---- query
+SELECT orderId FROM 'orders.csv' WHERE customerId = 'c-1' AND amount <> 0
+---- expected
+PROGRAM@0..74
+  PIPELINE@0..73
+    ERROR@0..73
+      IDENT@0..6 "SELECT"
+      WHITESPACE@6..7 " "
+      IDENT@7..14 "orderId"
+      WHITESPACE@14..15 " "
+      IDENT@15..19 "FROM"
+      WHITESPACE@19..20 " "
+      STRING@20..32 "'orders.csv'"
+      WHITESPACE@32..33 " "
+      IDENT@33..38 "WHERE"
+      WHITESPACE@38..39 " "
+      IDENT@39..49 "customerId"
+      WHITESPACE@49..50 " "
+      EQ@50..51 "="
+      WHITESPACE@51..52 " "
+      STRING@52..57 "'c-1'"
+      WHITESPACE@57..58 " "
+      IDENT@58..61 "AND"
+      WHITESPACE@61..62 " "
+      IDENT@62..68 "amount"
+      WHITESPACE@68..69 " "
+      LTGT@69..71 "<>"
+      WHITESPACE@71..72 " "
+      LONG@72..73 "0"
+  WHITESPACE@73..74 "\n"
+
+error[DS0105]: `SELECT ... FROM` is SQL, not DataScript
+  --> query:1:1
+  |
+1 | SELECT orderId FROM 'orders.csv' WHERE customerId = 'c-1' AND amount <> 0
+  | ^^^^^^         ---- in DataScript the table comes first
+  | |
+  | this is SQL
+  |
+  = help: start with the table and pipe it into operators: `'orders.csv' | where customerId == 'c-1' and amount != 0 | project orderId`

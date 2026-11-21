@@ -27,7 +27,7 @@ error[DS0105]: SQL keyword `WHERE` is not an operator
   --> query:1:16
   |
 1 | 'orders.csv' | WHERE amount > 10
-  |                ^^^^^
+  |                ^^^^^ this is SQL
   |
   = help: operator names are lowercase: write `where`
 

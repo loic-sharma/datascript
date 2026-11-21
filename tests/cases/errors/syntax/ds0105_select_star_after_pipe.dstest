@@ -20,7 +20,7 @@ error[DS0105]: SQL keyword `SELECT` is not an operator
   --> query:1:5
   |
 1 | t | SELECT *
-  |     ^^^^^^
+  |     ^^^^^^ this is SQL
   |
   = help: every column is kept already: remove `| SELECT *`
 

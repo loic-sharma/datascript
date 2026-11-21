@@ -20,6 +20,6 @@ error[DS0104]: unknown operator `frobnicate`
   --> query:1:16
   |
 1 | 'orders.csv' | frobnicate 3
-  |                ^^^^^^^^^^
+  |                ^^^^^^^^^^ not an operator
   |
   = note: the operators are `count`, `distinct`, `extend`, `getschema`, `join`, `limit`, `order`, `project`, `project-away`, `project-rename`, `render`, `sort`, `summarize`, `take`, `top`, `union` and `where`

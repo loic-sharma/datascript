@@ -25,7 +25,7 @@ error[DS0104]: operator name `project - away` has spaces in it
   --> query:1:5
   |
 1 | t | project - away x
-  |     ^^^^^^^^^^^^^^
+  |     ^^^^^^^^^^^^^^ an operator name is one word
   |
   = help: write `project-away`, with no spaces
 

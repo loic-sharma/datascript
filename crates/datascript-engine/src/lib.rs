@@ -23,7 +23,7 @@ use arrow_schema::SchemaRef;
 use datascript_compiler::{
     Analysis, Capabilities, Program, SchemaLookup, SchemaProvider, SourceError, SourceRef,
 };
-use datascript_diagnostics::codes::DS9001;
+use datascript_diagnostics::codes::{DS0004, DS9001};
 use datascript_diagnostics::{Diagnostic, FileId, SourceFile};
 use futures::{Stream, StreamExt};
 
@@ -283,7 +283,7 @@ impl Session {
         Ok(self.compile(src, file, ctx).await?.explain())
     }
 
-    /// Checks, plans and runs every query in `src`.
+    /// Checks, plans and runs every query in `src`. Warns (DS0004) if it has none.
     pub async fn run(&self, src: &SourceFile, file: FileId, ctx: &ExecContext) -> RunOutput {
         let program = match self.compile(src, file, ctx).await {
             Ok(program) => program,
@@ -295,6 +295,14 @@ impl Session {
             }
         };
         let mut output = RunOutput::default();
+        if program.queries.is_empty() {
+            // Valid for `check`, but `run` has nothing to show (LANGUAGE.md §2).
+            output.diagnostics.push(
+                Diagnostic::warning(DS0004, "program has no query to run")
+                    .in_file(file)
+                    .help("add a query, such as `'data.csv' | take 10`"),
+            );
+        }
         for query in &program.queries {
             let result = match self.engine.execute(query, ctx).await {
                 Ok(stream) => stream.collect().await,

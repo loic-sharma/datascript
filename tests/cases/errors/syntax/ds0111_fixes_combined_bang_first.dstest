@@ -33,7 +33,7 @@ error[DS0111]: `!` is not an operator
   --> query:1:11
   |
 1 | t | where !b&&c||!d
-  |           ^
+  |           ^ this is C's "not"
   |
   = help: negate it with `not(...)`: `not(b)`
 
@@ -41,7 +41,7 @@ error[DS0111]: `&&` is not an operator
   --> query:1:13
   |
 1 | t | where !b&&c||!d
-  |             ^^
+  |             ^^ this is C's "and"
   |
   = help: use `and` to require both conditions
 
@@ -49,7 +49,7 @@ error[DS0111]: `||` is not an operator
   --> query:1:16
   |
 1 | t | where !b&&c||!d
-  |                ^^
+  |                ^^ this is C's "or"
   |
   = help: use `or` to accept either condition
 
@@ -57,7 +57,7 @@ error[DS0111]: `!` is not an operator
   --> query:1:18
   |
 1 | t | where !b&&c||!d
-  |                  ^
+  |                  ^ this is C's "not"
   |
   = help: negate it with `not(...)`: `not(d)`
 

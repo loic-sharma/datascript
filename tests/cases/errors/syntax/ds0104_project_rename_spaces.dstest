@@ -31,7 +31,7 @@ error[DS0104]: operator name `project - rename` has spaces in it
   --> query:1:16
   |
 1 | 'orders.csv' | project - rename total = amount
-  |                ^^^^^^^^^^^^^^^^
+  |                ^^^^^^^^^^^^^^^^ an operator name is one word
   |
   = help: write `project-rename`, with no spaces
 

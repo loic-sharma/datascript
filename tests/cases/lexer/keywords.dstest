@@ -5,15 +5,16 @@ let true false null and or not
 where count order by kind in Let
 ---- expected
 PROGRAM@0..64
-  LET_STMT@0..8
+  LET_STMT@0..14
     LET_KW@0..3 "let"
     WHITESPACE@3..4 " "
-    LITERAL@4..8
+    NAME@4..8
       TRUE_KW@4..8 "true"
-  WHITESPACE@8..9 " "
-  ERROR@9..63
-    FALSE_KW@9..14 "false"
-    WHITESPACE@14..15 " "
+    WHITESPACE@8..9 " "
+    LITERAL@9..14
+      FALSE_KW@9..14 "false"
+  WHITESPACE@14..15 " "
+  ERROR@15..63
     NULL_KW@15..19 "null"
     WHITESPACE@19..20 " "
     AND_KW@20..23 "and"
@@ -37,16 +38,39 @@ PROGRAM@0..64
     IDENT@60..63 "Let"
   WHITESPACE@63..64 "\n"
 
-error[DS0101]: expected a name after `let`, found `true`
+error[DS0126]: `true` is a reserved word
   --> query:1:5
   |
 1 | let true false null and or not
-  |     ^^^^
+  |     ^^^^ a reserved word cannot be a name without quotes
   |
-  = help: `true` is a reserved word; to use it as a name, quote it: `['true']`
+  = help: to use it as a name, quote it: `['true']`
 
-error[DS0101]: expected `;` between statements, found `false`
+error[DS0101]: expected `=` after `true`, found `false`
   --> query:1:10
   |
 1 | let true false null and or not
   |          ^^^^^
+
+error[DS0101]: expected `;` between statements, found `null`
+  --> query:1:16
+  |
+1 | let true false null and or not
+  |                ^^^^
+
+with the machine-applicable fixes applied:
+    let ['true'] false null and or not
+    where count order by kind in Let
+which still has errors:
+
+error[DS0101]: expected `=` after `['true']`, found `false`
+  --> fixed:1:14
+  |
+1 | let ['true'] false null and or not
+  |              ^^^^^
+
+error[DS0101]: expected `;` between statements, found `null`
+  --> fixed:1:20
+  |
+1 | let ['true'] false null and or not
+  |                    ^^^^

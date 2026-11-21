@@ -35,7 +35,7 @@ error[DS0105]: SQL keyword `SELECT` is not an operator
   --> query:1:5
   |
 1 | t | SELECT a, b | take 1
-  |     ^^^^^^
+  |     ^^^^^^ this is SQL
   |
   = help: choose or compute columns with `project`: `project a, b`
 

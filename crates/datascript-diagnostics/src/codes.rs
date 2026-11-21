@@ -63,7 +63,7 @@ pub const DS0102: Code = Code::new(102);
 pub const DS0103: Code = Code::new(103);
 /// unknown operator (with did-you-mean; also `project - away` with spaces, D-026)
 pub const DS0104: Code = Code::new(104);
-/// SQL keyword used (`SELECT`, `FROM`, `GROUP BY`, …), with the DataScript equivalent
+/// SQL keyword used (`SELECT ... FROM`, `GROUP BY`, `WHERE` and `AND`/`OR`/`NOT` in caps, `DESC`, `IS NULL`, `LIKE`, `AS`, …), with the DataScript equivalent
 pub const DS0105: Code = Code::new(105);
 /// missing `;` between statements (machine-applicable fix, except after an operator that takes a list, where `,` is offered too and neither is certain)
 pub const DS0106: Code = Code::new(106);
@@ -83,6 +83,8 @@ pub const DS0114: Code = Code::new(114);
 pub const DS0115: Code = Code::new(115);
 /// `distinct *` with other columns
 pub const DS0116: Code = Code::new(116);
+/// SQL form with no DataScript equivalent: `count(*)`, `project *`, `''` inside a string
+pub const DS0117: Code = Code::new(117);
 /// `render` is not the last operator
 pub const DS0120: Code = Code::new(120);
 /// missing `by` in `sort`/`top`
@@ -93,6 +95,16 @@ pub const DS0122: Code = Code::new(122);
 pub const DS0123: Code = Code::new(123);
 /// `innerunique` is not supported (explains D-004)
 pub const DS0124: Code = Code::new(124);
+/// query does not start with a table (`where a > 1`, or a pipe with nothing before it)
+pub const DS0125: Code = Code::new(125);
+/// reserved word used as a name (help: quote it, `['null']`)
+pub const DS0126: Code = Code::new(126);
+/// trailing comma at the end of a list
+pub const DS0127: Code = Code::new(127);
+/// list after `in` written in square brackets
+pub const DS0128: Code = Code::new(128);
+/// `in ~` / `!in ~` written with a space (machine-applicable fix to `in~`)
+pub const DS0129: Code = Code::new(129);
 /// unknown column
 pub const DS1001: Code = Code::new(1001);
 /// unknown name (let/table)
@@ -237,7 +249,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS0105,
         severity: Some(Severity::Error),
-        summary: "SQL keyword used (`SELECT ... FROM`, `GROUP BY`, `WHERE` in caps, `DESC`, …), with the DataScript equivalent",
+        summary: "SQL keyword used (`SELECT ... FROM`, `GROUP BY`, `WHERE` and `AND`/`OR`/`NOT` in caps, `DESC`, `IS NULL`, `LIKE`, `AS`, …), with the DataScript equivalent",
         status: CodeStatus::Active,
     },
     CodeInfo {
@@ -295,6 +307,12 @@ pub const REGISTRY: &[CodeInfo] = &[
         status: CodeStatus::Active,
     },
     CodeInfo {
+        code: DS0117,
+        severity: Some(Severity::Error),
+        summary: "SQL form with no DataScript equivalent: `count(*)`, `project *`, `''` inside a string",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
         code: DS0120,
         severity: Some(Severity::Error),
         summary: "`render` is not the last operator",
@@ -322,6 +340,36 @@ pub const REGISTRY: &[CodeInfo] = &[
         code: DS0124,
         severity: Some(Severity::Error),
         summary: "`innerunique` is not supported (explains D-004)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0125,
+        severity: Some(Severity::Error),
+        summary: "query does not start with a table (`where a > 1`, or a pipe with nothing before it)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0126,
+        severity: Some(Severity::Error),
+        summary: "reserved word used as a name (help: quote it, `['null']`)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0127,
+        severity: Some(Severity::Error),
+        summary: "trailing comma at the end of a list",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0128,
+        severity: Some(Severity::Error),
+        summary: "list after `in` written in square brackets",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0129,
+        severity: Some(Severity::Error),
+        summary: "`in ~` / `!in ~` written with a space (machine-applicable fix to `in~`)",
         status: CodeStatus::Active,
     },
     CodeInfo {

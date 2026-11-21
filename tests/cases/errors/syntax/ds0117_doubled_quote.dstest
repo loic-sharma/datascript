@@ -1,0 +1,37 @@
+# SQL's `'it''s'`: DS0117 with a fix to `\'`.
+mode: syntax
+---- query
+'orders.csv' | where customerId != 'it''s'
+---- expected
+PROGRAM@0..43
+  PIPELINE@0..42
+    LITERAL@0..12
+      STRING@0..12 "'orders.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    WHERE_OP@15..42
+      IDENT@15..20 "where"
+      WHITESPACE@20..21 " "
+      BIN_EXPR@21..42
+        NAME_REF@21..31
+          IDENT@21..31 "customerId"
+        WHITESPACE@31..32 " "
+        NEQ@32..34 "!="
+        WHITESPACE@34..35 " "
+        LITERAL@35..42
+          STRING@35..39 "'it'"
+          STRING@39..42 "'s'"
+  WHITESPACE@42..43 "\n"
+
+error[DS0117]: `''` does not put a quote in a string
+  --> query:1:39
+  |
+1 | 'orders.csv' | where customerId != 'it''s'
+  |                                       ^^ this ends the string and starts another
+  |
+  = help: escape the quote with a backslash: `'it\'s'`
+
+with the machine-applicable fixes applied:
+    'orders.csv' | where customerId != 'it\'s'
+which parses without errors

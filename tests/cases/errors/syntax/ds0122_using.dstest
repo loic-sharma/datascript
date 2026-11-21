@@ -26,7 +26,7 @@ error[DS0122]: `join` uses `on`, not `using`
   --> query:1:37
   |
 1 | 'orders.csv' | join 'customers.csv' using customerId
-  |                                     ^^^^^
+  |                                     ^^^^^ expected `on` here
   |
   = help: write `on` before the columns to match
 

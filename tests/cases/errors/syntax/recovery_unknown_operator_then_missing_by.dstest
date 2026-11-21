@@ -35,7 +35,7 @@ error[DS0104]: unknown operator `filtr`
   --> query:1:16
   |
 1 | 'orders.csv' | filtr amount = 1 | sort amount desc
-  |                ^^^^^
+  |                ^^^^^ not an operator
   |
   = help: to keep the rows that match a condition, use `where`
 
@@ -55,6 +55,6 @@ error[DS0104]: unknown operator `filtr`
   --> fixed:1:16
   |
 1 | 'orders.csv' | filtr amount = 1 | sort by amount desc
-  |                ^^^^^
+  |                ^^^^^ not an operator
   |
   = help: to keep the rows that match a condition, use `where`
