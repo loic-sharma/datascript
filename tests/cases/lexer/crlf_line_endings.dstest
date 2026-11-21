@@ -3,60 +3,62 @@
 mode: syntax
 eol: crlf
 ---- query
-t | where s == 'abc
+from t | where s == 'abc
 // a comment
 | where d > datetime(2024-01-01
 | take 1
 ---- expected
-PROGRAM@0..78
-  PIPELINE@0..76
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..19
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..19
-        NAME_REF@10..11
-          IDENT@10..11 "s"
-        WHITESPACE@11..12 " "
-        EQ2@12..14 "=="
-        WHITESPACE@14..15 " "
-        LITERAL@15..19
-          STRING@15..19 "'abc"
-    WHITESPACE@19..21 "\r\n"
-    LINE_COMMENT@21..33 "// a comment"
-    WHITESPACE@33..35 "\r\n"
-    PIPE@35..36 "|"
-    WHITESPACE@36..37 " "
-    WHERE_OP@37..66
-      IDENT@37..42 "where"
-      WHITESPACE@42..43 " "
-      BIN_EXPR@43..66
-        NAME_REF@43..44
-          IDENT@43..44 "d"
-        WHITESPACE@44..45 " "
-        GT@45..46 ">"
-        WHITESPACE@46..47 " "
-        LITERAL@47..66
-          DATETIME@47..66 "datetime(2024-01-01"
-    WHITESPACE@66..68 "\r\n"
-    PIPE@68..69 "|"
-    WHITESPACE@69..70 " "
-    TAKE_OP@70..76
-      IDENT@70..74 "take"
-      WHITESPACE@74..75 " "
-      LITERAL@75..76
-        LONG@75..76 "1"
-  WHITESPACE@76..78 "\r\n"
+PROGRAM@0..83
+  PIPELINE@0..81
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..24
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..24
+        NAME_REF@15..16
+          IDENT@15..16 "s"
+        WHITESPACE@16..17 " "
+        EQ2@17..19 "=="
+        WHITESPACE@19..20 " "
+        LITERAL@20..24
+          STRING@20..24 "'abc"
+    WHITESPACE@24..26 "\r\n"
+    LINE_COMMENT@26..38 "// a comment"
+    WHITESPACE@38..40 "\r\n"
+    PIPE@40..41 "|"
+    WHITESPACE@41..42 " "
+    WHERE_OP@42..71
+      IDENT@42..47 "where"
+      WHITESPACE@47..48 " "
+      BIN_EXPR@48..71
+        NAME_REF@48..49
+          IDENT@48..49 "d"
+        WHITESPACE@49..50 " "
+        GT@50..51 ">"
+        WHITESPACE@51..52 " "
+        LITERAL@52..71
+          DATETIME@52..71 "datetime(2024-01-01"
+    WHITESPACE@71..73 "\r\n"
+    PIPE@73..74 "|"
+    WHITESPACE@74..75 " "
+    TAKE_OP@75..81
+      IDENT@75..79 "take"
+      WHITESPACE@79..80 " "
+      LITERAL@80..81
+        LONG@80..81 "1"
+  WHITESPACE@81..83 "\r\n"
 
 error[DS0002]: unterminated string
-  --> query:1:16
+  --> query:1:21
   |
-1 | t | where s == 'abc
-  |                ^^^^ this string is never closed
+1 | from t | where s == 'abc
+  |                     ^^^^ this string is never closed
   |
   = help: add a closing `'` at the end of the string
   = note: a string ends at the end of its line

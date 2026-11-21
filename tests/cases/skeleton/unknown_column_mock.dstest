@@ -2,13 +2,13 @@
 mode: check
 schema: 'nowhere/orders.csv'(orderId: string, amount: real)
 ---- query
-'nowhere/orders.csv' | project orderId, amout
+from 'nowhere/orders.csv' | project orderId, amout
 ---- expected
 error[DS1001]: unknown column `amout`
-  --> query:1:41
+  --> query:1:46
   |
-1 | 'nowhere/orders.csv' | project orderId, amout
-  |                                         ^^^^^ no column named `amout` here
+1 | from 'nowhere/orders.csv' | project orderId, amout
+  |                                              ^^^^^ no column named `amout` here
   |
   = help: a column with a similar name exists: `amount`
   = note: columns available at this point: orderId, amount

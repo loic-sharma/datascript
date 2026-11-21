@@ -1,66 +1,68 @@
 # `!b&&c||!d`: the `)` that closes `not(b` goes before the ` and` that replaces `&&`.
 mode: syntax
 ---- query
-t | where !b&&c||!d
+from t | where !b&&c||!d
 ---- expected
-PROGRAM@0..20
-  PIPELINE@0..19
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..19
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..19
-        BIN_EXPR@10..15
-          PREFIX_EXPR@10..12
-            BANG@10..11 "!"
-            NAME_REF@11..12
-              IDENT@11..12 "b"
-          AMP2@12..14 "&&"
-          NAME_REF@14..15
-            IDENT@14..15 "c"
-        PIPE2@15..17 "||"
-        PREFIX_EXPR@17..19
-          BANG@17..18 "!"
-          NAME_REF@18..19
-            IDENT@18..19 "d"
-  WHITESPACE@19..20 "\n"
+PROGRAM@0..25
+  PIPELINE@0..24
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..24
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..24
+        BIN_EXPR@15..20
+          PREFIX_EXPR@15..17
+            BANG@15..16 "!"
+            NAME_REF@16..17
+              IDENT@16..17 "b"
+          AMP2@17..19 "&&"
+          NAME_REF@19..20
+            IDENT@19..20 "c"
+        PIPE2@20..22 "||"
+        PREFIX_EXPR@22..24
+          BANG@22..23 "!"
+          NAME_REF@23..24
+            IDENT@23..24 "d"
+  WHITESPACE@24..25 "\n"
 
 error[DS0111]: `!` is not an operator
-  --> query:1:11
+  --> query:1:16
   |
-1 | t | where !b&&c||!d
-  |           ^ this is C's "not"
+1 | from t | where !b&&c||!d
+  |                ^ this is C's "not"
   |
   = help: negate it with `not(...)`: `not(b)`
 
 error[DS0111]: `&&` is not an operator
-  --> query:1:13
+  --> query:1:18
   |
-1 | t | where !b&&c||!d
-  |             ^^ this is C's "and"
+1 | from t | where !b&&c||!d
+  |                  ^^ this is C's "and"
   |
   = help: use `and` to require both conditions
 
 error[DS0111]: `||` is not an operator
-  --> query:1:16
+  --> query:1:21
   |
-1 | t | where !b&&c||!d
-  |                ^^ this is C's "or"
+1 | from t | where !b&&c||!d
+  |                     ^^ this is C's "or"
   |
   = help: use `or` to accept either condition
 
 error[DS0111]: `!` is not an operator
-  --> query:1:18
+  --> query:1:23
   |
-1 | t | where !b&&c||!d
-  |                  ^ this is C's "not"
+1 | from t | where !b&&c||!d
+  |                       ^ this is C's "not"
   |
   = help: negate it with `not(...)`: `not(d)`
 
 with the machine-applicable fixes applied:
-    t | where not(b) and c or not(d)
+    from t | where not(b) and c or not(d)
 which parses without errors

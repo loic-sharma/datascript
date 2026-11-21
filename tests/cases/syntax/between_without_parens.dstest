@@ -1,36 +1,38 @@
 # between needs its range in parentheses.
 mode: syntax
 ---- query
-t | where x between 1 .. 10
+from t | where x between 1 .. 10
 ---- expected
-PROGRAM@0..28
-  PIPELINE@0..27
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..19
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BETWEEN_EXPR@10..19
-        NAME_REF@10..11
-          IDENT@10..11 "x"
-        WHITESPACE@11..12 " "
-        IDENT@12..19 "between"
-    WHITESPACE@19..20 " "
-    ERROR@20..27
-      LONG@20..21 "1"
-      WHITESPACE@21..22 " "
-      DOT2@22..24 ".."
-      WHITESPACE@24..25 " "
-      LONG@25..27 "10"
-  WHITESPACE@27..28 "\n"
+PROGRAM@0..33
+  PIPELINE@0..32
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..24
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BETWEEN_EXPR@15..24
+        NAME_REF@15..16
+          IDENT@15..16 "x"
+        WHITESPACE@16..17 " "
+        IDENT@17..24 "between"
+    WHITESPACE@24..25 " "
+    ERROR@25..32
+      LONG@25..26 "1"
+      WHITESPACE@26..27 " "
+      DOT2@27..29 ".."
+      WHITESPACE@29..30 " "
+      LONG@30..32 "10"
+  WHITESPACE@32..33 "\n"
 
 error[DS0101]: expected `(` after `between`, found `1`
-  --> query:1:21
+  --> query:1:26
   |
-1 | t | where x between 1 .. 10
-  |                     ^
+1 | from t | where x between 1 .. 10
+  |                          ^
   |
   = help: write the range in parentheses: `x between (1 .. 10)`

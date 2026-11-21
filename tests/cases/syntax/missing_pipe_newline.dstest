@@ -1,35 +1,37 @@
 # An operator at the start of a line without a pipe: one error, then it parses as an operator.
 mode: syntax
 ---- query
-t | where x > 1
+from t | where x > 1
 project a
 ---- expected
-PROGRAM@0..26
-  PIPELINE@0..25
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..15
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..15
-        NAME_REF@10..11
-          IDENT@10..11 "x"
-        WHITESPACE@11..12 " "
-        GT@12..13 ">"
-        WHITESPACE@13..14 " "
-        LITERAL@14..15
-          LONG@14..15 "1"
-    WHITESPACE@15..16 "\n"
-    PROJECT_OP@16..25
-      IDENT@16..23 "project"
-      WHITESPACE@23..24 " "
-      NAMED_EXPR@24..25
-        NAME_REF@24..25
-          IDENT@24..25 "a"
-  WHITESPACE@25..26 "\n"
+PROGRAM@0..31
+  PIPELINE@0..30
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..20
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..20
+        NAME_REF@15..16
+          IDENT@15..16 "x"
+        WHITESPACE@16..17 " "
+        GT@17..18 ">"
+        WHITESPACE@18..19 " "
+        LITERAL@19..20
+          LONG@19..20 "1"
+    WHITESPACE@20..21 "\n"
+    PROJECT_OP@21..30
+      IDENT@21..28 "project"
+      WHITESPACE@28..29 " "
+      NAMED_EXPR@29..30
+        NAME_REF@29..30
+          IDENT@29..30 "a"
+  WHITESPACE@30..31 "\n"
 
 error[DS0102]: missing `|` before `project`
   --> query:2:1
@@ -40,6 +42,6 @@ error[DS0102]: missing `|` before `project`
   = help: insert `|` to pipe into `project`: `| project`
 
 with the machine-applicable fixes applied:
-    t | where x > 1
+    from t | where x > 1
     | project a
 which parses without errors

@@ -1,46 +1,48 @@
 # A missing expression is reported once, and parsing continues at the next pipe.
 mode: syntax
 ---- query
-t | where a > | project | take 5
+from t | where a > | project | take 5
 ---- expected
-PROGRAM@0..33
-  PIPELINE@0..32
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..13
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..13
-        NAME_REF@10..11
-          IDENT@10..11 "a"
-        WHITESPACE@11..12 " "
-        GT@12..13 ">"
-    WHITESPACE@13..14 " "
-    PIPE@14..15 "|"
-    WHITESPACE@15..16 " "
-    PROJECT_OP@16..23
-      IDENT@16..23 "project"
-    WHITESPACE@23..24 " "
-    PIPE@24..25 "|"
-    WHITESPACE@25..26 " "
-    TAKE_OP@26..32
-      IDENT@26..30 "take"
-      WHITESPACE@30..31 " "
-      LITERAL@31..32
-        LONG@31..32 "5"
-  WHITESPACE@32..33 "\n"
+PROGRAM@0..38
+  PIPELINE@0..37
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..18
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..18
+        NAME_REF@15..16
+          IDENT@15..16 "a"
+        WHITESPACE@16..17 " "
+        GT@17..18 ">"
+    WHITESPACE@18..19 " "
+    PIPE@19..20 "|"
+    WHITESPACE@20..21 " "
+    PROJECT_OP@21..28
+      IDENT@21..28 "project"
+    WHITESPACE@28..29 " "
+    PIPE@29..30 "|"
+    WHITESPACE@30..31 " "
+    TAKE_OP@31..37
+      IDENT@31..35 "take"
+      WHITESPACE@35..36 " "
+      LITERAL@36..37
+        LONG@36..37 "5"
+  WHITESPACE@37..38 "\n"
 
 error[DS0101]: expected an expression after `>`, found `|`
-  --> query:1:15
+  --> query:1:20
   |
-1 | t | where a > | project | take 5
-  |               ^
+1 | from t | where a > | project | take 5
+  |                    ^
 
 error[DS0101]: expected an expression after `project`, found `|`
-  --> query:1:25
+  --> query:1:30
   |
-1 | t | where a > | project | take 5
-  |                         ^
+1 | from t | where a > | project | take 5
+  |                              ^

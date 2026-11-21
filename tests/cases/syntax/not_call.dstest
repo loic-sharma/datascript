@@ -1,50 +1,52 @@
 # not(x) binds like a call: not(x) == y is (not x) == y.
 mode: syntax
 ---- query
-t | where not(x) == y and not (a) or not b
+from t | where not(x) == y and not (a) or not b
 ---- expected
-PROGRAM@0..43
-  PIPELINE@0..42
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..42
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..42
-        BIN_EXPR@10..33
-          BIN_EXPR@10..21
-            PREFIX_EXPR@10..16
-              NOT_KW@10..13 "not"
-              PAREN_EXPR@13..16
-                L_PAREN@13..14 "("
-                NAME_REF@14..15
-                  IDENT@14..15 "x"
-                R_PAREN@15..16 ")"
-            WHITESPACE@16..17 " "
-            EQ2@17..19 "=="
-            WHITESPACE@19..20 " "
-            NAME_REF@20..21
-              IDENT@20..21 "y"
-          WHITESPACE@21..22 " "
-          AND_KW@22..25 "and"
-          WHITESPACE@25..26 " "
-          PREFIX_EXPR@26..33
-            NOT_KW@26..29 "not"
-            WHITESPACE@29..30 " "
-            PAREN_EXPR@30..33
-              L_PAREN@30..31 "("
-              NAME_REF@31..32
-                IDENT@31..32 "a"
-              R_PAREN@32..33 ")"
-        WHITESPACE@33..34 " "
-        OR_KW@34..36 "or"
-        WHITESPACE@36..37 " "
-        PREFIX_EXPR@37..42
-          NOT_KW@37..40 "not"
-          WHITESPACE@40..41 " "
-          NAME_REF@41..42
-            IDENT@41..42 "b"
-  WHITESPACE@42..43 "\n"
+PROGRAM@0..48
+  PIPELINE@0..47
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..47
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..47
+        BIN_EXPR@15..38
+          BIN_EXPR@15..26
+            PREFIX_EXPR@15..21
+              NOT_KW@15..18 "not"
+              PAREN_EXPR@18..21
+                L_PAREN@18..19 "("
+                NAME_REF@19..20
+                  IDENT@19..20 "x"
+                R_PAREN@20..21 ")"
+            WHITESPACE@21..22 " "
+            EQ2@22..24 "=="
+            WHITESPACE@24..25 " "
+            NAME_REF@25..26
+              IDENT@25..26 "y"
+          WHITESPACE@26..27 " "
+          AND_KW@27..30 "and"
+          WHITESPACE@30..31 " "
+          PREFIX_EXPR@31..38
+            NOT_KW@31..34 "not"
+            WHITESPACE@34..35 " "
+            PAREN_EXPR@35..38
+              L_PAREN@35..36 "("
+              NAME_REF@36..37
+                IDENT@36..37 "a"
+              R_PAREN@37..38 ")"
+        WHITESPACE@38..39 " "
+        OR_KW@39..41 "or"
+        WHITESPACE@41..42 " "
+        PREFIX_EXPR@42..47
+          NOT_KW@42..45 "not"
+          WHITESPACE@45..46 " "
+          NAME_REF@46..47
+            IDENT@46..47 "b"
+  WHITESPACE@47..48 "\n"

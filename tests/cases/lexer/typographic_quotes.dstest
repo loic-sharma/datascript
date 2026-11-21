@@ -1,68 +1,70 @@
 # Typographic quotes are not string quotes.
 mode: syntax
 ---- query
-t | where s == “abc” or s == ‘x’
+from t | where s == “abc” or s == ‘x’
 ---- expected
-PROGRAM@0..41
-  PIPELINE@0..40
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..14
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..14
-        NAME_REF@10..11
-          IDENT@10..11 "s"
-        WHITESPACE@11..12 " "
-        EQ2@12..14 "=="
-    WHITESPACE@14..15 " "
-    ERROR@15..40
-      ERROR@15..18 "“"
-      IDENT@18..21 "abc"
-      ERROR@21..24 "”"
-      WHITESPACE@24..25 " "
-      OR_KW@25..27 "or"
-      WHITESPACE@27..28 " "
-      IDENT@28..29 "s"
+PROGRAM@0..46
+  PIPELINE@0..45
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..19
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..19
+        NAME_REF@15..16
+          IDENT@15..16 "s"
+        WHITESPACE@16..17 " "
+        EQ2@17..19 "=="
+    WHITESPACE@19..20 " "
+    ERROR@20..45
+      ERROR@20..23 "“"
+      IDENT@23..26 "abc"
+      ERROR@26..29 "”"
       WHITESPACE@29..30 " "
-      EQ2@30..32 "=="
+      OR_KW@30..32 "or"
       WHITESPACE@32..33 " "
-      ERROR@33..36 "‘"
-      IDENT@36..37 "x"
-      ERROR@37..40 "’"
-  WHITESPACE@40..41 "\n"
+      IDENT@33..34 "s"
+      WHITESPACE@34..35 " "
+      EQ2@35..37 "=="
+      WHITESPACE@37..38 " "
+      ERROR@38..41 "‘"
+      IDENT@41..42 "x"
+      ERROR@42..45 "’"
+  WHITESPACE@45..46 "\n"
 
 error[DS0001]: unexpected character `“`
-  --> query:1:16
+  --> query:1:21
   |
-1 | t | where s == “abc” or s == ‘x’
-  |                ^ not valid here
+1 | from t | where s == “abc” or s == ‘x’
+  |                     ^ not valid here
   |
   = help: this is a typographic quote; use a plain `"` or `'`
 
 error[DS0001]: unexpected character `”`
-  --> query:1:20
+  --> query:1:25
   |
-1 | t | where s == “abc” or s == ‘x’
-  |                    ^ not valid here
+1 | from t | where s == “abc” or s == ‘x’
+  |                         ^ not valid here
   |
   = help: this is a typographic quote; use a plain `"` or `'`
 
 error[DS0001]: unexpected character `‘`
-  --> query:1:30
+  --> query:1:35
   |
-1 | t | where s == “abc” or s == ‘x’
-  |                              ^ not valid here
+1 | from t | where s == “abc” or s == ‘x’
+  |                                   ^ not valid here
   |
   = help: this is a typographic quote; use a plain `"` or `'`
 
 error[DS0001]: unexpected character `’`
-  --> query:1:32
+  --> query:1:37
   |
-1 | t | where s == “abc” or s == ‘x’
-  |                                ^ not valid here
+1 | from t | where s == “abc” or s == ‘x’
+  |                                     ^ not valid here
   |
   = help: this is a typographic quote; use a plain `"` or `'`

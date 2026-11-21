@@ -1,41 +1,43 @@
 # `!` forms: negated operators, `in~`, and `!` followed by an ordinary name.
 mode: syntax
 ---- query
-a !has b !has_error !in~ c in~ d !contains_cs e !x
+from a !has b !has_error !in~ c in~ d !contains_cs e !x
 ---- expected
-PROGRAM@0..51
-  PIPELINE@0..50
-    BIN_EXPR@0..8
-      NAME_REF@0..1
-        IDENT@0..1 "a"
-      WHITESPACE@1..2 " "
-      NEGATED_OP@2..6 "!has"
+PROGRAM@0..56
+  PIPELINE@0..55
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    BIN_EXPR@5..13
+      NAME_REF@5..6
+        IDENT@5..6 "a"
       WHITESPACE@6..7 " "
-      NAME_REF@7..8
-        IDENT@7..8 "b"
-    WHITESPACE@8..9 " "
-    ERROR@9..50
-      BANG@9..10 "!"
-      IDENT@10..19 "has_error"
-      WHITESPACE@19..20 " "
-      NEGATED_OP@20..24 "!in~"
+      NEGATED_OP@7..11 "!has"
+      WHITESPACE@11..12 " "
+      NAME_REF@12..13
+        IDENT@12..13 "b"
+    WHITESPACE@13..14 " "
+    ERROR@14..55
+      BANG@14..15 "!"
+      IDENT@15..24 "has_error"
       WHITESPACE@24..25 " "
-      IDENT@25..26 "c"
-      WHITESPACE@26..27 " "
-      IN_TILDE@27..30 "in~"
-      WHITESPACE@30..31 " "
-      IDENT@31..32 "d"
-      WHITESPACE@32..33 " "
-      NEGATED_OP@33..45 "!contains_cs"
-      WHITESPACE@45..46 " "
-      IDENT@46..47 "e"
-      WHITESPACE@47..48 " "
-      BANG@48..49 "!"
-      IDENT@49..50 "x"
-  WHITESPACE@50..51 "\n"
+      NEGATED_OP@25..29 "!in~"
+      WHITESPACE@29..30 " "
+      IDENT@30..31 "c"
+      WHITESPACE@31..32 " "
+      IN_TILDE@32..35 "in~"
+      WHITESPACE@35..36 " "
+      IDENT@36..37 "d"
+      WHITESPACE@37..38 " "
+      NEGATED_OP@38..50 "!contains_cs"
+      WHITESPACE@50..51 " "
+      IDENT@51..52 "e"
+      WHITESPACE@52..53 " "
+      BANG@53..54 "!"
+      IDENT@54..55 "x"
+  WHITESPACE@55..56 "\n"
 
 error[DS0101]: expected `|` or `;`, found `!`
-  --> query:1:10
+  --> query:1:15
   |
-1 | a !has b !has_error !in~ c in~ d !contains_cs e !x
-  |          ^
+1 | from a !has b !has_error !in~ c in~ d !contains_cs e !x
+  |               ^

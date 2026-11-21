@@ -1,49 +1,51 @@
 # `=` in a `join ... on` condition: DS0110.
 mode: syntax
 ---- query
-'orders.csv' | join 'customers.csv' on $left.customerId = $right.customerId
+from 'orders.csv' | join 'customers.csv' on $left.customerId = $right.customerId
 ---- expected
-PROGRAM@0..76
-  PIPELINE@0..75
-    LITERAL@0..12
-      STRING@0..12 "'orders.csv'"
-    WHITESPACE@12..13 " "
-    PIPE@13..14 "|"
-    WHITESPACE@14..15 " "
-    JOIN_OP@15..75
-      IDENT@15..19 "join"
-      WHITESPACE@19..20 " "
-      LITERAL@20..35
-        STRING@20..35 "'customers.csv'"
-      WHITESPACE@35..36 " "
-      IDENT@36..38 "on"
-      WHITESPACE@38..39 " "
-      BIN_EXPR@39..75
-        FIELD_EXPR@39..55
-          NAME_REF@39..44
-            DOLLAR_LEFT@39..44 "$left"
-          DOT@44..45 "."
-          NAME_REF@45..55
-            IDENT@45..55 "customerId"
-        WHITESPACE@55..56 " "
-        EQ@56..57 "="
-        WHITESPACE@57..58 " "
-        FIELD_EXPR@58..75
-          NAME_REF@58..64
-            DOLLAR_RIGHT@58..64 "$right"
-          DOT@64..65 "."
-          NAME_REF@65..75
-            IDENT@65..75 "customerId"
-  WHITESPACE@75..76 "\n"
+PROGRAM@0..81
+  PIPELINE@0..80
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    LITERAL@5..17
+      STRING@5..17 "'orders.csv'"
+    WHITESPACE@17..18 " "
+    PIPE@18..19 "|"
+    WHITESPACE@19..20 " "
+    JOIN_OP@20..80
+      IDENT@20..24 "join"
+      WHITESPACE@24..25 " "
+      LITERAL@25..40
+        STRING@25..40 "'customers.csv'"
+      WHITESPACE@40..41 " "
+      IDENT@41..43 "on"
+      WHITESPACE@43..44 " "
+      BIN_EXPR@44..80
+        FIELD_EXPR@44..60
+          NAME_REF@44..49
+            DOLLAR_LEFT@44..49 "$left"
+          DOT@49..50 "."
+          NAME_REF@50..60
+            IDENT@50..60 "customerId"
+        WHITESPACE@60..61 " "
+        EQ@61..62 "="
+        WHITESPACE@62..63 " "
+        FIELD_EXPR@63..80
+          NAME_REF@63..69
+            DOLLAR_RIGHT@63..69 "$right"
+          DOT@69..70 "."
+          NAME_REF@70..80
+            IDENT@70..80 "customerId"
+  WHITESPACE@80..81 "\n"
 
 error[DS0110]: `=` is assignment, not comparison
-  --> query:1:57
+  --> query:1:62
   |
-1 | 'orders.csv' | join 'customers.csv' on $left.customerId = $right.customerId
-  |                                                         ^ assignment is not allowed here
+1 | from 'orders.csv' | join 'customers.csv' on $left.customerId = $right.customerId
+  |                                                              ^ assignment is not allowed here
   |
   = help: use `==` to compare values: `$left.customerId == $right.customerId`
 
 with the machine-applicable fixes applied:
-    'orders.csv' | join 'customers.csv' on $left.customerId == $right.customerId
+    from 'orders.csv' | join 'customers.csv' on $left.customerId == $right.customerId
 which parses without errors

@@ -1,47 +1,49 @@
 # A chain of four comparisons is one DS0101, with help that splits every link (M1-19).
 mode: syntax
 ---- query
-T | where a < b < c < d
+from T | where a < b < c < d
 ---- expected
-PROGRAM@0..24
-  PIPELINE@0..23
-    NAME_REF@0..1
-      IDENT@0..1 "T"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..23
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..23
-        BIN_EXPR@10..19
-          BIN_EXPR@10..15
-            NAME_REF@10..11
-              IDENT@10..11 "a"
-            WHITESPACE@11..12 " "
-            LT@12..13 "<"
-            WHITESPACE@13..14 " "
-            NAME_REF@14..15
-              IDENT@14..15 "b"
-          WHITESPACE@15..16 " "
-          LT@16..17 "<"
-          WHITESPACE@17..18 " "
-          NAME_REF@18..19
-            IDENT@18..19 "c"
-        WHITESPACE@19..20 " "
-        LT@20..21 "<"
-        WHITESPACE@21..22 " "
-        NAME_REF@22..23
-          IDENT@22..23 "d"
-  WHITESPACE@23..24 "\n"
+PROGRAM@0..29
+  PIPELINE@0..28
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "T"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..28
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..28
+        BIN_EXPR@15..24
+          BIN_EXPR@15..20
+            NAME_REF@15..16
+              IDENT@15..16 "a"
+            WHITESPACE@16..17 " "
+            LT@17..18 "<"
+            WHITESPACE@18..19 " "
+            NAME_REF@19..20
+              IDENT@19..20 "b"
+          WHITESPACE@20..21 " "
+          LT@21..22 "<"
+          WHITESPACE@22..23 " "
+          NAME_REF@23..24
+            IDENT@23..24 "c"
+        WHITESPACE@24..25 " "
+        LT@25..26 "<"
+        WHITESPACE@26..27 " "
+        NAME_REF@27..28
+          IDENT@27..28 "d"
+  WHITESPACE@28..29 "\n"
 
 error[DS0101]: comparison operators cannot be chained
-  --> query:1:17
+  --> query:1:22
   |
-1 | T | where a < b < c < d
-  |           ----- ^ a second comparison
-  |           |
-  |           the result of this comparison is not a value to compare again
+1 | from T | where a < b < c < d
+  |                ----- ^ a second comparison
+  |                |
+  |                the result of this comparison is not a value to compare again
   |
   = help: compare each pair separately: `a < b and b < c and c < d`
   = note: this chain has 3 comparisons

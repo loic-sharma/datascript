@@ -1,14 +1,14 @@
 # Walking skeleton (M1-15): comparing a string with a number reports DS2003 from the M1-04 typing.
 mode: check
 ---- query
-'../../data/orders.csv' | where orderId > 100
+from '../../data/orders.csv' | where orderId > 100
 ---- expected
 error[DS2003]: cannot compare `string` with `long`
-  --> query:1:33
+  --> query:1:38
   |
-1 | '../../data/orders.csv' | where orderId > 100
-  |                                 ^^^^^^^   --- this is `long`
-  |                                 |
-  |                                 this is `string`
+1 | from '../../data/orders.csv' | where orderId > 100
+  |                                      ^^^^^^^   --- this is `long`
+  |                                      |
+  |                                      this is `string`
   |
   = help: if `orderId` holds `long` values, convert it first: `tolong(orderId) > 100`

@@ -1,7 +1,7 @@
 # Walking skeleton (M1-15): the logical plan of the skeleton query, from the real CSV schema.
 mode: explain
 ---- query
-'../../data/orders.csv' | where amount > 100 | project orderId, amount | take 5
+from '../../data/orders.csv' | where amount > 100 | project orderId, amount | take 5
 ---- expected
 Limit: 5
   Project: orderId, amount

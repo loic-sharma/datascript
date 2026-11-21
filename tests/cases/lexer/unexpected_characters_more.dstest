@@ -1,46 +1,48 @@
 # `$` not starting `$left`/`$right`, a lone `&`, and `@` not followed by a quote.
 mode: syntax
 ---- query
-t | where $foo & x;
+from t | where $foo & x;
 @x
 ---- expected
-PROGRAM@0..23
-  PIPELINE@0..18
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..9
-      IDENT@4..9 "where"
-    WHITESPACE@9..10 " "
-    ERROR@10..18
-      ERROR@10..11 "$"
-      IDENT@11..14 "foo"
-      WHITESPACE@14..15 " "
-      ERROR@15..16 "&"
-      WHITESPACE@16..17 " "
-      IDENT@17..18 "x"
-  SEMICOLON@18..19 ";"
-  WHITESPACE@19..20 "\n"
-  ERROR@20..22
-    ERROR@20..21 "@"
-    IDENT@21..22 "x"
-  WHITESPACE@22..23 "\n"
+PROGRAM@0..28
+  PIPELINE@0..23
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..14
+      IDENT@9..14 "where"
+    WHITESPACE@14..15 " "
+    ERROR@15..23
+      ERROR@15..16 "$"
+      IDENT@16..19 "foo"
+      WHITESPACE@19..20 " "
+      ERROR@20..21 "&"
+      WHITESPACE@21..22 " "
+      IDENT@22..23 "x"
+  SEMICOLON@23..24 ";"
+  WHITESPACE@24..25 "\n"
+  ERROR@25..27
+    ERROR@25..26 "@"
+    IDENT@26..27 "x"
+  WHITESPACE@27..28 "\n"
 
 error[DS0001]: unexpected character `$`
-  --> query:1:11
+  --> query:1:16
   |
-1 | t | where $foo & x;
-  |           ^ not valid here
+1 | from t | where $foo & x;
+  |                ^ not valid here
   |
   = help: `$` is only used in `$left` and `$right`
 
 error[DS0001]: unexpected character `&`
-  --> query:1:16
+  --> query:1:21
   |
-1 | t | where $foo & x;
-  |                ^ not valid here
+1 | from t | where $foo & x;
+  |                     ^ not valid here
   |
   = help: to combine conditions, use `and`
 

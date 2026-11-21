@@ -1,38 +1,42 @@
 # union with several tables.
 mode: syntax
 ---- query
-t | union u, 'more.csv', (v | take 1)
+from t | union u, 'more.csv', (from v | take 1)
 ---- expected
-PROGRAM@0..38
-  PIPELINE@0..37
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    UNION_OP@4..37
-      IDENT@4..9 "union"
-      WHITESPACE@9..10 " "
-      NAME_REF@10..11
-        IDENT@10..11 "u"
-      COMMA@11..12 ","
-      WHITESPACE@12..13 " "
-      LITERAL@13..23
-        STRING@13..23 "'more.csv'"
-      COMMA@23..24 ","
-      WHITESPACE@24..25 " "
-      PAREN_EXPR@25..37
-        L_PAREN@25..26 "("
-        PIPELINE@26..36
-          NAME_REF@26..27
-            IDENT@26..27 "v"
-          WHITESPACE@27..28 " "
-          PIPE@28..29 "|"
-          WHITESPACE@29..30 " "
-          TAKE_OP@30..36
-            IDENT@30..34 "take"
-            WHITESPACE@34..35 " "
-            LITERAL@35..36
-              LONG@35..36 "1"
-        R_PAREN@36..37 ")"
-  WHITESPACE@37..38 "\n"
+PROGRAM@0..48
+  PIPELINE@0..47
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    UNION_OP@9..47
+      IDENT@9..14 "union"
+      WHITESPACE@14..15 " "
+      NAME_REF@15..16
+        IDENT@15..16 "u"
+      COMMA@16..17 ","
+      WHITESPACE@17..18 " "
+      LITERAL@18..28
+        STRING@18..28 "'more.csv'"
+      COMMA@28..29 ","
+      WHITESPACE@29..30 " "
+      PAREN_EXPR@30..47
+        L_PAREN@30..31 "("
+        PIPELINE@31..46
+          IDENT@31..35 "from"
+          WHITESPACE@35..36 " "
+          NAME_REF@36..37
+            IDENT@36..37 "v"
+          WHITESPACE@37..38 " "
+          PIPE@38..39 "|"
+          WHITESPACE@39..40 " "
+          TAKE_OP@40..46
+            IDENT@40..44 "take"
+            WHITESPACE@44..45 " "
+            LITERAL@45..46
+              LONG@45..46 "1"
+        R_PAREN@46..47 ")"
+  WHITESPACE@47..48 "\n"

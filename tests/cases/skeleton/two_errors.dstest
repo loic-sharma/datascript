@@ -1,21 +1,21 @@
 # Walking skeleton (M1-15): two independent errors are both reported.
 mode: check
 ---- query
-'../../data/orders.csv' | where amout > 100 | project orderId, custid
+from '../../data/orders.csv' | where amout > 100 | project orderId, custid
 ---- expected
 error[DS1001]: unknown column `amout`
-  --> query:1:33
+  --> query:1:38
   |
-1 | '../../data/orders.csv' | where amout > 100 | project orderId, custid
-  |                                 ^^^^^ no column named `amout` here
+1 | from '../../data/orders.csv' | where amout > 100 | project orderId, custid
+  |                                      ^^^^^ no column named `amout` here
   |
   = help: a column with a similar name exists: `amount`
   = note: columns available at this point: orderId, customerId, amount, timestamp
 
 error[DS1001]: unknown column `custid`
-  --> query:1:64
+  --> query:1:69
   |
-1 | '../../data/orders.csv' | where amout > 100 | project orderId, custid
-  |                                                                ^^^^^^ no column named `custid` here
+1 | from '../../data/orders.csv' | where amout > 100 | project orderId, custid
+  |                                                                     ^^^^^^ no column named `custid` here
   |
   = note: columns available at this point: orderId, customerId, amount, timestamp

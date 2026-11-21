@@ -1,29 +1,31 @@
 # `distinct *` takes no other columns (M1-19).
 mode: syntax
 ---- query
-T | distinct *, a
+from T | distinct *, a
 ---- expected
-PROGRAM@0..18
-  PIPELINE@0..17
-    NAME_REF@0..1
-      IDENT@0..1 "T"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    DISTINCT_OP@4..17
-      IDENT@4..12 "distinct"
-      WHITESPACE@12..13 " "
-      STAR@13..14 "*"
-      COMMA@14..15 ","
-      WHITESPACE@15..16 " "
-      NAME_REF@16..17
-        IDENT@16..17 "a"
-  WHITESPACE@17..18 "\n"
+PROGRAM@0..23
+  PIPELINE@0..22
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "T"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    DISTINCT_OP@9..22
+      IDENT@9..17 "distinct"
+      WHITESPACE@17..18 " "
+      STAR@18..19 "*"
+      COMMA@19..20 ","
+      WHITESPACE@20..21 " "
+      NAME_REF@21..22
+        IDENT@21..22 "a"
+  WHITESPACE@22..23 "\n"
 
 error[DS0116]: `distinct *` cannot list other columns
-  --> query:1:14
+  --> query:1:19
   |
-1 | T | distinct *, a
-  |              ^ `*` already means every column
+1 | from T | distinct *, a
+  |                   ^ `*` already means every column
   |
   = help: remove `*` to keep the distinct values of the listed columns, or remove the columns to keep distinct rows

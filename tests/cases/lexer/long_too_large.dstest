@@ -1,27 +1,29 @@
 # Long literals above 2^63 do not fit.
 mode: syntax
 ---- query
-9223372036854775808 9223372036854775809
+from 9223372036854775808 9223372036854775809
 ---- expected
-PROGRAM@0..40
-  PIPELINE@0..39
-    LITERAL@0..19
-      LONG@0..19 "9223372036854775808"
-    WHITESPACE@19..20 " "
-    ERROR@20..39
-      LONG@20..39 "9223372036854775809"
-  WHITESPACE@39..40 "\n"
+PROGRAM@0..45
+  PIPELINE@0..44
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    LITERAL@5..24
+      LONG@5..24 "9223372036854775808"
+    WHITESPACE@24..25 " "
+    ERROR@25..44
+      LONG@25..44 "9223372036854775809"
+  WHITESPACE@44..45 "\n"
 
 error[DS0003]: number is too large for a `long`
-  --> query:1:21
+  --> query:1:26
   |
-1 | 9223372036854775808 9223372036854775809
-  |                     ^^^^^^^^^^^^^^^^^^^ the largest `long` is 9223372036854775807
+1 | from 9223372036854775808 9223372036854775809
+  |                          ^^^^^^^^^^^^^^^^^^^ the largest `long` is 9223372036854775807
   |
   = help: for numbers this large, use a `real` by adding a fraction: `9223372036854775809.0`
 
 error[DS0101]: expected `|` or `;`, found `9223372036854775809`
-  --> query:1:21
+  --> query:1:26
   |
-1 | 9223372036854775808 9223372036854775809
-  |                     ^^^^^^^^^^^^^^^^^^^
+1 | from 9223372036854775808 9223372036854775809
+  |                          ^^^^^^^^^^^^^^^^^^^

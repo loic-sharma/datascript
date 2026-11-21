@@ -1,34 +1,36 @@
 # With spaces, project - away is not an operator name (D-026): DS0104 with a fix, and it parses as project-away.
 mode: syntax
 ---- query
-t | project - away x
+from t | project - away x
 ---- expected
-PROGRAM@0..21
-  PIPELINE@0..20
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    PROJECT_AWAY_OP@4..20
-      IDENT@4..11 "project"
-      WHITESPACE@11..12 " "
-      MINUS@12..13 "-"
-      WHITESPACE@13..14 " "
-      IDENT@14..18 "away"
+PROGRAM@0..26
+  PIPELINE@0..25
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    PROJECT_AWAY_OP@9..25
+      IDENT@9..16 "project"
+      WHITESPACE@16..17 " "
+      MINUS@17..18 "-"
       WHITESPACE@18..19 " "
-      COLUMN_PATTERN@19..20
-        IDENT@19..20 "x"
-  WHITESPACE@20..21 "\n"
+      IDENT@19..23 "away"
+      WHITESPACE@23..24 " "
+      COLUMN_PATTERN@24..25
+        IDENT@24..25 "x"
+  WHITESPACE@25..26 "\n"
 
 error[DS0104]: operator name `project - away` has spaces in it
-  --> query:1:5
+  --> query:1:10
   |
-1 | t | project - away x
-  |     ^^^^^^^^^^^^^^ an operator name is one word
+1 | from t | project - away x
+  |          ^^^^^^^^^^^^^^ an operator name is one word
   |
   = help: write `project-away`, with no spaces
 
 with the machine-applicable fixes applied:
-    t | project-away x
+    from t | project-away x
 which parses without errors

@@ -1,29 +1,31 @@
 # Backslashes in a normal string are escapes; a Windows path gets a verbatim-string hint.
 mode: syntax
 ---- query
-'C:\data\x.csv' | take 5
+from 'C:\data\x.csv' | take 5
 ---- expected
-PROGRAM@0..25
-  PIPELINE@0..24
-    LITERAL@0..15
-      STRING@0..15 "'C:\\data\\x.csv'"
-    WHITESPACE@15..16 " "
-    PIPE@16..17 "|"
-    WHITESPACE@17..18 " "
-    TAKE_OP@18..24
-      IDENT@18..22 "take"
-      WHITESPACE@22..23 " "
-      LITERAL@23..24
-        LONG@23..24 "5"
-  WHITESPACE@24..25 "\n"
+PROGRAM@0..30
+  PIPELINE@0..29
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    LITERAL@5..20
+      STRING@5..20 "'C:\\data\\x.csv'"
+    WHITESPACE@20..21 " "
+    PIPE@21..22 "|"
+    WHITESPACE@22..23 " "
+    TAKE_OP@23..29
+      IDENT@23..27 "take"
+      WHITESPACE@27..28 " "
+      LITERAL@28..29
+        LONG@28..29 "5"
+  WHITESPACE@29..30 "\n"
 
 error[DS0005]: unknown escape sequence `\d`
-  --> query:1:4
+  --> query:1:9
   |
-1 | 'C:\data\x.csv' | take 5
-  |    ^^   -- `\x` is not valid either
-  |    |
-  |    not a valid escape
+1 | from 'C:\data\x.csv' | take 5
+  |         ^^   -- `\x` is not valid either
+  |         |
+  |         not a valid escape
   |
   = help: if this is a Windows path, use a verbatim string `@'C:\data\x.csv'` or forward slashes `'C:/data/x.csv'`
   = note: valid escapes are `\\`, `\"`, `\'`, `\n`, `\r`, `\t`, `\0` and `\u{...}`

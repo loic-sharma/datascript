@@ -1,42 +1,44 @@
 # Prefix `not` as the operand of `==` hides a chained comparison (M1-19).
 mode: syntax
 ---- query
-T | where a == not b == c
+from T | where a == not b == c
 ---- expected
-PROGRAM@0..26
-  PIPELINE@0..25
-    NAME_REF@0..1
-      IDENT@0..1 "T"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..25
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..25
-        NAME_REF@10..11
-          IDENT@10..11 "a"
-        WHITESPACE@11..12 " "
-        EQ2@12..14 "=="
-        WHITESPACE@14..15 " "
-        PREFIX_EXPR@15..25
-          NOT_KW@15..18 "not"
-          WHITESPACE@18..19 " "
-          BIN_EXPR@19..25
-            NAME_REF@19..20
-              IDENT@19..20 "b"
-            WHITESPACE@20..21 " "
-            EQ2@21..23 "=="
-            WHITESPACE@23..24 " "
+PROGRAM@0..31
+  PIPELINE@0..30
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "T"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..30
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..30
+        NAME_REF@15..16
+          IDENT@15..16 "a"
+        WHITESPACE@16..17 " "
+        EQ2@17..19 "=="
+        WHITESPACE@19..20 " "
+        PREFIX_EXPR@20..30
+          NOT_KW@20..23 "not"
+          WHITESPACE@23..24 " "
+          BIN_EXPR@24..30
             NAME_REF@24..25
-              IDENT@24..25 "c"
-  WHITESPACE@25..26 "\n"
+              IDENT@24..25 "b"
+            WHITESPACE@25..26 " "
+            EQ2@26..28 "=="
+            WHITESPACE@28..29 " "
+            NAME_REF@29..30
+              IDENT@29..30 "c"
+  WHITESPACE@30..31 "\n"
 
 error[DS0114]: `not` needs parentheses here
-  --> query:1:16
+  --> query:1:21
   |
-1 | T | where a == not b == c
-  |                ^^^ `not` binds more loosely than `==`
+1 | from T | where a == not b == c
+  |                     ^^^ `not` binds more loosely than `==`
   |
   = help: write it as a call to say what it negates: `not(b == c)`
   = note: without parentheses, `not` negates everything up to the next `and` or `or`

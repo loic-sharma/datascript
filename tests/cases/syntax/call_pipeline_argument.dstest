@@ -1,43 +1,47 @@
 # A comma after a pipeline inside call arguments starts the next argument (M1-19).
 mode: syntax
 ---- query
-T | extend x = f(U | where a, b)
+from T | extend x = f(from U | where a, b)
 ---- expected
-PROGRAM@0..33
-  PIPELINE@0..32
-    NAME_REF@0..1
-      IDENT@0..1 "T"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    EXTEND_OP@4..32
-      IDENT@4..10 "extend"
-      WHITESPACE@10..11 " "
-      NAMED_EXPR@11..32
-        NAME@11..12
-          IDENT@11..12 "x"
-        WHITESPACE@12..13 " "
-        EQ@13..14 "="
-        WHITESPACE@14..15 " "
-        CALL_EXPR@15..32
-          NAME_REF@15..16
-            IDENT@15..16 "f"
-          ARG_LIST@16..32
-            L_PAREN@16..17 "("
-            PIPELINE@17..28
-              NAME_REF@17..18
-                IDENT@17..18 "U"
-              WHITESPACE@18..19 " "
-              PIPE@19..20 "|"
-              WHITESPACE@20..21 " "
-              WHERE_OP@21..28
-                IDENT@21..26 "where"
-                WHITESPACE@26..27 " "
-                NAME_REF@27..28
-                  IDENT@27..28 "a"
-            COMMA@28..29 ","
-            WHITESPACE@29..30 " "
-            NAME_REF@30..31
-              IDENT@30..31 "b"
-            R_PAREN@31..32 ")"
-  WHITESPACE@32..33 "\n"
+PROGRAM@0..43
+  PIPELINE@0..42
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "T"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    EXTEND_OP@9..42
+      IDENT@9..15 "extend"
+      WHITESPACE@15..16 " "
+      NAMED_EXPR@16..42
+        NAME@16..17
+          IDENT@16..17 "x"
+        WHITESPACE@17..18 " "
+        EQ@18..19 "="
+        WHITESPACE@19..20 " "
+        CALL_EXPR@20..42
+          NAME_REF@20..21
+            IDENT@20..21 "f"
+          ARG_LIST@21..42
+            L_PAREN@21..22 "("
+            PIPELINE@22..38
+              IDENT@22..26 "from"
+              WHITESPACE@26..27 " "
+              NAME_REF@27..28
+                IDENT@27..28 "U"
+              WHITESPACE@28..29 " "
+              PIPE@29..30 "|"
+              WHITESPACE@30..31 " "
+              WHERE_OP@31..38
+                IDENT@31..36 "where"
+                WHITESPACE@36..37 " "
+                NAME_REF@37..38
+                  IDENT@37..38 "a"
+            COMMA@38..39 ","
+            WHITESPACE@39..40 " "
+            NAME_REF@40..41
+              IDENT@40..41 "b"
+            R_PAREN@41..42 ")"
+  WHITESPACE@42..43 "\n"

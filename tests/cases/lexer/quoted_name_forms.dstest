@@ -1,31 +1,33 @@
 # `['a\'b']` is one quoted name; `[ 'x' ]`, with spaces, is a bracket, a string and a bracket.
 mode: syntax
 ---- query
-t | project ['a\'b'], x[ 'x' ]
+from t | project ['a\'b'], x[ 'x' ]
 ---- expected
-PROGRAM@0..31
-  PIPELINE@0..30
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    PROJECT_OP@4..30
-      IDENT@4..11 "project"
-      WHITESPACE@11..12 " "
-      NAMED_EXPR@12..20
-        NAME_REF@12..20
-          QUOTED_IDENT@12..20 "['a\\'b']"
-      COMMA@20..21 ","
-      WHITESPACE@21..22 " "
-      NAMED_EXPR@22..30
-        INDEX_EXPR@22..30
-          NAME_REF@22..23
-            IDENT@22..23 "x"
-          L_BRACK@23..24 "["
-          WHITESPACE@24..25 " "
-          LITERAL@25..28
-            STRING@25..28 "'x'"
-          WHITESPACE@28..29 " "
-          R_BRACK@29..30 "]"
-  WHITESPACE@30..31 "\n"
+PROGRAM@0..36
+  PIPELINE@0..35
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    PROJECT_OP@9..35
+      IDENT@9..16 "project"
+      WHITESPACE@16..17 " "
+      NAMED_EXPR@17..25
+        NAME_REF@17..25
+          QUOTED_IDENT@17..25 "['a\\'b']"
+      COMMA@25..26 ","
+      WHITESPACE@26..27 " "
+      NAMED_EXPR@27..35
+        INDEX_EXPR@27..35
+          NAME_REF@27..28
+            IDENT@27..28 "x"
+          L_BRACK@28..29 "["
+          WHITESPACE@29..30 " "
+          LITERAL@30..33
+            STRING@30..33 "'x'"
+          WHITESPACE@33..34 " "
+          R_BRACK@34..35 "]"
+  WHITESPACE@35..36 "\n"

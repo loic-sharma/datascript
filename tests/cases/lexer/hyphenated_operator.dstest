@@ -1,44 +1,46 @@
 # `project-away` lexes as three tokens; the parser joins them (D-026).
 mode: syntax
 ---- query
-t | project-away x | project - away y
+from t | project-away x | project - away y
 ---- expected
-PROGRAM@0..38
-  PIPELINE@0..37
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    PROJECT_AWAY_OP@4..18
-      IDENT@4..11 "project"
-      MINUS@11..12 "-"
-      IDENT@12..16 "away"
-      WHITESPACE@16..17 " "
-      COLUMN_PATTERN@17..18
-        IDENT@17..18 "x"
-    WHITESPACE@18..19 " "
-    PIPE@19..20 "|"
-    WHITESPACE@20..21 " "
-    PROJECT_AWAY_OP@21..37
-      IDENT@21..28 "project"
-      WHITESPACE@28..29 " "
-      MINUS@29..30 "-"
-      WHITESPACE@30..31 " "
-      IDENT@31..35 "away"
+PROGRAM@0..43
+  PIPELINE@0..42
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    PROJECT_AWAY_OP@9..23
+      IDENT@9..16 "project"
+      MINUS@16..17 "-"
+      IDENT@17..21 "away"
+      WHITESPACE@21..22 " "
+      COLUMN_PATTERN@22..23
+        IDENT@22..23 "x"
+    WHITESPACE@23..24 " "
+    PIPE@24..25 "|"
+    WHITESPACE@25..26 " "
+    PROJECT_AWAY_OP@26..42
+      IDENT@26..33 "project"
+      WHITESPACE@33..34 " "
+      MINUS@34..35 "-"
       WHITESPACE@35..36 " "
-      COLUMN_PATTERN@36..37
-        IDENT@36..37 "y"
-  WHITESPACE@37..38 "\n"
+      IDENT@36..40 "away"
+      WHITESPACE@40..41 " "
+      COLUMN_PATTERN@41..42
+        IDENT@41..42 "y"
+  WHITESPACE@42..43 "\n"
 
 error[DS0104]: operator name `project - away` has spaces in it
-  --> query:1:22
+  --> query:1:27
   |
-1 | t | project-away x | project - away y
-  |                      ^^^^^^^^^^^^^^ an operator name is one word
+1 | from t | project-away x | project - away y
+  |                           ^^^^^^^^^^^^^^ an operator name is one word
   |
   = help: write `project-away`, with no spaces
 
 with the machine-applicable fixes applied:
-    t | project-away x | project-away y
+    from t | project-away x | project-away y
 which parses without errors

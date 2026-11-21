@@ -1,33 +1,35 @@
 # An unterminated string ending in `\`: just adding a quote would leave it open, so the help doubles the backslash.
 mode: syntax
 ---- query
-t | where p == 'abc\
+from t | where p == 'abc\
 ---- expected
-PROGRAM@0..21
-  PIPELINE@0..20
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..20
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..20
-        NAME_REF@10..11
-          IDENT@10..11 "p"
-        WHITESPACE@11..12 " "
-        EQ2@12..14 "=="
-        WHITESPACE@14..15 " "
-        LITERAL@15..20
-          STRING@15..20 "'abc\\"
-  WHITESPACE@20..21 "\n"
+PROGRAM@0..26
+  PIPELINE@0..25
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..25
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..25
+        NAME_REF@15..16
+          IDENT@15..16 "p"
+        WHITESPACE@16..17 " "
+        EQ2@17..19 "=="
+        WHITESPACE@19..20 " "
+        LITERAL@20..25
+          STRING@20..25 "'abc\\"
+  WHITESPACE@25..26 "\n"
 
 error[DS0002]: unterminated string
-  --> query:1:16
+  --> query:1:21
   |
-1 | t | where p == 'abc\
-  |                ^^^^^ this string is never closed
+1 | from t | where p == 'abc\
+  |                     ^^^^^ this string is never closed
   |
   = help: the `\` at the end escapes a quote; to end the string with a backslash, double it and add a closing `'`
   = note: a string ends at the end of its line

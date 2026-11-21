@@ -1,41 +1,43 @@
 # join on $left.a == $right.b, with a path string on the right.
 mode: syntax
 ---- query
-t | join 'customers.csv' on $left.id == $right.customerId, k
+from t | join 'customers.csv' on $left.id == $right.customerId, k
 ---- expected
-PROGRAM@0..61
-  PIPELINE@0..60
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    JOIN_OP@4..60
-      IDENT@4..8 "join"
-      WHITESPACE@8..9 " "
-      LITERAL@9..24
-        STRING@9..24 "'customers.csv'"
-      WHITESPACE@24..25 " "
-      IDENT@25..27 "on"
-      WHITESPACE@27..28 " "
-      BIN_EXPR@28..57
-        FIELD_EXPR@28..36
-          NAME_REF@28..33
-            DOLLAR_LEFT@28..33 "$left"
-          DOT@33..34 "."
-          NAME_REF@34..36
-            IDENT@34..36 "id"
-        WHITESPACE@36..37 " "
-        EQ2@37..39 "=="
-        WHITESPACE@39..40 " "
-        FIELD_EXPR@40..57
-          NAME_REF@40..46
-            DOLLAR_RIGHT@40..46 "$right"
-          DOT@46..47 "."
-          NAME_REF@47..57
-            IDENT@47..57 "customerId"
-      COMMA@57..58 ","
-      WHITESPACE@58..59 " "
-      NAME_REF@59..60
-        IDENT@59..60 "k"
-  WHITESPACE@60..61 "\n"
+PROGRAM@0..66
+  PIPELINE@0..65
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    JOIN_OP@9..65
+      IDENT@9..13 "join"
+      WHITESPACE@13..14 " "
+      LITERAL@14..29
+        STRING@14..29 "'customers.csv'"
+      WHITESPACE@29..30 " "
+      IDENT@30..32 "on"
+      WHITESPACE@32..33 " "
+      BIN_EXPR@33..62
+        FIELD_EXPR@33..41
+          NAME_REF@33..38
+            DOLLAR_LEFT@33..38 "$left"
+          DOT@38..39 "."
+          NAME_REF@39..41
+            IDENT@39..41 "id"
+        WHITESPACE@41..42 " "
+        EQ2@42..44 "=="
+        WHITESPACE@44..45 " "
+        FIELD_EXPR@45..62
+          NAME_REF@45..51
+            DOLLAR_RIGHT@45..51 "$right"
+          DOT@51..52 "."
+          NAME_REF@52..62
+            IDENT@52..62 "customerId"
+      COMMA@62..63 ","
+      WHITESPACE@63..64 " "
+      NAME_REF@64..65
+        IDENT@64..65 "k"
+  WHITESPACE@65..66 "\n"

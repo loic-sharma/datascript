@@ -1,30 +1,32 @@
 # SQL's uppercase `LIMIT`: DS0105. `limit` itself is accepted.
 mode: syntax
 ---- query
-'orders.csv' | LIMIT 10
+from 'orders.csv' | LIMIT 10
 ---- expected
-PROGRAM@0..24
-  PIPELINE@0..23
-    LITERAL@0..12
-      STRING@0..12 "'orders.csv'"
-    WHITESPACE@12..13 " "
-    PIPE@13..14 "|"
-    WHITESPACE@14..15 " "
-    TAKE_OP@15..23
-      IDENT@15..20 "LIMIT"
-      WHITESPACE@20..21 " "
-      LITERAL@21..23
-        LONG@21..23 "10"
-  WHITESPACE@23..24 "\n"
+PROGRAM@0..29
+  PIPELINE@0..28
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    LITERAL@5..17
+      STRING@5..17 "'orders.csv'"
+    WHITESPACE@17..18 " "
+    PIPE@18..19 "|"
+    WHITESPACE@19..20 " "
+    TAKE_OP@20..28
+      IDENT@20..25 "LIMIT"
+      WHITESPACE@25..26 " "
+      LITERAL@26..28
+        LONG@26..28 "10"
+  WHITESPACE@28..29 "\n"
 
 error[DS0105]: SQL keyword `LIMIT` is not an operator
-  --> query:1:16
+  --> query:1:21
   |
-1 | 'orders.csv' | LIMIT 10
-  |                ^^^^^ this is SQL
+1 | from 'orders.csv' | LIMIT 10
+  |                     ^^^^^ this is SQL
   |
   = help: operator names are lowercase: write `limit`
 
 with the machine-applicable fixes applied:
-    'orders.csv' | limit 10
+    from 'orders.csv' | limit 10
 which parses without errors

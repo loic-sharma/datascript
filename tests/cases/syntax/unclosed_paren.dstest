@@ -1,47 +1,49 @@
 # An unclosed parenthesis points back at the opening one.
 mode: syntax
 ---- query
-(t | where (a > 1) | take 5
+(from t | where (a > 1) | take 5
 ---- expected
-PROGRAM@0..28
-  PIPELINE@0..27
-    PAREN_EXPR@0..27
+PROGRAM@0..33
+  PIPELINE@0..32
+    PAREN_EXPR@0..32
       L_PAREN@0..1 "("
-      PIPELINE@1..27
-        NAME_REF@1..2
-          IDENT@1..2 "t"
-        WHITESPACE@2..3 " "
-        PIPE@3..4 "|"
-        WHITESPACE@4..5 " "
-        WHERE_OP@5..18
-          IDENT@5..10 "where"
-          WHITESPACE@10..11 " "
-          PAREN_EXPR@11..18
-            L_PAREN@11..12 "("
-            BIN_EXPR@12..17
-              NAME_REF@12..13
-                IDENT@12..13 "a"
-              WHITESPACE@13..14 " "
-              GT@14..15 ">"
-              WHITESPACE@15..16 " "
-              LITERAL@16..17
-                LONG@16..17 "1"
-            R_PAREN@17..18 ")"
-        WHITESPACE@18..19 " "
-        PIPE@19..20 "|"
-        WHITESPACE@20..21 " "
-        TAKE_OP@21..27
-          IDENT@21..25 "take"
-          WHITESPACE@25..26 " "
-          LITERAL@26..27
-            LONG@26..27 "5"
-  WHITESPACE@27..28 "\n"
+      PIPELINE@1..32
+        IDENT@1..5 "from"
+        WHITESPACE@5..6 " "
+        NAME_REF@6..7
+          IDENT@6..7 "t"
+        WHITESPACE@7..8 " "
+        PIPE@8..9 "|"
+        WHITESPACE@9..10 " "
+        WHERE_OP@10..23
+          IDENT@10..15 "where"
+          WHITESPACE@15..16 " "
+          PAREN_EXPR@16..23
+            L_PAREN@16..17 "("
+            BIN_EXPR@17..22
+              NAME_REF@17..18
+                IDENT@17..18 "a"
+              WHITESPACE@18..19 " "
+              GT@19..20 ">"
+              WHITESPACE@20..21 " "
+              LITERAL@21..22
+                LONG@21..22 "1"
+            R_PAREN@22..23 ")"
+        WHITESPACE@23..24 " "
+        PIPE@24..25 "|"
+        WHITESPACE@25..26 " "
+        TAKE_OP@26..32
+          IDENT@26..30 "take"
+          WHITESPACE@30..31 " "
+          LITERAL@31..32
+            LONG@31..32 "5"
+  WHITESPACE@32..33 "\n"
 
 error[DS0112]: unclosed `(`
   --> query:1:1
   |
-1 | (t | where (a > 1) | take 5
-  | ^                          - the input ends before a `)`
+1 | (from t | where (a > 1) | take 5
+  | ^                               - the input ends before a `)`
   | |
   | this `(` is never closed
   |

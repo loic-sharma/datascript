@@ -1,33 +1,35 @@
 # `a == == c`: one error for the missing operand, none for a chain (M1-19).
 mode: syntax
 ---- query
-T | where a == == c
+from T | where a == == c
 ---- expected
-PROGRAM@0..20
-  PIPELINE@0..19
-    NAME_REF@0..1
-      IDENT@0..1 "T"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..19
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..19
-        BIN_EXPR@10..14
-          NAME_REF@10..11
-            IDENT@10..11 "a"
-          WHITESPACE@11..12 " "
-          EQ2@12..14 "=="
-        WHITESPACE@14..15 " "
-        EQ2@15..17 "=="
-        WHITESPACE@17..18 " "
-        NAME_REF@18..19
-          IDENT@18..19 "c"
-  WHITESPACE@19..20 "\n"
+PROGRAM@0..25
+  PIPELINE@0..24
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "T"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..24
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..24
+        BIN_EXPR@15..19
+          NAME_REF@15..16
+            IDENT@15..16 "a"
+          WHITESPACE@16..17 " "
+          EQ2@17..19 "=="
+        WHITESPACE@19..20 " "
+        EQ2@20..22 "=="
+        WHITESPACE@22..23 " "
+        NAME_REF@23..24
+          IDENT@23..24 "c"
+  WHITESPACE@24..25 "\n"
 
 error[DS0101]: expected an expression after `==`, found `==`
-  --> query:1:16
+  --> query:1:21
   |
-1 | T | where a == == c
-  |                ^^
+1 | from T | where a == == c
+  |                     ^^

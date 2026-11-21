@@ -1,32 +1,34 @@
 # SQL's `LIKE` with a pattern that has no fixed-text equivalent: DS0105 with help but no fix.
 mode: syntax
 ---- query
-'orders.csv' | where customerId LIKE 'c_%2'
+from 'orders.csv' | where customerId LIKE 'c_%2'
 ---- expected
-PROGRAM@0..44
-  PIPELINE@0..43
-    LITERAL@0..12
-      STRING@0..12 "'orders.csv'"
-    WHITESPACE@12..13 " "
-    PIPE@13..14 "|"
-    WHITESPACE@14..15 " "
-    WHERE_OP@15..43
-      IDENT@15..20 "where"
-      WHITESPACE@20..21 " "
-      BIN_EXPR@21..43
-        NAME_REF@21..31
-          IDENT@21..31 "customerId"
-        WHITESPACE@31..32 " "
-        IDENT@32..36 "LIKE"
+PROGRAM@0..49
+  PIPELINE@0..48
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    LITERAL@5..17
+      STRING@5..17 "'orders.csv'"
+    WHITESPACE@17..18 " "
+    PIPE@18..19 "|"
+    WHITESPACE@19..20 " "
+    WHERE_OP@20..48
+      IDENT@20..25 "where"
+      WHITESPACE@25..26 " "
+      BIN_EXPR@26..48
+        NAME_REF@26..36
+          IDENT@26..36 "customerId"
         WHITESPACE@36..37 " "
-        LITERAL@37..43
-          STRING@37..43 "'c_%2'"
-  WHITESPACE@43..44 "\n"
+        IDENT@37..41 "LIKE"
+        WHITESPACE@41..42 " "
+        LITERAL@42..48
+          STRING@42..48 "'c_%2'"
+  WHITESPACE@48..49 "\n"
 
 error[DS0105]: `LIKE` is SQL, not DataScript
-  --> query:1:33
+  --> query:1:38
   |
-1 | 'orders.csv' | where customerId LIKE 'c_%2'
-  |                                 ^^^^ this is SQL's pattern match
+1 | from 'orders.csv' | where customerId LIKE 'c_%2'
+  |                                      ^^^^ this is SQL's pattern match
   |
   = help: use `startswith`, `endswith` or `contains` for a fixed text, or `matches regex` for a pattern

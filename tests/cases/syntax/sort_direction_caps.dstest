@@ -1,35 +1,37 @@
 # `DESC` in caps is DS0105, and the key still sorts descending (M1-19).
 mode: syntax
 ---- query
-T | sort by a DESC
+from T | sort by a DESC
 ---- expected
-PROGRAM@0..19
-  PIPELINE@0..18
-    NAME_REF@0..1
-      IDENT@0..1 "T"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    SORT_OP@4..18
-      IDENT@4..8 "sort"
-      WHITESPACE@8..9 " "
-      IDENT@9..11 "by"
-      WHITESPACE@11..12 " "
-      SORT_KEY@12..18
-        NAME_REF@12..13
-          IDENT@12..13 "a"
-        WHITESPACE@13..14 " "
-        IDENT@14..18 "DESC"
-  WHITESPACE@18..19 "\n"
+PROGRAM@0..24
+  PIPELINE@0..23
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "T"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    SORT_OP@9..23
+      IDENT@9..13 "sort"
+      WHITESPACE@13..14 " "
+      IDENT@14..16 "by"
+      WHITESPACE@16..17 " "
+      SORT_KEY@17..23
+        NAME_REF@17..18
+          IDENT@17..18 "a"
+        WHITESPACE@18..19 " "
+        IDENT@19..23 "DESC"
+  WHITESPACE@23..24 "\n"
 
 error[DS0105]: SQL keyword `DESC` is not a sort direction
-  --> query:1:15
+  --> query:1:20
   |
-1 | T | sort by a DESC
-  |               ^^^^ this is SQL
+1 | from T | sort by a DESC
+  |                    ^^^^ this is SQL
   |
   = help: keywords are lowercase: write `desc`
 
 with the machine-applicable fixes applied:
-    T | sort by a desc
+    from T | sort by a desc
 which parses without errors

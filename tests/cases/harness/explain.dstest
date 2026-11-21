@@ -4,5 +4,5 @@ mode: explain
 skip: needs host tables (M1-17); the skeleton explain case is skeleton/explain.dstest
 schema: orders(orderId: string, customerId: string, amount: real, timestamp: datetime)
 ---- query
-orders | where amount > 10 | take 5
+from orders | where amount > 10 | take 5
 ---- expected

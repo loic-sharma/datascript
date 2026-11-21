@@ -1,114 +1,116 @@
 # Every literal kind.
 mode: syntax
 ---- query
-t | extend a = 42, b = 3.14, c = 'text', d = @'C:\raw', e = true, f = false, g = null, h = 1.5h, i = datetime(2024-01-31), j = timespan(1.02:03:04)
+from t | extend a = 42, b = 3.14, c = 'text', d = @'C:\raw', e = true, f = false, g = null, h = 1.5h, i = datetime(2024-01-31), j = timespan(1.02:03:04)
 ---- expected
-PROGRAM@0..148
-  PIPELINE@0..147
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    EXTEND_OP@4..147
-      IDENT@4..10 "extend"
-      WHITESPACE@10..11 " "
-      NAMED_EXPR@11..17
-        NAME@11..12
-          IDENT@11..12 "a"
-        WHITESPACE@12..13 " "
-        EQ@13..14 "="
-        WHITESPACE@14..15 " "
-        LITERAL@15..17
-          LONG@15..17 "42"
-      COMMA@17..18 ","
-      WHITESPACE@18..19 " "
-      NAMED_EXPR@19..27
-        NAME@19..20
-          IDENT@19..20 "b"
-        WHITESPACE@20..21 " "
-        EQ@21..22 "="
-        WHITESPACE@22..23 " "
-        LITERAL@23..27
-          REAL@23..27 "3.14"
-      COMMA@27..28 ","
-      WHITESPACE@28..29 " "
-      NAMED_EXPR@29..39
-        NAME@29..30
-          IDENT@29..30 "c"
-        WHITESPACE@30..31 " "
-        EQ@31..32 "="
-        WHITESPACE@32..33 " "
-        LITERAL@33..39
-          STRING@33..39 "'text'"
-      COMMA@39..40 ","
-      WHITESPACE@40..41 " "
-      NAMED_EXPR@41..54
-        NAME@41..42
-          IDENT@41..42 "d"
-        WHITESPACE@42..43 " "
-        EQ@43..44 "="
-        WHITESPACE@44..45 " "
-        LITERAL@45..54
-          STRING@45..54 "@'C:\\raw'"
-      COMMA@54..55 ","
-      WHITESPACE@55..56 " "
-      NAMED_EXPR@56..64
-        NAME@56..57
-          IDENT@56..57 "e"
-        WHITESPACE@57..58 " "
-        EQ@58..59 "="
-        WHITESPACE@59..60 " "
-        LITERAL@60..64
-          TRUE_KW@60..64 "true"
-      COMMA@64..65 ","
-      WHITESPACE@65..66 " "
-      NAMED_EXPR@66..75
-        NAME@66..67
-          IDENT@66..67 "f"
-        WHITESPACE@67..68 " "
-        EQ@68..69 "="
-        WHITESPACE@69..70 " "
-        LITERAL@70..75
-          FALSE_KW@70..75 "false"
-      COMMA@75..76 ","
-      WHITESPACE@76..77 " "
-      NAMED_EXPR@77..85
-        NAME@77..78
-          IDENT@77..78 "g"
-        WHITESPACE@78..79 " "
-        EQ@79..80 "="
-        WHITESPACE@80..81 " "
-        LITERAL@81..85
-          NULL_KW@81..85 "null"
-      COMMA@85..86 ","
-      WHITESPACE@86..87 " "
-      NAMED_EXPR@87..95
-        NAME@87..88
-          IDENT@87..88 "h"
-        WHITESPACE@88..89 " "
-        EQ@89..90 "="
-        WHITESPACE@90..91 " "
-        LITERAL@91..95
-          TIMESPAN@91..95 "1.5h"
-      COMMA@95..96 ","
-      WHITESPACE@96..97 " "
-      NAMED_EXPR@97..121
-        NAME@97..98
-          IDENT@97..98 "i"
-        WHITESPACE@98..99 " "
-        EQ@99..100 "="
-        WHITESPACE@100..101 " "
-        LITERAL@101..121
-          DATETIME@101..121 "datetime(2024-01-31)"
-      COMMA@121..122 ","
-      WHITESPACE@122..123 " "
-      NAMED_EXPR@123..147
-        NAME@123..124
-          IDENT@123..124 "j"
-        WHITESPACE@124..125 " "
-        EQ@125..126 "="
-        WHITESPACE@126..127 " "
-        LITERAL@127..147
-          TIMESPAN@127..147 "timespan(1.02:03:04)"
-  WHITESPACE@147..148 "\n"
+PROGRAM@0..153
+  PIPELINE@0..152
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    EXTEND_OP@9..152
+      IDENT@9..15 "extend"
+      WHITESPACE@15..16 " "
+      NAMED_EXPR@16..22
+        NAME@16..17
+          IDENT@16..17 "a"
+        WHITESPACE@17..18 " "
+        EQ@18..19 "="
+        WHITESPACE@19..20 " "
+        LITERAL@20..22
+          LONG@20..22 "42"
+      COMMA@22..23 ","
+      WHITESPACE@23..24 " "
+      NAMED_EXPR@24..32
+        NAME@24..25
+          IDENT@24..25 "b"
+        WHITESPACE@25..26 " "
+        EQ@26..27 "="
+        WHITESPACE@27..28 " "
+        LITERAL@28..32
+          REAL@28..32 "3.14"
+      COMMA@32..33 ","
+      WHITESPACE@33..34 " "
+      NAMED_EXPR@34..44
+        NAME@34..35
+          IDENT@34..35 "c"
+        WHITESPACE@35..36 " "
+        EQ@36..37 "="
+        WHITESPACE@37..38 " "
+        LITERAL@38..44
+          STRING@38..44 "'text'"
+      COMMA@44..45 ","
+      WHITESPACE@45..46 " "
+      NAMED_EXPR@46..59
+        NAME@46..47
+          IDENT@46..47 "d"
+        WHITESPACE@47..48 " "
+        EQ@48..49 "="
+        WHITESPACE@49..50 " "
+        LITERAL@50..59
+          STRING@50..59 "@'C:\\raw'"
+      COMMA@59..60 ","
+      WHITESPACE@60..61 " "
+      NAMED_EXPR@61..69
+        NAME@61..62
+          IDENT@61..62 "e"
+        WHITESPACE@62..63 " "
+        EQ@63..64 "="
+        WHITESPACE@64..65 " "
+        LITERAL@65..69
+          TRUE_KW@65..69 "true"
+      COMMA@69..70 ","
+      WHITESPACE@70..71 " "
+      NAMED_EXPR@71..80
+        NAME@71..72
+          IDENT@71..72 "f"
+        WHITESPACE@72..73 " "
+        EQ@73..74 "="
+        WHITESPACE@74..75 " "
+        LITERAL@75..80
+          FALSE_KW@75..80 "false"
+      COMMA@80..81 ","
+      WHITESPACE@81..82 " "
+      NAMED_EXPR@82..90
+        NAME@82..83
+          IDENT@82..83 "g"
+        WHITESPACE@83..84 " "
+        EQ@84..85 "="
+        WHITESPACE@85..86 " "
+        LITERAL@86..90
+          NULL_KW@86..90 "null"
+      COMMA@90..91 ","
+      WHITESPACE@91..92 " "
+      NAMED_EXPR@92..100
+        NAME@92..93
+          IDENT@92..93 "h"
+        WHITESPACE@93..94 " "
+        EQ@94..95 "="
+        WHITESPACE@95..96 " "
+        LITERAL@96..100
+          TIMESPAN@96..100 "1.5h"
+      COMMA@100..101 ","
+      WHITESPACE@101..102 " "
+      NAMED_EXPR@102..126
+        NAME@102..103
+          IDENT@102..103 "i"
+        WHITESPACE@103..104 " "
+        EQ@104..105 "="
+        WHITESPACE@105..106 " "
+        LITERAL@106..126
+          DATETIME@106..126 "datetime(2024-01-31)"
+      COMMA@126..127 ","
+      WHITESPACE@127..128 " "
+      NAMED_EXPR@128..152
+        NAME@128..129
+          IDENT@128..129 "j"
+        WHITESPACE@129..130 " "
+        EQ@130..131 "="
+        WHITESPACE@131..132 " "
+        LITERAL@132..152
+          TIMESPAN@132..152 "timespan(1.02:03:04)"
+  WHITESPACE@152..153 "\n"

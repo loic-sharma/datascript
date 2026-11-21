@@ -1,24 +1,26 @@
 # where with a contextual keyword as a column name (D-013).
 mode: syntax
 ---- query
-t | where order > 3
+from t | where order > 3
 ---- expected
-PROGRAM@0..20
-  PIPELINE@0..19
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..19
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..19
-        NAME_REF@10..15
-          IDENT@10..15 "order"
-        WHITESPACE@15..16 " "
-        GT@16..17 ">"
-        WHITESPACE@17..18 " "
-        LITERAL@18..19
-          LONG@18..19 "3"
-  WHITESPACE@19..20 "\n"
+PROGRAM@0..25
+  PIPELINE@0..24
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..24
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..24
+        NAME_REF@15..20
+          IDENT@15..20 "order"
+        WHITESPACE@20..21 " "
+        GT@21..22 ">"
+        WHITESPACE@22..23 " "
+        LITERAL@23..24
+          LONG@23..24 "3"
+  WHITESPACE@24..25 "\n"

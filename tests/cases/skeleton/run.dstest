@@ -1,7 +1,7 @@
 # Walking skeleton (M1-15): one query through binder, IR, Session and DataFusion.
 mode: run
 ---- query
-'../../data/orders.csv' | where amount > 100 | project orderId, amount | take 5
+from '../../data/orders.csv' | where amount > 100 | project orderId, amount | take 5
 ---- expected
 orderId | amount
 string  | real

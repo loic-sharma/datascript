@@ -1,24 +1,26 @@
 # Fraction digits past nanosecond precision are dropped: a tiny timespan is zero, not "too large".
 mode: syntax
 ---- query
-t | where d > 0.0000000000000000000000000000000000000001s
+from t | where d > 0.0000000000000000000000000000000000000001s
 ---- expected
-PROGRAM@0..58
-  PIPELINE@0..57
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..57
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..57
-        NAME_REF@10..11
-          IDENT@10..11 "d"
-        WHITESPACE@11..12 " "
-        GT@12..13 ">"
-        WHITESPACE@13..14 " "
-        LITERAL@14..57
-          TIMESPAN@14..57 "0.0000000000000000000000000000000000000001s"
-  WHITESPACE@57..58 "\n"
+PROGRAM@0..63
+  PIPELINE@0..62
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..62
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..62
+        NAME_REF@15..16
+          IDENT@15..16 "d"
+        WHITESPACE@16..17 " "
+        GT@17..18 ">"
+        WHITESPACE@18..19 " "
+        LITERAL@19..62
+          TIMESPAN@19..62 "0.0000000000000000000000000000000000000001s"
+  WHITESPACE@62..63 "\n"

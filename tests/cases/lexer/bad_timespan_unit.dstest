@@ -1,32 +1,34 @@
 # A number followed by an unknown unit names the valid units.
 mode: syntax
 ---- query
-t | where duration > 1x
+from t | where duration > 1x
 ---- expected
-PROGRAM@0..24
-  PIPELINE@0..23
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..23
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..23
-        NAME_REF@10..18
-          IDENT@10..18 "duration"
-        WHITESPACE@18..19 " "
-        GT@19..20 ">"
-        WHITESPACE@20..21 " "
-        LITERAL@21..23
-          TIMESPAN@21..23 "1x"
-  WHITESPACE@23..24 "\n"
+PROGRAM@0..29
+  PIPELINE@0..28
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..28
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..28
+        NAME_REF@15..23
+          IDENT@15..23 "duration"
+        WHITESPACE@23..24 " "
+        GT@24..25 ">"
+        WHITESPACE@25..26 " "
+        LITERAL@26..28
+          TIMESPAN@26..28 "1x"
+  WHITESPACE@28..29 "\n"
 
 error[DS0003]: unknown timespan unit `x`
-  --> query:1:23
+  --> query:1:28
   |
-1 | t | where duration > 1x
-  |                       ^ not a timespan unit
+1 | from t | where duration > 1x
+  |                            ^ not a timespan unit
   |
   = help: valid units are `d`, `h`, `m` (minutes), `s`, `ms`, `us` (or `µs`) and `tick` (100 ns)

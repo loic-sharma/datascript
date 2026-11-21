@@ -1,62 +1,64 @@
 # Characters that start no token.
 mode: syntax
 ---- query
-t | where x > 1 # comment?
+from t | where x > 1 # comment?
 | extend y = `z`
 ---- expected
-PROGRAM@0..44
-  PIPELINE@0..43
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..15
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..15
-        NAME_REF@10..11
-          IDENT@10..11 "x"
-        WHITESPACE@11..12 " "
-        GT@12..13 ">"
-        WHITESPACE@13..14 " "
-        LITERAL@14..15
-          LONG@14..15 "1"
-    WHITESPACE@15..16 " "
-    ERROR@16..26
-      ERROR@16..17 "#"
-      WHITESPACE@17..18 " "
-      IDENT@18..25 "comment"
-      ERROR@25..26 "?"
-    WHITESPACE@26..27 "\n"
-    PIPE@27..28 "|"
-    WHITESPACE@28..29 " "
-    EXTEND_OP@29..39
-      IDENT@29..35 "extend"
-      WHITESPACE@35..36 " "
-      NAMED_EXPR@36..39
-        NAME@36..37
-          IDENT@36..37 "y"
-        WHITESPACE@37..38 " "
-        EQ@38..39 "="
-    WHITESPACE@39..40 " "
-    ERROR@40..43
-      ERROR@40..43 "`z`"
-  WHITESPACE@43..44 "\n"
+PROGRAM@0..49
+  PIPELINE@0..48
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..20
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..20
+        NAME_REF@15..16
+          IDENT@15..16 "x"
+        WHITESPACE@16..17 " "
+        GT@17..18 ">"
+        WHITESPACE@18..19 " "
+        LITERAL@19..20
+          LONG@19..20 "1"
+    WHITESPACE@20..21 " "
+    ERROR@21..31
+      ERROR@21..22 "#"
+      WHITESPACE@22..23 " "
+      IDENT@23..30 "comment"
+      ERROR@30..31 "?"
+    WHITESPACE@31..32 "\n"
+    PIPE@32..33 "|"
+    WHITESPACE@33..34 " "
+    EXTEND_OP@34..44
+      IDENT@34..40 "extend"
+      WHITESPACE@40..41 " "
+      NAMED_EXPR@41..44
+        NAME@41..42
+          IDENT@41..42 "y"
+        WHITESPACE@42..43 " "
+        EQ@43..44 "="
+    WHITESPACE@44..45 " "
+    ERROR@45..48
+      ERROR@45..48 "`z`"
+  WHITESPACE@48..49 "\n"
 
 error[DS0001]: unexpected character `#`
-  --> query:1:17
+  --> query:1:22
   |
-1 | t | where x > 1 # comment?
-  |                 ^ not valid here
+1 | from t | where x > 1 # comment?
+  |                      ^ not valid here
   |
   = help: comments start with `//`
 
 error[DS0001]: unexpected character `?`
-  --> query:1:26
+  --> query:1:31
   |
-1 | t | where x > 1 # comment?
-  |                          ^ not valid here
+1 | from t | where x > 1 # comment?
+  |                               ^ not valid here
   |
   = help: for a conditional value, use `iff(condition, then, else)`
 
@@ -69,22 +71,22 @@ error[DS0001]: names are not quoted with backticks
   = help: quote the name with brackets: `['z']`
 
 with the machine-applicable fixes applied:
-    t | where x > 1 # comment?
+    from t | where x > 1 # comment?
     | extend y = ['z']
 which still has errors:
 
 error[DS0001]: unexpected character `#`
-  --> fixed:1:17
+  --> fixed:1:22
   |
-1 | t | where x > 1 # comment?
-  |                 ^ not valid here
+1 | from t | where x > 1 # comment?
+  |                      ^ not valid here
   |
   = help: comments start with `//`
 
 error[DS0001]: unexpected character `?`
-  --> fixed:1:26
+  --> fixed:1:31
   |
-1 | t | where x > 1 # comment?
-  |                          ^ not valid here
+1 | from t | where x > 1 # comment?
+  |                               ^ not valid here
   |
   = help: for a conditional value, use `iff(condition, then, else)`

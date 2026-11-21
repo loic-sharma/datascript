@@ -1,113 +1,115 @@
 # Precedence corner cases from LANGUAGE.md section 4.
 mode: syntax
 ---- query
-t | where not a == b | extend x = a - -b, y = a + b * c % d, z = -a.b | where p or q and r
+from t | where not a == b | extend x = a - -b, y = a + b * c % d, z = -a.b | where p or q and r
 ---- expected
-PROGRAM@0..91
-  PIPELINE@0..90
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..20
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      PREFIX_EXPR@10..20
-        NOT_KW@10..13 "not"
-        WHITESPACE@13..14 " "
-        BIN_EXPR@14..20
-          NAME_REF@14..15
-            IDENT@14..15 "a"
-          WHITESPACE@15..16 " "
-          EQ2@16..18 "=="
-          WHITESPACE@18..19 " "
+PROGRAM@0..96
+  PIPELINE@0..95
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..25
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      PREFIX_EXPR@15..25
+        NOT_KW@15..18 "not"
+        WHITESPACE@18..19 " "
+        BIN_EXPR@19..25
           NAME_REF@19..20
-            IDENT@19..20 "b"
-    WHITESPACE@20..21 " "
-    PIPE@21..22 "|"
-    WHITESPACE@22..23 " "
-    EXTEND_OP@23..69
-      IDENT@23..29 "extend"
-      WHITESPACE@29..30 " "
-      NAMED_EXPR@30..40
-        NAME@30..31
-          IDENT@30..31 "x"
-        WHITESPACE@31..32 " "
-        EQ@32..33 "="
-        WHITESPACE@33..34 " "
-        BIN_EXPR@34..40
-          NAME_REF@34..35
-            IDENT@34..35 "a"
-          WHITESPACE@35..36 " "
-          MINUS@36..37 "-"
-          WHITESPACE@37..38 " "
-          PREFIX_EXPR@38..40
-            MINUS@38..39 "-"
-            NAME_REF@39..40
-              IDENT@39..40 "b"
-      COMMA@40..41 ","
-      WHITESPACE@41..42 " "
-      NAMED_EXPR@42..59
-        NAME@42..43
-          IDENT@42..43 "y"
-        WHITESPACE@43..44 " "
-        EQ@44..45 "="
-        WHITESPACE@45..46 " "
-        BIN_EXPR@46..59
-          NAME_REF@46..47
-            IDENT@46..47 "a"
-          WHITESPACE@47..48 " "
-          PLUS@48..49 "+"
-          WHITESPACE@49..50 " "
-          BIN_EXPR@50..59
-            BIN_EXPR@50..55
-              NAME_REF@50..51
-                IDENT@50..51 "b"
-              WHITESPACE@51..52 " "
-              STAR@52..53 "*"
-              WHITESPACE@53..54 " "
-              NAME_REF@54..55
-                IDENT@54..55 "c"
-            WHITESPACE@55..56 " "
-            PERCENT@56..57 "%"
-            WHITESPACE@57..58 " "
-            NAME_REF@58..59
-              IDENT@58..59 "d"
-      COMMA@59..60 ","
-      WHITESPACE@60..61 " "
-      NAMED_EXPR@61..69
-        NAME@61..62
-          IDENT@61..62 "z"
-        WHITESPACE@62..63 " "
-        EQ@63..64 "="
-        WHITESPACE@64..65 " "
-        PREFIX_EXPR@65..69
-          MINUS@65..66 "-"
-          FIELD_EXPR@66..69
-            NAME_REF@66..67
-              IDENT@66..67 "a"
-            DOT@67..68 "."
-            NAME_REF@68..69
-              IDENT@68..69 "b"
-    WHITESPACE@69..70 " "
-    PIPE@70..71 "|"
-    WHITESPACE@71..72 " "
-    WHERE_OP@72..90
-      IDENT@72..77 "where"
-      WHITESPACE@77..78 " "
-      BIN_EXPR@78..90
-        NAME_REF@78..79
-          IDENT@78..79 "p"
-        WHITESPACE@79..80 " "
-        OR_KW@80..82 "or"
-        WHITESPACE@82..83 " "
-        BIN_EXPR@83..90
-          NAME_REF@83..84
-            IDENT@83..84 "q"
-          WHITESPACE@84..85 " "
-          AND_KW@85..88 "and"
-          WHITESPACE@88..89 " "
-          NAME_REF@89..90
-            IDENT@89..90 "r"
-  WHITESPACE@90..91 "\n"
+            IDENT@19..20 "a"
+          WHITESPACE@20..21 " "
+          EQ2@21..23 "=="
+          WHITESPACE@23..24 " "
+          NAME_REF@24..25
+            IDENT@24..25 "b"
+    WHITESPACE@25..26 " "
+    PIPE@26..27 "|"
+    WHITESPACE@27..28 " "
+    EXTEND_OP@28..74
+      IDENT@28..34 "extend"
+      WHITESPACE@34..35 " "
+      NAMED_EXPR@35..45
+        NAME@35..36
+          IDENT@35..36 "x"
+        WHITESPACE@36..37 " "
+        EQ@37..38 "="
+        WHITESPACE@38..39 " "
+        BIN_EXPR@39..45
+          NAME_REF@39..40
+            IDENT@39..40 "a"
+          WHITESPACE@40..41 " "
+          MINUS@41..42 "-"
+          WHITESPACE@42..43 " "
+          PREFIX_EXPR@43..45
+            MINUS@43..44 "-"
+            NAME_REF@44..45
+              IDENT@44..45 "b"
+      COMMA@45..46 ","
+      WHITESPACE@46..47 " "
+      NAMED_EXPR@47..64
+        NAME@47..48
+          IDENT@47..48 "y"
+        WHITESPACE@48..49 " "
+        EQ@49..50 "="
+        WHITESPACE@50..51 " "
+        BIN_EXPR@51..64
+          NAME_REF@51..52
+            IDENT@51..52 "a"
+          WHITESPACE@52..53 " "
+          PLUS@53..54 "+"
+          WHITESPACE@54..55 " "
+          BIN_EXPR@55..64
+            BIN_EXPR@55..60
+              NAME_REF@55..56
+                IDENT@55..56 "b"
+              WHITESPACE@56..57 " "
+              STAR@57..58 "*"
+              WHITESPACE@58..59 " "
+              NAME_REF@59..60
+                IDENT@59..60 "c"
+            WHITESPACE@60..61 " "
+            PERCENT@61..62 "%"
+            WHITESPACE@62..63 " "
+            NAME_REF@63..64
+              IDENT@63..64 "d"
+      COMMA@64..65 ","
+      WHITESPACE@65..66 " "
+      NAMED_EXPR@66..74
+        NAME@66..67
+          IDENT@66..67 "z"
+        WHITESPACE@67..68 " "
+        EQ@68..69 "="
+        WHITESPACE@69..70 " "
+        PREFIX_EXPR@70..74
+          MINUS@70..71 "-"
+          FIELD_EXPR@71..74
+            NAME_REF@71..72
+              IDENT@71..72 "a"
+            DOT@72..73 "."
+            NAME_REF@73..74
+              IDENT@73..74 "b"
+    WHITESPACE@74..75 " "
+    PIPE@75..76 "|"
+    WHITESPACE@76..77 " "
+    WHERE_OP@77..95
+      IDENT@77..82 "where"
+      WHITESPACE@82..83 " "
+      BIN_EXPR@83..95
+        NAME_REF@83..84
+          IDENT@83..84 "p"
+        WHITESPACE@84..85 " "
+        OR_KW@85..87 "or"
+        WHITESPACE@87..88 " "
+        BIN_EXPR@88..95
+          NAME_REF@88..89
+            IDENT@88..89 "q"
+          WHITESPACE@89..90 " "
+          AND_KW@90..93 "and"
+          WHITESPACE@93..94 " "
+          NAME_REF@94..95
+            IDENT@94..95 "r"
+  WHITESPACE@95..96 "\n"

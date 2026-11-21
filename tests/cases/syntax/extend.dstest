@@ -1,41 +1,43 @@
 # extend with named and unnamed expressions.
 mode: syntax
 ---- query
-t | extend doubled = amount * 2, amount / 3
+from t | extend doubled = amount * 2, amount / 3
 ---- expected
-PROGRAM@0..44
-  PIPELINE@0..43
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    EXTEND_OP@4..43
-      IDENT@4..10 "extend"
-      WHITESPACE@10..11 " "
-      NAMED_EXPR@11..31
-        NAME@11..18
-          IDENT@11..18 "doubled"
-        WHITESPACE@18..19 " "
-        EQ@19..20 "="
-        WHITESPACE@20..21 " "
-        BIN_EXPR@21..31
-          NAME_REF@21..27
-            IDENT@21..27 "amount"
-          WHITESPACE@27..28 " "
-          STAR@28..29 "*"
-          WHITESPACE@29..30 " "
-          LITERAL@30..31
-            LONG@30..31 "2"
-      COMMA@31..32 ","
-      WHITESPACE@32..33 " "
-      NAMED_EXPR@33..43
-        BIN_EXPR@33..43
-          NAME_REF@33..39
-            IDENT@33..39 "amount"
-          WHITESPACE@39..40 " "
-          SLASH@40..41 "/"
-          WHITESPACE@41..42 " "
-          LITERAL@42..43
-            LONG@42..43 "3"
-  WHITESPACE@43..44 "\n"
+PROGRAM@0..49
+  PIPELINE@0..48
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    EXTEND_OP@9..48
+      IDENT@9..15 "extend"
+      WHITESPACE@15..16 " "
+      NAMED_EXPR@16..36
+        NAME@16..23
+          IDENT@16..23 "doubled"
+        WHITESPACE@23..24 " "
+        EQ@24..25 "="
+        WHITESPACE@25..26 " "
+        BIN_EXPR@26..36
+          NAME_REF@26..32
+            IDENT@26..32 "amount"
+          WHITESPACE@32..33 " "
+          STAR@33..34 "*"
+          WHITESPACE@34..35 " "
+          LITERAL@35..36
+            LONG@35..36 "2"
+      COMMA@36..37 ","
+      WHITESPACE@37..38 " "
+      NAMED_EXPR@38..48
+        BIN_EXPR@38..48
+          NAME_REF@38..44
+            IDENT@38..44 "amount"
+          WHITESPACE@44..45 " "
+          SLASH@45..46 "/"
+          WHITESPACE@46..47 " "
+          LITERAL@47..48
+            LONG@47..48 "3"
+  WHITESPACE@48..49 "\n"

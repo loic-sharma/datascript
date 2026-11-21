@@ -1,41 +1,43 @@
 # `!in ~` is `!in` then `~`: the `~` must follow directly.
 mode: syntax
 ---- query
-t | where x !in ~ ('a')
+from t | where x !in ~ ('a')
 ---- expected
-PROGRAM@0..24
-  PIPELINE@0..23
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..23
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      IN_EXPR@10..23
-        NAME_REF@10..11
-          IDENT@10..11 "x"
-        WHITESPACE@11..12 " "
-        NEGATED_OP@12..15 "!in"
-        WHITESPACE@15..16 " "
-        TILDE@16..17 "~"
-        WHITESPACE@17..18 " "
-        ARG_LIST@18..23
-          L_PAREN@18..19 "("
-          LITERAL@19..22
-            STRING@19..22 "'a'"
-          R_PAREN@22..23 ")"
-  WHITESPACE@23..24 "\n"
+PROGRAM@0..29
+  PIPELINE@0..28
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..28
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      IN_EXPR@15..28
+        NAME_REF@15..16
+          IDENT@15..16 "x"
+        WHITESPACE@16..17 " "
+        NEGATED_OP@17..20 "!in"
+        WHITESPACE@20..21 " "
+        TILDE@21..22 "~"
+        WHITESPACE@22..23 " "
+        ARG_LIST@23..28
+          L_PAREN@23..24 "("
+          LITERAL@24..27
+            STRING@24..27 "'a'"
+          R_PAREN@27..28 ")"
+  WHITESPACE@28..29 "\n"
 
 error[DS0129]: `!in~` is written without a space
-  --> query:1:13
+  --> query:1:18
   |
-1 | t | where x !in ~ ('a')
-  |             ^^^^^ read as `!in` followed by `~`
+1 | from t | where x !in ~ ('a')
+  |                  ^^^^^ read as `!in` followed by `~`
   |
   = help: write `!in~` to match the list ignoring case
 
 with the machine-applicable fixes applied:
-    t | where x !in~ ('a')
+    from t | where x !in~ ('a')
 which parses without errors

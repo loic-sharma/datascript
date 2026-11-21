@@ -1,5 +1,5 @@
 # Walking skeleton (M1-15): the skeleton query checks without diagnostics.
 mode: check
 ---- query
-'../../data/orders.csv' | where amount > 100 | project orderId, amount | take 5
+from '../../data/orders.csv' | where amount > 100 | project orderId, amount | take 5
 ---- expected

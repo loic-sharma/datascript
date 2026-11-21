@@ -1,37 +1,39 @@
 # Short-form timespans and timespan(...) bodies.
 mode: syntax
 ---- query
-1d 2h 30m 10s 250ms 5us 5µs 3tick 1.5h timespan(1.02:03:04) timespan(null)
+from 1d 2h 30m 10s 250ms 5us 5µs 3tick 1.5h timespan(1.02:03:04) timespan(null)
 ---- expected
-PROGRAM@0..76
-  PIPELINE@0..75
-    LITERAL@0..2
-      TIMESPAN@0..2 "1d"
-    WHITESPACE@2..3 " "
-    ERROR@3..75
-      TIMESPAN@3..5 "2h"
-      WHITESPACE@5..6 " "
-      TIMESPAN@6..9 "30m"
-      WHITESPACE@9..10 " "
-      TIMESPAN@10..13 "10s"
-      WHITESPACE@13..14 " "
-      TIMESPAN@14..19 "250ms"
-      WHITESPACE@19..20 " "
-      TIMESPAN@20..23 "5us"
-      WHITESPACE@23..24 " "
-      TIMESPAN@24..28 "5µs"
+PROGRAM@0..81
+  PIPELINE@0..80
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    LITERAL@5..7
+      TIMESPAN@5..7 "1d"
+    WHITESPACE@7..8 " "
+    ERROR@8..80
+      TIMESPAN@8..10 "2h"
+      WHITESPACE@10..11 " "
+      TIMESPAN@11..14 "30m"
+      WHITESPACE@14..15 " "
+      TIMESPAN@15..18 "10s"
+      WHITESPACE@18..19 " "
+      TIMESPAN@19..24 "250ms"
+      WHITESPACE@24..25 " "
+      TIMESPAN@25..28 "5us"
       WHITESPACE@28..29 " "
-      TIMESPAN@29..34 "3tick"
-      WHITESPACE@34..35 " "
-      TIMESPAN@35..39 "1.5h"
+      TIMESPAN@29..33 "5µs"
+      WHITESPACE@33..34 " "
+      TIMESPAN@34..39 "3tick"
       WHITESPACE@39..40 " "
-      TIMESPAN@40..60 "timespan(1.02:03:04)"
-      WHITESPACE@60..61 " "
-      TIMESPAN@61..75 "timespan(null)"
-  WHITESPACE@75..76 "\n"
+      TIMESPAN@40..44 "1.5h"
+      WHITESPACE@44..45 " "
+      TIMESPAN@45..65 "timespan(1.02:03:04)"
+      WHITESPACE@65..66 " "
+      TIMESPAN@66..80 "timespan(null)"
+  WHITESPACE@80..81 "\n"
 
 error[DS0101]: expected `|` or `;`, found `2h`
-  --> query:1:4
+  --> query:1:9
   |
-1 | 1d 2h 30m 10s 250ms 5us 5µs 3tick 1.5h timespan(1.02:03:04) timespan(null)
-  |    ^^
+1 | from 1d 2h 30m 10s 250ms 5us 5µs 3tick 1.5h timespan(1.02:03:04) timespan(null)
+  |         ^^

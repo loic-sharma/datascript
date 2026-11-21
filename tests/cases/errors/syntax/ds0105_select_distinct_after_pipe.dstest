@@ -1,27 +1,29 @@
 # `SELECT DISTINCT a` after a pipe: the fix is not certain.
 mode: syntax
 ---- query
-t | SELECT DISTINCT a
+from t | SELECT DISTINCT a
 ---- expected
-PROGRAM@0..22
-  PIPELINE@0..21
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    ERROR@4..21
-      IDENT@4..10 "SELECT"
-      WHITESPACE@10..11 " "
-      IDENT@11..19 "DISTINCT"
-      WHITESPACE@19..20 " "
-      IDENT@20..21 "a"
-  WHITESPACE@21..22 "\n"
+PROGRAM@0..27
+  PIPELINE@0..26
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    ERROR@9..26
+      IDENT@9..15 "SELECT"
+      WHITESPACE@15..16 " "
+      IDENT@16..24 "DISTINCT"
+      WHITESPACE@24..25 " "
+      IDENT@25..26 "a"
+  WHITESPACE@26..27 "\n"
 
 error[DS0105]: SQL keyword `SELECT` is not an operator
-  --> query:1:5
+  --> query:1:10
   |
-1 | t | SELECT DISTINCT a
-  |     ^^^^^^ this is SQL
+1 | from t | SELECT DISTINCT a
+  |          ^^^^^^ this is SQL
   |
   = help: choose or compute columns with `project`: `project a, b`

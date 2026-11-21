@@ -2,12 +2,12 @@
 # missing source cause no further errors.
 mode: check
 ---- query
-'../../data/order.csv' | where amount > 100 | project orderId, amount
+from '../../data/order.csv' | where amount > 100 | project orderId, amount
 ---- expected
 error[DS3001]: file `../../data/order.csv` not found
-  --> query:1:1
+  --> query:1:6
   |
-1 | '../../data/order.csv' | where amount > 100 | project orderId, amount
-  | ^^^^^^^^^^^^^^^^^^^^^^ no file at this path
+1 | from '../../data/order.csv' | where amount > 100 | project orderId, amount
+  |      ^^^^^^^^^^^^^^^^^^^^^^ no file at this path
   |
   = help: a file with a similar name exists: `../../data/orders.csv`

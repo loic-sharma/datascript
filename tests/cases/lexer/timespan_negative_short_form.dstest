@@ -1,36 +1,38 @@
 # `timespan(...)` takes a sign before a short-form body too.
 mode: syntax
 ---- query
-t | where d > timespan(-90m) and d < timespan(-01:30)
+from t | where d > timespan(-90m) and d < timespan(-01:30)
 ---- expected
-PROGRAM@0..54
-  PIPELINE@0..53
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..53
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..53
-        BIN_EXPR@10..28
-          NAME_REF@10..11
-            IDENT@10..11 "d"
-          WHITESPACE@11..12 " "
-          GT@12..13 ">"
-          WHITESPACE@13..14 " "
-          LITERAL@14..28
-            TIMESPAN@14..28 "timespan(-90m)"
-        WHITESPACE@28..29 " "
-        AND_KW@29..32 "and"
-        WHITESPACE@32..33 " "
-        BIN_EXPR@33..53
-          NAME_REF@33..34
-            IDENT@33..34 "d"
-          WHITESPACE@34..35 " "
-          LT@35..36 "<"
-          WHITESPACE@36..37 " "
-          LITERAL@37..53
-            TIMESPAN@37..53 "timespan(-01:30)"
-  WHITESPACE@53..54 "\n"
+PROGRAM@0..59
+  PIPELINE@0..58
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..58
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..58
+        BIN_EXPR@15..33
+          NAME_REF@15..16
+            IDENT@15..16 "d"
+          WHITESPACE@16..17 " "
+          GT@17..18 ">"
+          WHITESPACE@18..19 " "
+          LITERAL@19..33
+            TIMESPAN@19..33 "timespan(-90m)"
+        WHITESPACE@33..34 " "
+        AND_KW@34..37 "and"
+        WHITESPACE@37..38 " "
+        BIN_EXPR@38..58
+          NAME_REF@38..39
+            IDENT@38..39 "d"
+          WHITESPACE@39..40 " "
+          LT@40..41 "<"
+          WHITESPACE@41..42 " "
+          LITERAL@42..58
+            TIMESPAN@42..58 "timespan(-01:30)"
+  WHITESPACE@58..59 "\n"

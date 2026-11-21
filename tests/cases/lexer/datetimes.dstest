@@ -1,27 +1,29 @@
 # datetime(...) is one literal token when the name is directly followed by `(`.
 mode: syntax
 ---- query
-datetime(2024-01-31) datetime(2024-01-31T12:00:00Z) datetime(null) datetime (x)
+from datetime(2024-01-31) datetime(2024-01-31T12:00:00Z) datetime(null) datetime (x)
 ---- expected
-PROGRAM@0..80
-  PIPELINE@0..79
-    LITERAL@0..20
-      DATETIME@0..20 "datetime(2024-01-31)"
-    WHITESPACE@20..21 " "
-    ERROR@21..79
-      DATETIME@21..51 "datetime(2024-01-31T12:00:00Z)"
-      WHITESPACE@51..52 " "
-      DATETIME@52..66 "datetime(null)"
-      WHITESPACE@66..67 " "
-      IDENT@67..75 "datetime"
-      WHITESPACE@75..76 " "
-      L_PAREN@76..77 "("
-      IDENT@77..78 "x"
-      R_PAREN@78..79 ")"
-  WHITESPACE@79..80 "\n"
+PROGRAM@0..85
+  PIPELINE@0..84
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    LITERAL@5..25
+      DATETIME@5..25 "datetime(2024-01-31)"
+    WHITESPACE@25..26 " "
+    ERROR@26..84
+      DATETIME@26..56 "datetime(2024-01-31T12:00:00Z)"
+      WHITESPACE@56..57 " "
+      DATETIME@57..71 "datetime(null)"
+      WHITESPACE@71..72 " "
+      IDENT@72..80 "datetime"
+      WHITESPACE@80..81 " "
+      L_PAREN@81..82 "("
+      IDENT@82..83 "x"
+      R_PAREN@83..84 ")"
+  WHITESPACE@84..85 "\n"
 
 error[DS0101]: expected `|` or `;`, found `datetime(2024-01-31T…`
-  --> query:1:22
+  --> query:1:27
   |
-1 | datetime(2024-01-31) datetime(2024-01-31T12:00:00Z) datetime(null) datetime (x)
-  |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1 | from datetime(2024-01-31) datetime(2024-01-31T12:00:00Z) datetime(null) datetime (x)
+  |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

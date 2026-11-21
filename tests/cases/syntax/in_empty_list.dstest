@@ -1,33 +1,35 @@
 # `in` needs at least one value (LANGUAGE.md §8, M1-19).
 mode: syntax
 ---- query
-T | where x in ()
+from T | where x in ()
 ---- expected
-PROGRAM@0..18
-  PIPELINE@0..17
-    NAME_REF@0..1
-      IDENT@0..1 "T"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..17
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      IN_EXPR@10..17
-        NAME_REF@10..11
-          IDENT@10..11 "x"
-        WHITESPACE@11..12 " "
-        IDENT@12..14 "in"
-        WHITESPACE@14..15 " "
-        ARG_LIST@15..17
-          L_PAREN@15..16 "("
-          R_PAREN@16..17 ")"
-  WHITESPACE@17..18 "\n"
+PROGRAM@0..23
+  PIPELINE@0..22
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "T"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..22
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      IN_EXPR@15..22
+        NAME_REF@15..16
+          IDENT@15..16 "x"
+        WHITESPACE@16..17 " "
+        IDENT@17..19 "in"
+        WHITESPACE@19..20 " "
+        ARG_LIST@20..22
+          L_PAREN@20..21 "("
+          R_PAREN@21..22 ")"
+  WHITESPACE@22..23 "\n"
 
 error[DS0101]: expected a value in the list, found `)`
-  --> query:1:17
+  --> query:1:22
   |
-1 | T | where x in ()
-  |                 ^ the list after `in` is empty
+1 | from T | where x in ()
+  |                      ^ the list after `in` is empty
   |
   = help: list at least one value: `x in (1, 2)`

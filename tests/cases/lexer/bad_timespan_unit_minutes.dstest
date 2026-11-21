@@ -1,33 +1,35 @@
 # Common unit spellings get a targeted hint.
 mode: syntax
 ---- query
-t | where duration > 10min
+from t | where duration > 10min
 ---- expected
-PROGRAM@0..27
-  PIPELINE@0..26
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..26
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..26
-        NAME_REF@10..18
-          IDENT@10..18 "duration"
-        WHITESPACE@18..19 " "
-        GT@19..20 ">"
-        WHITESPACE@20..21 " "
-        LITERAL@21..26
-          TIMESPAN@21..26 "10min"
-  WHITESPACE@26..27 "\n"
+PROGRAM@0..32
+  PIPELINE@0..31
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..31
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..31
+        NAME_REF@15..23
+          IDENT@15..23 "duration"
+        WHITESPACE@23..24 " "
+        GT@24..25 ">"
+        WHITESPACE@25..26 " "
+        LITERAL@26..31
+          TIMESPAN@26..31 "10min"
+  WHITESPACE@31..32 "\n"
 
 error[DS0003]: unknown timespan unit `min`
-  --> query:1:24
+  --> query:1:29
   |
-1 | t | where duration > 10min
-  |                        ^^^ not a timespan unit
+1 | from t | where duration > 10min
+  |                             ^^^ not a timespan unit
   |
   = help: valid units are `d`, `h`, `m` (minutes), `s`, `ms`, `us` (or `µs`) and `tick` (100 ns)
   = help: for minutes, write `m`: `30m`

@@ -1,33 +1,35 @@
 # `not` after `and` is fine (M1-19).
 mode: syntax
 ---- query
-T | where a and not b == c
+from T | where a and not b == c
 ---- expected
-PROGRAM@0..27
-  PIPELINE@0..26
-    NAME_REF@0..1
-      IDENT@0..1 "T"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..26
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..26
-        NAME_REF@10..11
-          IDENT@10..11 "a"
-        WHITESPACE@11..12 " "
-        AND_KW@12..15 "and"
-        WHITESPACE@15..16 " "
-        PREFIX_EXPR@16..26
-          NOT_KW@16..19 "not"
-          WHITESPACE@19..20 " "
-          BIN_EXPR@20..26
-            NAME_REF@20..21
-              IDENT@20..21 "b"
-            WHITESPACE@21..22 " "
-            EQ2@22..24 "=="
-            WHITESPACE@24..25 " "
+PROGRAM@0..32
+  PIPELINE@0..31
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "T"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..31
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..31
+        NAME_REF@15..16
+          IDENT@15..16 "a"
+        WHITESPACE@16..17 " "
+        AND_KW@17..20 "and"
+        WHITESPACE@20..21 " "
+        PREFIX_EXPR@21..31
+          NOT_KW@21..24 "not"
+          WHITESPACE@24..25 " "
+          BIN_EXPR@25..31
             NAME_REF@25..26
-              IDENT@25..26 "c"
-  WHITESPACE@26..27 "\n"
+              IDENT@25..26 "b"
+            WHITESPACE@26..27 " "
+            EQ2@27..29 "=="
+            WHITESPACE@29..30 " "
+            NAME_REF@30..31
+              IDENT@30..31 "c"
+  WHITESPACE@31..32 "\n"

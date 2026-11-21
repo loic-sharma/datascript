@@ -1,28 +1,30 @@
 # A trailing pipe with nothing after it (DS0103).
 mode: syntax
 ---- query
-t | take 5 |
+from t | take 5 |
 ---- expected
-PROGRAM@0..13
-  PIPELINE@0..12
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    TAKE_OP@4..10
-      IDENT@4..8 "take"
-      WHITESPACE@8..9 " "
-      LITERAL@9..10
-        LONG@9..10 "5"
-    WHITESPACE@10..11 " "
-    PIPE@11..12 "|"
-  WHITESPACE@12..13 "\n"
+PROGRAM@0..18
+  PIPELINE@0..17
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    TAKE_OP@9..15
+      IDENT@9..13 "take"
+      WHITESPACE@13..14 " "
+      LITERAL@14..15
+        LONG@14..15 "5"
+    WHITESPACE@15..16 " "
+    PIPE@16..17 "|"
+  WHITESPACE@17..18 "\n"
 
 error[DS0103]: `|` with no operator after it
-  --> query:1:12
+  --> query:1:17
   |
-1 | t | take 5 |
-  |            ^ expected an operator after this `|`
+1 | from t | take 5 |
+  |                 ^ expected an operator after this `|`
   |
   = help: remove the `|`, or add an operator after it, such as `take 10`

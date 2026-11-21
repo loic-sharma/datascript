@@ -2,9 +2,9 @@
 mode: syntax
 ---- query
 let a = 1 let b = 2;
-'orders.csv' | take a
+from 'orders.csv' | take a
 ---- expected
-PROGRAM@0..43
+PROGRAM@0..48
   LET_STMT@0..9
     LET_KW@0..3 "let"
     WHITESPACE@3..4 " "
@@ -28,18 +28,20 @@ PROGRAM@0..43
       LONG@18..19 "2"
   SEMICOLON@19..20 ";"
   WHITESPACE@20..21 "\n"
-  PIPELINE@21..42
-    LITERAL@21..33
-      STRING@21..33 "'orders.csv'"
-    WHITESPACE@33..34 " "
-    PIPE@34..35 "|"
-    WHITESPACE@35..36 " "
-    TAKE_OP@36..42
-      IDENT@36..40 "take"
-      WHITESPACE@40..41 " "
-      NAME_REF@41..42
-        IDENT@41..42 "a"
-  WHITESPACE@42..43 "\n"
+  PIPELINE@21..47
+    IDENT@21..25 "from"
+    WHITESPACE@25..26 " "
+    LITERAL@26..38
+      STRING@26..38 "'orders.csv'"
+    WHITESPACE@38..39 " "
+    PIPE@39..40 "|"
+    WHITESPACE@40..41 " "
+    TAKE_OP@41..47
+      IDENT@41..45 "take"
+      WHITESPACE@45..46 " "
+      NAME_REF@46..47
+        IDENT@46..47 "a"
+  WHITESPACE@47..48 "\n"
 
 error[DS0106]: missing `;` between statements
   --> query:1:10
@@ -53,5 +55,5 @@ error[DS0106]: missing `;` between statements
 
 with the machine-applicable fixes applied:
     let a = 1; let b = 2;
-    'orders.csv' | take a
+    from 'orders.csv' | take a
 which parses without errors

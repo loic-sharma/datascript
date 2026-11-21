@@ -1,61 +1,63 @@
 # summarize with aggregates and by keys; count and kind are ordinary names here (D-013).
 mode: syntax
 ---- query
-t | summarize revenue = sum(count), count() by kind, bin(ts, 1h)
+from t | summarize revenue = sum(count), count() by kind, bin(ts, 1h)
 ---- expected
-PROGRAM@0..65
-  PIPELINE@0..64
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    SUMMARIZE_OP@4..64
-      IDENT@4..13 "summarize"
-      WHITESPACE@13..14 " "
-      NAMED_EXPR@14..34
-        NAME@14..21
-          IDENT@14..21 "revenue"
-        WHITESPACE@21..22 " "
-        EQ@22..23 "="
-        WHITESPACE@23..24 " "
-        CALL_EXPR@24..34
-          NAME_REF@24..27
-            IDENT@24..27 "sum"
-          ARG_LIST@27..34
-            L_PAREN@27..28 "("
-            NAME_REF@28..33
-              IDENT@28..33 "count"
-            R_PAREN@33..34 ")"
-      COMMA@34..35 ","
-      WHITESPACE@35..36 " "
-      NAMED_EXPR@36..43
-        CALL_EXPR@36..43
-          NAME_REF@36..41
-            IDENT@36..41 "count"
-          ARG_LIST@41..43
-            L_PAREN@41..42 "("
-            R_PAREN@42..43 ")"
-      WHITESPACE@43..44 " "
-      BY_CLAUSE@44..64
-        IDENT@44..46 "by"
-        WHITESPACE@46..47 " "
-        NAMED_EXPR@47..51
-          NAME_REF@47..51
-            IDENT@47..51 "kind"
-        COMMA@51..52 ","
-        WHITESPACE@52..53 " "
-        NAMED_EXPR@53..64
-          CALL_EXPR@53..64
-            NAME_REF@53..56
-              IDENT@53..56 "bin"
-            ARG_LIST@56..64
-              L_PAREN@56..57 "("
-              NAME_REF@57..59
-                IDENT@57..59 "ts"
-              COMMA@59..60 ","
-              WHITESPACE@60..61 " "
-              LITERAL@61..63
-                TIMESPAN@61..63 "1h"
-              R_PAREN@63..64 ")"
-  WHITESPACE@64..65 "\n"
+PROGRAM@0..70
+  PIPELINE@0..69
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    SUMMARIZE_OP@9..69
+      IDENT@9..18 "summarize"
+      WHITESPACE@18..19 " "
+      NAMED_EXPR@19..39
+        NAME@19..26
+          IDENT@19..26 "revenue"
+        WHITESPACE@26..27 " "
+        EQ@27..28 "="
+        WHITESPACE@28..29 " "
+        CALL_EXPR@29..39
+          NAME_REF@29..32
+            IDENT@29..32 "sum"
+          ARG_LIST@32..39
+            L_PAREN@32..33 "("
+            NAME_REF@33..38
+              IDENT@33..38 "count"
+            R_PAREN@38..39 ")"
+      COMMA@39..40 ","
+      WHITESPACE@40..41 " "
+      NAMED_EXPR@41..48
+        CALL_EXPR@41..48
+          NAME_REF@41..46
+            IDENT@41..46 "count"
+          ARG_LIST@46..48
+            L_PAREN@46..47 "("
+            R_PAREN@47..48 ")"
+      WHITESPACE@48..49 " "
+      BY_CLAUSE@49..69
+        IDENT@49..51 "by"
+        WHITESPACE@51..52 " "
+        NAMED_EXPR@52..56
+          NAME_REF@52..56
+            IDENT@52..56 "kind"
+        COMMA@56..57 ","
+        WHITESPACE@57..58 " "
+        NAMED_EXPR@58..69
+          CALL_EXPR@58..69
+            NAME_REF@58..61
+              IDENT@58..61 "bin"
+            ARG_LIST@61..69
+              L_PAREN@61..62 "("
+              NAME_REF@62..64
+                IDENT@62..64 "ts"
+              COMMA@64..65 ","
+              WHITESPACE@65..66 " "
+              LITERAL@66..68
+                TIMESPAN@66..68 "1h"
+              R_PAREN@68..69 ")"
+  WHITESPACE@69..70 "\n"

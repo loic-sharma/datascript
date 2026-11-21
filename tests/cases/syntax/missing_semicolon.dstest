@@ -2,10 +2,10 @@
 mode: syntax
 ---- query
 let x = 5
-t | take x
-u | take 3
+from t | take x
+from u | take 3
 ---- expected
-PROGRAM@0..32
+PROGRAM@0..42
   LET_STMT@0..9
     LET_KW@0..3 "let"
     WHITESPACE@3..4 " "
@@ -17,53 +17,57 @@ PROGRAM@0..32
     LITERAL@8..9
       LONG@8..9 "5"
   WHITESPACE@9..10 "\n"
-  PIPELINE@10..20
-    NAME_REF@10..11
-      IDENT@10..11 "t"
-    WHITESPACE@11..12 " "
-    PIPE@12..13 "|"
-    WHITESPACE@13..14 " "
-    TAKE_OP@14..20
-      IDENT@14..18 "take"
-      WHITESPACE@18..19 " "
-      NAME_REF@19..20
-        IDENT@19..20 "x"
-  WHITESPACE@20..21 "\n"
-  PIPELINE@21..31
-    NAME_REF@21..22
-      IDENT@21..22 "u"
-    WHITESPACE@22..23 " "
-    PIPE@23..24 "|"
-    WHITESPACE@24..25 " "
-    TAKE_OP@25..31
-      IDENT@25..29 "take"
-      WHITESPACE@29..30 " "
-      LITERAL@30..31
-        LONG@30..31 "3"
-  WHITESPACE@31..32 "\n"
+  PIPELINE@10..25
+    IDENT@10..14 "from"
+    WHITESPACE@14..15 " "
+    NAME_REF@15..16
+      IDENT@15..16 "t"
+    WHITESPACE@16..17 " "
+    PIPE@17..18 "|"
+    WHITESPACE@18..19 " "
+    TAKE_OP@19..25
+      IDENT@19..23 "take"
+      WHITESPACE@23..24 " "
+      NAME_REF@24..25
+        IDENT@24..25 "x"
+  WHITESPACE@25..26 "\n"
+  PIPELINE@26..41
+    IDENT@26..30 "from"
+    WHITESPACE@30..31 " "
+    NAME_REF@31..32
+      IDENT@31..32 "u"
+    WHITESPACE@32..33 " "
+    PIPE@33..34 "|"
+    WHITESPACE@34..35 " "
+    TAKE_OP@35..41
+      IDENT@35..39 "take"
+      WHITESPACE@39..40 " "
+      LITERAL@40..41
+        LONG@40..41 "3"
+  WHITESPACE@41..42 "\n"
 
 error[DS0106]: missing `;` between statements
   --> query:1:10
   |
 1 | let x = 5
   |          ^ expected `;` here
-2 | t | take x
-  | - a new statement starts here
+2 | from t | take x
+  | ---- a new statement starts here
   |
   = help: end the statement with `;`
 
 error[DS0106]: missing `;` between statements
-  --> query:2:11
+  --> query:2:16
   |
-2 | t | take x
-  |           ^ expected `;` here
-3 | u | take 3
-  | - a new statement starts here
+2 | from t | take x
+  |                ^ expected `;` here
+3 | from u | take 3
+  | ---- a new statement starts here
   |
   = help: end the statement with `;`
 
 with the machine-applicable fixes applied:
     let x = 5;
-    t | take x;
-    u | take 3
+    from t | take x;
+    from u | take 3
 which parses without errors

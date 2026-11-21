@@ -1,22 +1,24 @@
 # summarize with only by keys returns the distinct keys.
 mode: syntax
 ---- query
-t | summarize by customerId
+from t | summarize by customerId
 ---- expected
-PROGRAM@0..28
-  PIPELINE@0..27
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    SUMMARIZE_OP@4..27
-      IDENT@4..13 "summarize"
-      WHITESPACE@13..14 " "
-      BY_CLAUSE@14..27
-        IDENT@14..16 "by"
-        WHITESPACE@16..17 " "
-        NAMED_EXPR@17..27
-          NAME_REF@17..27
-            IDENT@17..27 "customerId"
-  WHITESPACE@27..28 "\n"
+PROGRAM@0..33
+  PIPELINE@0..32
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    SUMMARIZE_OP@9..32
+      IDENT@9..18 "summarize"
+      WHITESPACE@18..19 " "
+      BY_CLAUSE@19..32
+        IDENT@19..21 "by"
+        WHITESPACE@21..22 " "
+        NAMED_EXPR@22..32
+          NAME_REF@22..32
+            IDENT@22..32 "customerId"
+  WHITESPACE@32..33 "\n"

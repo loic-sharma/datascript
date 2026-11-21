@@ -1,34 +1,36 @@
 # join without on (DS0122); the right table is the last thing before the pipe.
 mode: syntax
 ---- query
-t | join u | take 1
+from t | join u | take 1
 ---- expected
-PROGRAM@0..20
-  PIPELINE@0..19
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    JOIN_OP@4..10
-      IDENT@4..8 "join"
-      WHITESPACE@8..9 " "
-      NAME_REF@9..10
-        IDENT@9..10 "u"
-    WHITESPACE@10..11 " "
-    PIPE@11..12 "|"
-    WHITESPACE@12..13 " "
-    TAKE_OP@13..19
-      IDENT@13..17 "take"
-      WHITESPACE@17..18 " "
-      LITERAL@18..19
-        LONG@18..19 "1"
-  WHITESPACE@19..20 "\n"
+PROGRAM@0..25
+  PIPELINE@0..24
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    JOIN_OP@9..15
+      IDENT@9..13 "join"
+      WHITESPACE@13..14 " "
+      NAME_REF@14..15
+        IDENT@14..15 "u"
+    WHITESPACE@15..16 " "
+    PIPE@16..17 "|"
+    WHITESPACE@17..18 " "
+    TAKE_OP@18..24
+      IDENT@18..22 "take"
+      WHITESPACE@22..23 " "
+      LITERAL@23..24
+        LONG@23..24 "1"
+  WHITESPACE@24..25 "\n"
 
 error[DS0122]: `join` needs `on` and the columns to match
-  --> query:1:10
+  --> query:1:15
   |
-1 | t | join u | take 1
-  |          ^ expected `on` after this table
+1 | from t | join u | take 1
+  |               ^ expected `on` after this table
   |
   = help: say which columns to match: `join u on customerId`

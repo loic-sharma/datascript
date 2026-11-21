@@ -1,24 +1,26 @@
 # Line and block comments are trivia.
 mode: syntax
 ---- query
-t // to end of line
+from t // to end of line
 /* block
    comment */ | take 1
 ---- expected
-PROGRAM@0..52
-  PIPELINE@0..51
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    LINE_COMMENT@2..19 "// to end of line"
-    WHITESPACE@19..20 "\n"
-    BLOCK_COMMENT@20..42 "/* block\n   comment */"
-    WHITESPACE@42..43 " "
-    PIPE@43..44 "|"
-    WHITESPACE@44..45 " "
-    TAKE_OP@45..51
-      IDENT@45..49 "take"
-      WHITESPACE@49..50 " "
-      LITERAL@50..51
-        LONG@50..51 "1"
-  WHITESPACE@51..52 "\n"
+PROGRAM@0..57
+  PIPELINE@0..56
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    LINE_COMMENT@7..24 "// to end of line"
+    WHITESPACE@24..25 "\n"
+    BLOCK_COMMENT@25..47 "/* block\n   comment */"
+    WHITESPACE@47..48 " "
+    PIPE@48..49 "|"
+    WHITESPACE@49..50 " "
+    TAKE_OP@50..56
+      IDENT@50..54 "take"
+      WHITESPACE@54..55 " "
+      LITERAL@55..56
+        LONG@55..56 "1"
+  WHITESPACE@56..57 "\n"

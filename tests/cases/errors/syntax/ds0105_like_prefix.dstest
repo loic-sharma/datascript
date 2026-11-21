@@ -1,33 +1,35 @@
 # SQL's `like` with a prefix pattern: DS0105 suggesting `startswith`.
 mode: syntax
 ---- query
-'orders.csv' | where customerId like 'c-%'
+from 'orders.csv' | where customerId like 'c-%'
 ---- expected
-PROGRAM@0..43
-  PIPELINE@0..42
-    LITERAL@0..12
-      STRING@0..12 "'orders.csv'"
-    WHITESPACE@12..13 " "
-    PIPE@13..14 "|"
-    WHITESPACE@14..15 " "
-    WHERE_OP@15..42
-      IDENT@15..20 "where"
-      WHITESPACE@20..21 " "
-      BIN_EXPR@21..42
-        NAME_REF@21..31
-          IDENT@21..31 "customerId"
-        WHITESPACE@31..32 " "
-        IDENT@32..36 "like"
+PROGRAM@0..48
+  PIPELINE@0..47
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    LITERAL@5..17
+      STRING@5..17 "'orders.csv'"
+    WHITESPACE@17..18 " "
+    PIPE@18..19 "|"
+    WHITESPACE@19..20 " "
+    WHERE_OP@20..47
+      IDENT@20..25 "where"
+      WHITESPACE@25..26 " "
+      BIN_EXPR@26..47
+        NAME_REF@26..36
+          IDENT@26..36 "customerId"
         WHITESPACE@36..37 " "
-        LITERAL@37..42
-          STRING@37..42 "'c-%'"
-  WHITESPACE@42..43 "\n"
+        IDENT@37..41 "like"
+        WHITESPACE@41..42 " "
+        LITERAL@42..47
+          STRING@42..47 "'c-%'"
+  WHITESPACE@47..48 "\n"
 
 error[DS0105]: `like` is SQL, not DataScript
-  --> query:1:33
+  --> query:1:38
   |
-1 | 'orders.csv' | where customerId like 'c-%'
-  |                                 ^^^^ this is SQL's pattern match
+1 | from 'orders.csv' | where customerId like 'c-%'
+  |                                      ^^^^ this is SQL's pattern match
   |
   = help: use `startswith`: `customerId startswith 'c-'`
   = note: `startswith` ignores case; `startswith_cs` matches case exactly

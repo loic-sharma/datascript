@@ -1,31 +1,33 @@
 # A whole SQL query after a pipe gets the same rewrite help as at the start of a query.
 mode: syntax
 ---- query
-t | SELECT a FROM t
+from t | SELECT a FROM t
 ---- expected
-PROGRAM@0..20
-  PIPELINE@0..19
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    ERROR@4..19
-      IDENT@4..10 "SELECT"
-      WHITESPACE@10..11 " "
-      IDENT@11..12 "a"
-      WHITESPACE@12..13 " "
-      IDENT@13..17 "FROM"
+PROGRAM@0..25
+  PIPELINE@0..24
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    ERROR@9..24
+      IDENT@9..15 "SELECT"
+      WHITESPACE@15..16 " "
+      IDENT@16..17 "a"
       WHITESPACE@17..18 " "
-      IDENT@18..19 "t"
-  WHITESPACE@19..20 "\n"
+      IDENT@18..22 "FROM"
+      WHITESPACE@22..23 " "
+      IDENT@23..24 "t"
+  WHITESPACE@24..25 "\n"
 
 error[DS0105]: `SELECT ... FROM` is SQL, not DataScript
-  --> query:1:5
+  --> query:1:10
   |
-1 | t | SELECT a FROM t
-  |     ^^^^^^   ---- in DataScript the table comes first
-  |     |
-  |     this is SQL
+1 | from t | SELECT a FROM t
+  |          ^^^^^^   ---- in DataScript the table comes first
+  |          |
+  |          this is SQL
   |
   = help: start with the table and pipe it into operators: `t | project a`

@@ -1,41 +1,43 @@
 # Two errors inside one string are reported in source order.
 mode: syntax
 ---- query
-t | where s == '\q\u{zz}'
+from t | where s == '\q\u{zz}'
 ---- expected
-PROGRAM@0..26
-  PIPELINE@0..25
-    NAME_REF@0..1
-      IDENT@0..1 "t"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..25
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      BIN_EXPR@10..25
-        NAME_REF@10..11
-          IDENT@10..11 "s"
-        WHITESPACE@11..12 " "
-        EQ2@12..14 "=="
-        WHITESPACE@14..15 " "
-        LITERAL@15..25
-          STRING@15..25 "'\\q\\u{zz}'"
-  WHITESPACE@25..26 "\n"
+PROGRAM@0..31
+  PIPELINE@0..30
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..30
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      BIN_EXPR@15..30
+        NAME_REF@15..16
+          IDENT@15..16 "s"
+        WHITESPACE@16..17 " "
+        EQ2@17..19 "=="
+        WHITESPACE@19..20 " "
+        LITERAL@20..30
+          STRING@20..30 "'\\q\\u{zz}'"
+  WHITESPACE@30..31 "\n"
 
 error[DS0005]: unknown escape sequence `\q`
-  --> query:1:17
+  --> query:1:22
   |
-1 | t | where s == '\q\u{zz}'
-  |                 ^^ not a valid escape
+1 | from t | where s == '\q\u{zz}'
+  |                      ^^ not a valid escape
   |
   = help: to write a backslash, double it: `'\\q\u{zz}'`
   = note: valid escapes are `\\`, `\"`, `\'`, `\n`, `\r`, `\t`, `\0` and `\u{...}`
 
 error[DS0005]: invalid unicode escape `\u{zz}`
-  --> query:1:19
+  --> query:1:24
   |
-1 | t | where s == '\q\u{zz}'
-  |                   ^^^^^^ not a valid unicode escape
+1 | from t | where s == '\q\u{zz}'
+  |                        ^^^^^^ not a valid unicode escape
   |
   = help: write `\u{` followed by 1 to 6 hex digits and `}`, e.g. `\u{1F600}`

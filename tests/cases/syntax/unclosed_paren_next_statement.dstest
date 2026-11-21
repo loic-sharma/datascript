@@ -1,46 +1,50 @@
 # An unclosed `(` does not swallow the query on the next line (M1-19).
 mode: syntax
 ---- query
-T | where f(a
-U | take 1
+from T | where f(a
+from U | take 1
 ---- expected
-PROGRAM@0..25
-  PIPELINE@0..13
-    NAME_REF@0..1
-      IDENT@0..1 "T"
-    WHITESPACE@1..2 " "
-    PIPE@2..3 "|"
-    WHITESPACE@3..4 " "
-    WHERE_OP@4..13
-      IDENT@4..9 "where"
-      WHITESPACE@9..10 " "
-      CALL_EXPR@10..13
-        NAME_REF@10..11
-          IDENT@10..11 "f"
-        ARG_LIST@11..13
-          L_PAREN@11..12 "("
-          NAME_REF@12..13
-            IDENT@12..13 "a"
-  WHITESPACE@13..14 "\n"
-  PIPELINE@14..24
-    NAME_REF@14..15
-      IDENT@14..15 "U"
-    WHITESPACE@15..16 " "
-    PIPE@16..17 "|"
-    WHITESPACE@17..18 " "
-    TAKE_OP@18..24
-      IDENT@18..22 "take"
-      WHITESPACE@22..23 " "
-      LITERAL@23..24
-        LONG@23..24 "1"
-  WHITESPACE@24..25 "\n"
+PROGRAM@0..35
+  PIPELINE@0..18
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "T"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..18
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      CALL_EXPR@15..18
+        NAME_REF@15..16
+          IDENT@15..16 "f"
+        ARG_LIST@16..18
+          L_PAREN@16..17 "("
+          NAME_REF@17..18
+            IDENT@17..18 "a"
+  WHITESPACE@18..19 "\n"
+  PIPELINE@19..34
+    IDENT@19..23 "from"
+    WHITESPACE@23..24 " "
+    NAME_REF@24..25
+      IDENT@24..25 "U"
+    WHITESPACE@25..26 " "
+    PIPE@26..27 "|"
+    WHITESPACE@27..28 " "
+    TAKE_OP@28..34
+      IDENT@28..32 "take"
+      WHITESPACE@32..33 " "
+      LITERAL@33..34
+        LONG@33..34 "1"
+  WHITESPACE@34..35 "\n"
 
 error[DS0112]: unclosed `(`
-  --> query:1:12
+  --> query:1:17
   |
-1 | T | where f(a
-  |            ^ this `(` is never closed
-2 | U | take 1
-  | - expected `)` before this
+1 | from T | where f(a
+  |                 ^ this `(` is never closed
+2 | from U | take 1
+  | ---- expected `)` before this
   |
   = help: add `)` where the bracketed part ends

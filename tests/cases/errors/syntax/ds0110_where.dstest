@@ -1,36 +1,38 @@
 # `=` in a `where` predicate: DS0110, with a fix to `==`. The tree reads it as a comparison.
 mode: syntax
 ---- query
-'orders.csv' | where customerId = "c-001"
+from 'orders.csv' | where customerId = "c-001"
 ---- expected
-PROGRAM@0..42
-  PIPELINE@0..41
-    LITERAL@0..12
-      STRING@0..12 "'orders.csv'"
-    WHITESPACE@12..13 " "
-    PIPE@13..14 "|"
-    WHITESPACE@14..15 " "
-    WHERE_OP@15..41
-      IDENT@15..20 "where"
-      WHITESPACE@20..21 " "
-      BIN_EXPR@21..41
-        NAME_REF@21..31
-          IDENT@21..31 "customerId"
-        WHITESPACE@31..32 " "
-        EQ@32..33 "="
-        WHITESPACE@33..34 " "
-        LITERAL@34..41
-          STRING@34..41 "\"c-001\""
-  WHITESPACE@41..42 "\n"
+PROGRAM@0..47
+  PIPELINE@0..46
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    LITERAL@5..17
+      STRING@5..17 "'orders.csv'"
+    WHITESPACE@17..18 " "
+    PIPE@18..19 "|"
+    WHITESPACE@19..20 " "
+    WHERE_OP@20..46
+      IDENT@20..25 "where"
+      WHITESPACE@25..26 " "
+      BIN_EXPR@26..46
+        NAME_REF@26..36
+          IDENT@26..36 "customerId"
+        WHITESPACE@36..37 " "
+        EQ@37..38 "="
+        WHITESPACE@38..39 " "
+        LITERAL@39..46
+          STRING@39..46 "\"c-001\""
+  WHITESPACE@46..47 "\n"
 
 error[DS0110]: `=` is assignment, not comparison
-  --> query:1:33
+  --> query:1:38
   |
-1 | 'orders.csv' | where customerId = "c-001"
-  |                                 ^ assignment is not allowed here
+1 | from 'orders.csv' | where customerId = "c-001"
+  |                                      ^ assignment is not allowed here
   |
   = help: use `==` to compare values: `customerId == "c-001"`
 
 with the machine-applicable fixes applied:
-    'orders.csv' | where customerId == "c-001"
+    from 'orders.csv' | where customerId == "c-001"
 which parses without errors
