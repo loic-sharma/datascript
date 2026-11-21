@@ -65,11 +65,11 @@ pub const DS0103: Code = Code::new(103);
 pub const DS0104: Code = Code::new(104);
 /// SQL keyword used (`SELECT`, `FROM`, `GROUP BY`, …), with the DataScript equivalent
 pub const DS0105: Code = Code::new(105);
-/// missing `;` between statements (machine-applicable fix)
+/// missing `;` between statements (machine-applicable fix, except after an operator that takes a list, where `,` is offered too and neither is certain)
 pub const DS0106: Code = Code::new(106);
 /// `<>` used instead of `!=`
 pub const DS0107: Code = Code::new(107);
-/// `=` used for comparison
+/// `=` used for comparison (also `===` and `= =`, reported once with a fix to `==`)
 pub const DS0110: Code = Code::new(110);
 /// `&&`/`||`/`!` used instead of `and`/`or`/`not`
 pub const DS0111: Code = Code::new(111);
@@ -243,7 +243,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS0106,
         severity: Some(Severity::Error),
-        summary: "missing `;` between statements (machine-applicable fix)",
+        summary: "missing `;` between statements (machine-applicable fix, except after an operator that takes a list, where `,` is offered too and neither is certain)",
         status: CodeStatus::Active,
     },
     CodeInfo {
@@ -255,7 +255,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS0110,
         severity: Some(Severity::Error),
-        summary: "`=` used for comparison",
+        summary: "`=` used for comparison (also `===` and `= =`, reported once with a fix to `==`)",
         status: CodeStatus::Active,
     },
     CodeInfo {

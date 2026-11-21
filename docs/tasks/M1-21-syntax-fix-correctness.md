@@ -1,6 +1,6 @@
 # M1-21 — Syntax suggestions that produce valid code
 
-**Status:** todo
+**Status:** done — `===`/`= =` are one DS0110 with one fix; word fixes pad against tokens other fixes turn into words; `SELECT` → `project` is certain only for a plain column list (`| SELECT *` is removed instead); `SELECT … FROM` after a pipe gets the SQL rewrite help; DS0106 after a list operator offers `,` and `;`, neither certain (D-035).
 **Depends on:** M1-18
 **Crates:** `datascript-syntax` (`parser/targeted.rs`), `datascript-tests`
 **Diagnostic codes:** DS0102–DS0149 (D-018)
@@ -26,11 +26,20 @@ fixes are in M1-20.) Runs after M1-18, which also edits `targeted.rs`.
   operator takes a list.
 
 ## Acceptance criteria
-- [ ] Harness: `mode: syntax` applies all machine-applicable fixes together (not one at a time)
+- [x] Harness: `mode: syntax` applies all machine-applicable fixes together (not one at a time)
       and re-parses, so collisions show up in golden output.
-- [ ] Golden cases: `===`, `= =`, `a!=1&&!b`, `| SELECT *`, `| SELECT DISTINCT a`,
+- [x] Golden cases: `===`, `= =`, `a!=1&&!b`, `| SELECT *`, `| SELECT DISTINCT a`,
       `| SELECT a FROM t`, the DS0106 list-continuation case.
 
 ## Carried over
 
 ## Follow-ups
+- The harness already applied every certain fix in one pass (M1-03); it now also orders a
+  replacement before an insertion at the same offset, so the result no longer depends on the order
+  diagnostics are reported in.
+- New cases: `errors/syntax/ds0110_triple_equals`, `ds0110_spaced_double_equals`,
+  `ds0111_fixes_combined`, `ds0111_fixes_combined_bang_first`, `ds0105_select_star_after_pipe`,
+  `ds0105_select_star_no_table`, `ds0105_select_distinct_after_pipe`,
+  `ds0105_select_columns_after_pipe`, `ds0105_select_from_after_pipe`,
+  `ds0105_select_from_after_operator`, `ds0106_list_continuation`,
+  `ds0106_after_non_list_operator`.

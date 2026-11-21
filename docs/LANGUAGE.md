@@ -126,7 +126,9 @@ big | summarize count() by customerId        // query statement (produces a resu
   each (no materialization).
 - A missing `;` between statements is the most common mistake for KQL users. When a pipeline is
   followed by something that can only start a new statement (`let`, or a source on a new line),
-  the parser reports `DS0106` with a machine-applicable fix inserting `;`.
+  the parser reports `DS0106` with a machine-applicable fix inserting `;`. When the pipeline
+  ends in an operator that takes a list (`project a⏎  b`), a forgotten `,` is as likely, so both
+  fixes are offered and neither is machine-applicable.
 - A program with no query statement is valid for `ds check`. `ds run` warns that there is nothing
   to run (`DS0004`).
 - `now()` has one value for the whole run of a program (D-015).

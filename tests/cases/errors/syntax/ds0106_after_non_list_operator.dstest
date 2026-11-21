@@ -1,0 +1,43 @@
+# A source on a new line after `take`, which takes no list: `;` stays certain.
+mode: syntax
+---- query
+t | take 5
+u | count
+---- expected
+PROGRAM@0..21
+  PIPELINE@0..10
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    TAKE_OP@4..10
+      IDENT@4..8 "take"
+      WHITESPACE@8..9 " "
+      LITERAL@9..10
+        LONG@9..10 "5"
+  WHITESPACE@10..11 "\n"
+  PIPELINE@11..20
+    NAME_REF@11..12
+      IDENT@11..12 "u"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    COUNT_OP@15..20
+      IDENT@15..20 "count"
+  WHITESPACE@20..21 "\n"
+
+error[DS0106]: missing `;` between statements
+  --> query:1:11
+  |
+1 | t | take 5
+  |           ^ expected `;` here
+2 | u | count
+  | - a new statement starts here
+  |
+  = help: end the statement with `;`
+
+with the machine-applicable fixes applied:
+    t | take 5;
+    u | count
+which parses without errors

@@ -1,0 +1,29 @@
+# `SELECT *` after a pipe: `project *` is not valid, so the fix is not certain.
+mode: syntax
+---- query
+t | SELECT *
+---- expected
+PROGRAM@0..13
+  PIPELINE@0..12
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    ERROR@4..12
+      IDENT@4..10 "SELECT"
+      WHITESPACE@10..11 " "
+      STAR@11..12 "*"
+  WHITESPACE@12..13 "\n"
+
+error[DS0105]: SQL keyword `SELECT` is not an operator
+  --> query:1:5
+  |
+1 | t | SELECT *
+  |     ^^^^^^
+  |
+  = help: every column is kept already: remove `| SELECT *`
+
+with the machine-applicable fixes applied:
+    t
+which parses without errors

@@ -1,0 +1,38 @@
+# `= =` with a space: one DS0110 with a fix to `==`.
+mode: syntax
+---- query
+t | where a = = 1
+---- expected
+PROGRAM@0..18
+  PIPELINE@0..17
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..17
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..17
+        NAME_REF@10..11
+          IDENT@10..11 "a"
+        WHITESPACE@11..12 " "
+        EQ@12..13 "="
+        WHITESPACE@13..14 " "
+        EQ@14..15 "="
+        WHITESPACE@15..16 " "
+        LITERAL@16..17
+          LONG@16..17 "1"
+  WHITESPACE@17..18 "\n"
+
+error[DS0110]: `= =` is not an operator
+  --> query:1:13
+  |
+1 | t | where a = = 1
+  |             ^^^
+  |
+  = help: use `==` to compare values: `a == 1`
+
+with the machine-applicable fixes applied:
+    t | where a == 1
+which parses without errors

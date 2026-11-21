@@ -1,0 +1,45 @@
+# `SELECT ... FROM` after an operator: a rewrite would drop `where`, so only the help is given.
+mode: syntax
+---- query
+t | where x > 1 | SELECT a FROM t
+---- expected
+PROGRAM@0..34
+  PIPELINE@0..33
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..15
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..15
+        NAME_REF@10..11
+          IDENT@10..11 "x"
+        WHITESPACE@11..12 " "
+        GT@12..13 ">"
+        WHITESPACE@13..14 " "
+        LITERAL@14..15
+          LONG@14..15 "1"
+    WHITESPACE@15..16 " "
+    PIPE@16..17 "|"
+    WHITESPACE@17..18 " "
+    ERROR@18..33
+      IDENT@18..24 "SELECT"
+      WHITESPACE@24..25 " "
+      IDENT@25..26 "a"
+      WHITESPACE@26..27 " "
+      IDENT@27..31 "FROM"
+      WHITESPACE@31..32 " "
+      IDENT@32..33 "t"
+  WHITESPACE@33..34 "\n"
+
+error[DS0105]: `SELECT ... FROM` is SQL, not DataScript
+  --> query:1:19
+  |
+1 | t | where x > 1 | SELECT a FROM t
+  |                   ^^^^^^   ---- in DataScript the table comes first
+  |                   |
+  |                   this is SQL
+  |
+  = help: start with the table and pipe it into operators: `'orders.csv' | where amount > 10 | project customerId, amount`

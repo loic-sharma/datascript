@@ -30,10 +30,14 @@ pub fn apply_suggestions(text: &str, file: FileId, diagnostics: &[Diagnostic]) -
     if taken.is_empty() {
         return None;
     }
-    // Apply from the end so earlier offsets stay valid. Insertions at the same offset keep the
-    // order they were taken in.
+    // Apply from the end so earlier offsets stay valid. At one offset, a replacement goes first,
+    // so an insertion there lands before the replaced text (`!b&&c`: the `)` closing `not(b`
+    // goes before ` and`), whatever order the diagnostics came in.
     let mut ordered: Vec<(usize, &TextEdit)> = taken.into_iter().enumerate().collect();
-    ordered.sort_by_key(|(i, e)| (std::cmp::Reverse(e.span.start), std::cmp::Reverse(*i)));
+    ordered.sort_by_key(|(i, e)| {
+        use std::cmp::Reverse;
+        (Reverse(e.span.start), Reverse(e.span.end), Reverse(*i))
+    });
     let mut out = text.to_string();
     for (_, edit) in ordered {
         out.replace_range(
@@ -89,6 +93,22 @@ mod tests {
         let ds = [fix(0, 3, "xyz"), fix(2, 4, "!!"), maybe];
         assert_eq!(apply_suggestions("abcd", F, &ds).as_deref(), Some("xyzd"));
         assert_eq!(apply_suggestions("abcd", F, &[]), None);
+    }
+
+    #[test]
+    fn insertion_goes_before_replacement_at_same_offset() {
+        let text = "!b&&c";
+        let insert = Diagnostic::error(codes::DS0111, "x")
+            .help_with("fix", Suggestion::replace(Span::empty(F, 2), ")"));
+        for ds in [
+            [fix(2, 4, " and "), insert.clone()],
+            [insert.clone(), fix(2, 4, " and ")],
+        ] {
+            assert_eq!(
+                apply_suggestions(text, F, &ds).as_deref(),
+                Some("!b) and c")
+            );
+        }
     }
 
     #[test]

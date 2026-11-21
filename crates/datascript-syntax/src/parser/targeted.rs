@@ -175,6 +175,24 @@ const WORDLIKE: TokenSet = TokenSet::new(&[
     IN_TILDE,
 ]);
 
+/// Tokens that another fix rewrites into a word (`&&` to `and`, `!` to `not(`), so a replacement
+/// word next to them needs a space too: `a&&!b` becomes `a and not(b)`, not `a andnot(b)`.
+const FIXED_TO_WORD: TokenSet = TokenSet::new(&[AMP2, PIPE2, BANG]);
+
+/// Operators that take a list, where an item on the next line without `,` is likely a forgotten
+/// comma rather than a new statement (DS0106).
+const LIST_OPERATORS: &[SyntaxKind] = &[
+    PROJECT_OP,
+    PROJECT_AWAY_OP,
+    PROJECT_RENAME_OP,
+    EXTEND_OP,
+    SUMMARIZE_OP,
+    SORT_OP,
+    TOP_OP,
+    DISTINCT_OP,
+    JOIN_OP,
+];
+
 impl Parser<'_> {
     /// Source text for a help message, or `None` if it spans lines or is too long to quote.
     fn snippet(&self, start: u32, end: u32) -> Option<&str> {
@@ -184,22 +202,61 @@ impl Parser<'_> {
     }
 
     /// An edit replacing the token at `i` with `word`, adding a space on a side where the token
-    /// touches another word, so `a&&b` becomes `a and b`, not `aandb`.
+    /// touches another word, so `a&&b` becomes `a and b`, not `aandb`. A token after it that
+    /// another fix turns into a word counts as a word, so fixes applied together still read
+    /// right. (Only the fix on the left pads, so two fixes never add two spaces.)
     fn word_edit(&self, i: usize, word: &str) -> TextEdit {
+        self.words_edit(i, i, word)
+    }
+
+    /// [`Self::word_edit`] for the tokens `first..=last`.
+    fn words_edit(&self, first: usize, last: usize, word: &str) -> TextEdit {
         let mut replacement = String::new();
         let word_start = word.starts_with(|c: char| c.is_alphanumeric() || c == '_');
         let word_end = word.ends_with(|c: char| c.is_alphanumeric() || c == '_');
-        if word_start && i > 0 && self.joined[i] && WORDLIKE.contains(self.tokens[i - 1].kind) {
+        if word_start
+            && first > 0
+            && self.joined[first]
+            && WORDLIKE.contains(self.tokens[first - 1].kind)
+        {
             replacement.push(' ');
         }
         replacement.push_str(word);
         if word_end
-            && self.joined.get(i + 1).copied().unwrap_or(false)
-            && WORDLIKE.contains(self.tokens[i + 1].kind)
+            && self.joined.get(last + 1).copied().unwrap_or(false)
+            && (WORDLIKE.contains(self.tokens[last + 1].kind)
+                || FIXED_TO_WORD.contains(self.tokens[last + 1].kind))
         {
             replacement.push(' ');
         }
-        TextEdit::new(self.token_span(i), replacement)
+        let span = self.span(self.tokens[first].start, self.tokens[last].end());
+        TextEdit::new(span, replacement)
+    }
+
+    /// Whether the tokens from index `i` to the end of the operator are a plain column list:
+    /// names and commas, with no SQL word such as `DISTINCT` or `AS`.
+    fn plain_column_list(&self, i: usize) -> bool {
+        let rest: Vec<_> = self.tokens[i.min(self.tokens.len())..]
+            .iter()
+            .take_while(|t| !matches!(t.kind, PIPE | SEMICOLON | LET_KW | EOF))
+            .collect();
+        let mut expect_name = true;
+        for t in &rest {
+            let ok = if expect_name {
+                t.kind == QUOTED_IDENT
+                    || (t.kind == IDENT && {
+                        let lower = t.text(self.text).to_lowercase();
+                        !SQL_WORDS.contains(&lower.as_str()) && lower != "as"
+                    })
+            } else {
+                t.kind == COMMA
+            };
+            if !ok {
+                return false;
+            }
+            expect_name = !expect_name;
+        }
+        !rest.is_empty() && !expect_name
     }
 
     // --- Pipes and operators ---
@@ -319,9 +376,31 @@ impl Parser<'_> {
             .primary(span, "");
             let has_by = written.contains(char::is_whitespace);
             return match lower.as_str() {
+                // `| SELECT *` keeps every column, which the rows have already.
+                "select"
+                    if self.pos >= 2
+                        && self.tokens[self.pos - 1].kind == PIPE
+                        && self.nth(len) == STAR
+                        && matches!(self.nth(len + 1), PIPE | SEMICOLON | LET_KW | EOF) =>
+                {
+                    let lead = self.tokens[self.pos - 2].end();
+                    let star_end = self.tokens[self.pos + len].end();
+                    d.help_with(
+                        "every column is kept already: remove `| SELECT *`",
+                        Suggestion::replace(self.span(lead, star_end), ""),
+                    )
+                }
+                // `SELECT DISTINCT a` or `SELECT a AS b` still fail as `project`.
                 "select" => d.help_with(
                     "choose or compute columns with `project`: `project a, b`",
-                    Suggestion::replace(span, "project"),
+                    Suggestion::new(
+                        vec![TextEdit::new(span, "project")],
+                        if self.plain_column_list(self.pos + len) {
+                            Applicability::MachineApplicable
+                        } else {
+                            Applicability::MaybeIncorrect
+                        },
+                    ),
                 ),
                 "group" => d.help(GROUP_HELP),
                 "order" if has_by => d.help_with(
@@ -409,14 +488,21 @@ impl Parser<'_> {
 
     /// DS0105 for a whole SQL query: `SELECT a, b FROM t WHERE x > 1`. The current token is
     /// `SELECT`; `from` is the token index of `FROM` and `end` the index just past the statement.
-    pub(super) fn sql_select(&mut self, from: usize, end: usize) {
+    /// `start` is the token index where the pipeline starts: `SELECT` itself at the start of a
+    /// query, or the source before the pipe in `t | SELECT a FROM t`. The rewrite replaces it all.
+    pub(super) fn sql_select(&mut self, start: usize, from: usize, end: usize) {
         let select = self.pos;
+        // After operators (`t | where x | SELECT ...`) the rewrite would drop them.
+        let pipes = self.tokens[start..select]
+            .iter()
+            .filter(|t| t.kind == PIPE)
+            .count();
         let mut d = Diagnostic::error(codes::DS0105, "`SELECT ... FROM` is SQL, not DataScript")
             .primary(self.token_span(select), "this is SQL")
             .secondary(self.token_span(from), "in DataScript the table comes first");
         match self.sql_rewrite(select, from, end) {
-            Some(rewrite) => {
-                let span = self.span(self.tokens[select].start, self.tokens[end - 1].end());
+            Some(rewrite) if pipes <= 1 => {
+                let span = self.span(self.tokens[start].start, self.tokens[end - 1].end());
                 d = d.help_with(
                     format!("start with the table and pipe it into operators: `{rewrite}`"),
                     Suggestion::new(
@@ -425,7 +511,7 @@ impl Parser<'_> {
                     ),
                 );
             }
-            None => {
+            _ => {
                 d = d.help(
                     "start with the table and pipe it into operators: \
                      `'orders.csv' | where amount > 10 | project customerId, amount`",
@@ -661,9 +747,27 @@ impl Parser<'_> {
 
     /// DS0107 / DS0110 / DS0111 for a binary operator from another language. `op` is its token
     /// index, `lhs_start` where the left operand starts and `rhs` the right operand's range.
-    pub(super) fn foreign_binary_operator(&mut self, op: usize, lhs_start: u32, rhs: (u32, u32)) {
+    pub(super) fn foreign_binary_operator(
+        &mut self,
+        op: usize,
+        len: usize,
+        lhs_start: u32,
+        rhs: (u32, u32),
+    ) {
         let token = self.tokens[op];
+        let last = op + len - 1;
+        let written = self
+            .source(token.start, self.tokens[last].end())
+            .to_string();
+        let triple = format!("`{written}` is not an operator");
         let (code, message, label, word, verb): (_, &str, &str, &str, &str) = match token.kind {
+            EQ | EQ2 if len == 2 => (
+                codes::DS0110,
+                &triple,
+                "",
+                "==",
+                "use `==` to compare values",
+            ),
             EQ => (
                 codes::DS0110,
                 "`=` is assignment, not comparison",
@@ -694,19 +798,20 @@ impl Parser<'_> {
             ),
             _ => return,
         };
-        let edit = self.word_edit(op, word);
+        let edit = self.words_edit(op, last, word);
         // Quote the rewrite only if the operands hold no other habit, which it would repeat.
         // Tokens are sorted by offset: look only at the operands' range, so that a file full of
         // `&&` stays linear.
+        let op_last_start = self.tokens[last].start;
         let first = self.tokens.partition_point(|t| t.start < lhs_start);
-        let last = self.tokens.partition_point(|t| t.end() <= rhs.1);
-        let clean = self.tokens[first..last.max(first)]
+        let past = self.tokens.partition_point(|t| t.end() <= rhs.1);
+        let clean = self.tokens[first..past.max(first)]
             .iter()
-            .filter(|t| t.start != token.start)
+            .filter(|t| t.start < token.start || t.start > op_last_start)
             .all(|t| !matches!(t.kind, EQ | LTGT | AMP2 | PIPE2 | BANG));
         let help = match self
             .snippet(lhs_start, token.start)
-            .zip(self.snippet(token.end(), rhs.1))
+            .zip(self.snippet(edit.span.end, rhs.1))
         {
             Some((left, right)) if clean && rhs.0 < rhs.1 => {
                 // Rebuild the text with the fix applied in place.
@@ -718,7 +823,7 @@ impl Parser<'_> {
             _ => verb.to_string(),
         };
         let d = Diagnostic::error(code, message)
-            .primary(self.token_span(op), label)
+            .primary(edit.span, label)
             .help_with(
                 help,
                 Suggestion::new(vec![edit], Applicability::MachineApplicable),
@@ -1005,13 +1110,42 @@ impl Parser<'_> {
     /// DS0106: a new statement starts without `;` after the previous one.
     pub(super) fn missing_semicolon(&mut self) {
         let end = self.prev_end();
-        let d = Diagnostic::error(codes::DS0106, "missing `;` between statements")
-            .primary(self.span(end, end), "expected `;` here")
-            .secondary(self.current_span(), "a new statement starts here")
-            .help_with(
-                "end the statement with `;`",
-                Suggestion::replace(self.span(end, end), ";"),
-            );
+        let d = Diagnostic::error(codes::DS0106, "missing `;` between statements");
+        let list = self.last_op.filter(|kind| LIST_OPERATORS.contains(kind));
+        let d = match list {
+            // `| project a⏎  b`: more likely a forgotten comma than a second query.
+            Some(_) if !self.at(LET_KW) => {
+                let d = d
+                    .primary(self.span(end, end), "expected `,` or `;` here")
+                    .secondary(self.current_span(), "this is read as a new statement");
+                let next = self.snippet(self.offset(), self.current_span().end);
+                let help = match next {
+                    Some(next) => format!("if `{next}` continues the list, add `,`"),
+                    None => "if this continues the list, add `,`".to_string(),
+                };
+                d.help_with(
+                    help,
+                    Suggestion::new(
+                        vec![TextEdit::new(self.span(end, end), ",")],
+                        Applicability::MaybeIncorrect,
+                    ),
+                )
+                .help_with(
+                    "if it is a new statement, end the previous one with `;`",
+                    Suggestion::new(
+                        vec![TextEdit::new(self.span(end, end), ";")],
+                        Applicability::MaybeIncorrect,
+                    ),
+                )
+            }
+            _ => d
+                .primary(self.span(end, end), "expected `;` here")
+                .secondary(self.current_span(), "a new statement starts here")
+                .help_with(
+                    "end the statement with `;`",
+                    Suggestion::replace(self.span(end, end), ";"),
+                ),
+        };
         self.report(d);
     }
 }

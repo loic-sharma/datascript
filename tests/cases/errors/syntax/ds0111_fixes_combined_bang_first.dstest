@@ -1,0 +1,66 @@
+# `!b&&c||!d`: the `)` that closes `not(b` goes before the ` and` that replaces `&&`.
+mode: syntax
+---- query
+t | where !b&&c||!d
+---- expected
+PROGRAM@0..20
+  PIPELINE@0..19
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..19
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..19
+        BIN_EXPR@10..15
+          PREFIX_EXPR@10..12
+            BANG@10..11 "!"
+            NAME_REF@11..12
+              IDENT@11..12 "b"
+          AMP2@12..14 "&&"
+          NAME_REF@14..15
+            IDENT@14..15 "c"
+        PIPE2@15..17 "||"
+        PREFIX_EXPR@17..19
+          BANG@17..18 "!"
+          NAME_REF@18..19
+            IDENT@18..19 "d"
+  WHITESPACE@19..20 "\n"
+
+error[DS0111]: `!` is not an operator
+  --> query:1:11
+  |
+1 | t | where !b&&c||!d
+  |           ^
+  |
+  = help: negate it with `not(...)`: `not(b)`
+
+error[DS0111]: `&&` is not an operator
+  --> query:1:13
+  |
+1 | t | where !b&&c||!d
+  |             ^^
+  |
+  = help: use `and` to require both conditions
+
+error[DS0111]: `||` is not an operator
+  --> query:1:16
+  |
+1 | t | where !b&&c||!d
+  |                ^^
+  |
+  = help: use `or` to accept either condition
+
+error[DS0111]: `!` is not an operator
+  --> query:1:18
+  |
+1 | t | where !b&&c||!d
+  |                  ^
+  |
+  = help: negate it with `not(...)`: `not(d)`
+
+with the machine-applicable fixes applied:
+    t | where not(b) and c or not(d)
+which parses without errors

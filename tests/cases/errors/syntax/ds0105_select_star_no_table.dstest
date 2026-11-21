@@ -1,0 +1,30 @@
+# `| SELECT *` with no table before the pipe: no fix that removes it, and no panic.
+mode: syntax
+---- query
+| SELECT *
+---- expected
+PROGRAM@0..11
+  PIPELINE@0..10
+    PIPE@0..1 "|"
+    WHITESPACE@1..2 " "
+    ERROR@2..10
+      IDENT@2..8 "SELECT"
+      WHITESPACE@8..9 " "
+      STAR@9..10 "*"
+  WHITESPACE@10..11 "\n"
+
+error[DS0101]: expected a table before `|`
+  --> query:1:1
+  |
+1 | | SELECT *
+  | ^ this pipe has nothing to read from
+  |
+  = help: start the query with a file path such as `'data.csv'`, or a table name
+
+error[DS0105]: SQL keyword `SELECT` is not an operator
+  --> query:1:3
+  |
+1 | | SELECT *
+  |   ^^^^^^
+  |
+  = help: choose or compute columns with `project`: `project a, b`

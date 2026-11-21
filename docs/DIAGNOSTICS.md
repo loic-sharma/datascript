@@ -137,9 +137,9 @@ design decision and implemented by the task named in the allocation table.
 | DS0103 | error | pipe with no operator after it |
 | DS0104 | error | unknown operator (with did-you-mean; also `project - away` with spaces, D-026) |
 | DS0105 | error | SQL keyword used (`SELECT ... FROM`, `GROUP BY`, `WHERE` in caps, `DESC`, …), with the DataScript equivalent |
-| DS0106 | error | missing `;` between statements (machine-applicable fix) |
+| DS0106 | error | missing `;` between statements (machine-applicable fix, except after an operator that takes a list, where `,` is offered too and neither is certain) |
 | DS0107 | error | `<>` used instead of `!=` |
-| DS0110 | error | `=` used for comparison |
+| DS0110 | error | `=` used for comparison (also `===` and `= =`, reported once with a fix to `==`) |
 | DS0111 | error | `&&`/`||`/`!` used instead of `and`/`or`/`not` |
 | DS0112 | error | unbalanced parenthesis or bracket (points at the opening one) |
 | DS0113 | error | method-style call `a.f(x)` (DataScript has no methods) |

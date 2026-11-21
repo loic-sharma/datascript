@@ -58,6 +58,8 @@ pub(crate) fn parse_tokens(
         in_arg_list: false,
         too_deep: false,
         last_unclosed: None,
+        pipeline_start: 0,
+        last_op: None,
     };
     grammar::program(&mut parser);
     let green = sink::build_tree(text, tokens, parser.events);
@@ -135,6 +137,10 @@ struct Parser<'t> {
     too_deep: bool,
     /// Where the last unclosed bracket was reported (token index) and the index of its error.
     last_unclosed: Option<(usize, usize)>,
+    /// Token index where the innermost pipeline being parsed starts (its source).
+    pipeline_start: usize,
+    /// The last operator of the last pipeline parsed in this statement, for DS0106.
+    last_op: Option<SyntaxKind>,
 }
 
 impl Parser<'_> {
@@ -174,6 +180,11 @@ impl Parser<'_> {
     /// Whether the `n`th token directly follows the one before it, with no trivia.
     fn nth_joined(&self, n: usize) -> bool {
         self.joined.get(self.pos + n).copied().unwrap_or(false)
+    }
+
+    /// Whether the `n`th token is the first significant token on its line.
+    fn nth_line_start(&self, n: usize) -> bool {
+        self.line_start.get(self.pos + n).copied().unwrap_or(true)
     }
 
     fn at_line_start(&self) -> bool {

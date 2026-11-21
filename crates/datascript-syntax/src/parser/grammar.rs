@@ -247,6 +247,7 @@ pub(super) fn program(p: &mut Parser<'_>) {
         if p.eat(SEMICOLON) {
             continue;
         }
+        p.last_op = None;
         if !statement(p) {
             if is_close_bracket(p.current()) {
                 p.stray_close_bracket();
@@ -300,20 +301,21 @@ fn let_stmt(p: &mut Parser<'_>) {
 /// A query statement: always a `PIPELINE`, even without operators.
 fn query_stmt(p: &mut Parser<'_>) {
     let m = p.start();
+    let start = p.pos;
     if p.at(PIPE) {
         let d = Diagnostic::error(codes::DS0101, "expected a table before `|`")
             .primary(p.current_span(), "this pipe has nothing to read from")
             .help("start the query with a file path such as `'data.csv'`, or a table name");
         p.report(d);
     } else if let Some((from, end)) = sql_select_at(p) {
-        p.sql_select(from, end);
+        p.sql_select(p.pos, from, end);
         p.recover(|p| p.at(SEMICOLON) || p.at(LET_KW));
         m.complete(p, PIPELINE);
         return;
     } else {
         expr(p);
     }
-    pipeline_tail(p);
+    pipeline_tail(p, start);
     m.complete(p, PIPELINE);
 }
 
@@ -346,12 +348,13 @@ fn sql_select_at(p: &Parser<'_>) -> Option<(usize, usize)> {
 /// An expression, wrapped in a `PIPELINE` if a `|` follows. Used where the parser cannot tell
 /// a table from a scalar: the right side of `let`, inside parentheses, and call arguments.
 fn pipeline_or_expr(p: &mut Parser<'_>) -> bool {
+    let start = p.pos;
     let Some(source) = expr(p) else {
         return false;
     };
     if p.at(PIPE) {
         let m = source.precede(p);
-        pipeline_tail(p);
+        pipeline_tail(p, start);
         m.complete(p, PIPELINE);
     }
     true
@@ -367,8 +370,9 @@ struct OpInfo {
     kind: Option<crate::SyntaxKind>,
 }
 
-/// `{ '|' operator }` after a source, with recovery.
-fn pipeline_tail(p: &mut Parser<'_>) {
+/// `{ '|' operator }` after a source that starts at token index `start`, with recovery.
+fn pipeline_tail(p: &mut Parser<'_>, start: usize) {
+    let saved_start = std::mem::replace(&mut p.pipeline_start, start);
     let mut ops: Vec<OpInfo> = Vec::new();
     loop {
         let lead = p.prev_end();
@@ -432,6 +436,8 @@ fn pipeline_tail(p: &mut Parser<'_>) {
             p.at(PIPE) || p.at_pipeline_end() || p.at_operator_on_new_line() || p.at_new_statement()
         });
     }
+    p.pipeline_start = saved_start;
+    p.last_op = ops.last().and_then(|op| op.kind);
     check_render_last(p, &ops);
 }
 
@@ -610,6 +616,12 @@ fn without_by(p: &mut Parser<'_>, name: &str, op_start: u32, keys: impl Fn(&mut 
 }
 
 fn unknown_operator(p: &mut Parser<'_>) {
+    if let Some((from, end)) = sql_select_at(p) {
+        // A whole SQL query after a pipe: `t | SELECT a FROM t`.
+        p.sql_select(p.pipeline_start, from, end);
+        p.recover(|p| p.at(SEMICOLON) || p.at(LET_KW));
+        return;
+    }
     let d = match p.op_name() {
         Some((name, len, spaced)) if spaced && LATER_OPERATORS.contains(&name.as_str()) => {
             p.spaced_operator_name(&name, len);
@@ -896,6 +908,12 @@ fn infix(p: &Parser<'_>) -> Option<(u8, Infix)> {
         // Habits from other languages parse like the operator meant, and are reported.
         PIPE2 if !p.at_double_pipe() => (BP_OR, Infix::Binary(1)),
         AMP2 => (BP_AND, Infix::Binary(1)),
+        // `===` and `= =`: one mistyped `==` (DS0110).
+        EQ2 | EQ
+            if (p.current() == EQ2 || p.eq_compares) && p.nth(1) == EQ && !p.nth_line_start(1) =>
+        {
+            (BP_CMP, Infix::Binary(2))
+        }
         EQ if p.eq_compares => (BP_CMP, Infix::Binary(1)),
         LTGT => (BP_CMP, Infix::Binary(1)),
         EQ2 | NEQ | LT | LTEQ | GT | GTEQ | EQ_TILDE | BANG_TILDE => (BP_CMP, Infix::Binary(1)),
@@ -924,6 +942,8 @@ fn infix(p: &Parser<'_>) -> Option<(u8, Infix)> {
 struct Link {
     /// Token index of the operator.
     op: usize,
+    /// How many tokens the operator spans (`matches regex` and `===` have two).
+    len: usize,
     /// Byte range of the right operand.
     rhs: (u32, u32),
     /// Whether the help may quote this link: a plain operator with its right operand present.
@@ -1046,12 +1066,17 @@ fn expr_bp_inner(p: &mut Parser<'_>, min_bp: u8) -> Option<CompletedMarker> {
             }
         };
         lhs = m.complete(p, kind);
-        p.foreign_binary_operator(op_start, start, rhs);
+        let op_len = match op {
+            Infix::Binary(len) => len,
+            _ => 1,
+        };
+        p.foreign_binary_operator(op_start, op_len, start, rhs);
         if bp == BP_CMP {
             // The help rewrites the chain only for plain operators with both operands present.
             let simple = matches!(op, Infix::Binary(_)) && rhs.0 < rhs.1;
             chain.push(Link {
                 op: op_start,
+                len: op_len,
                 rhs,
                 simple,
             });
@@ -1069,12 +1094,7 @@ fn report_chained_comparison(p: &mut Parser<'_>, start: u32, chain: &[Link]) {
     };
     let op_text = |link: &Link| {
         let op = p.tokens[link.op];
-        let end = if op.kind == IDENT && op.text(p.text) == "matches" {
-            p.tokens[link.op + 1].end()
-        } else {
-            op.end()
-        };
-        (op.start, end)
+        (op.start, p.tokens[link.op + link.len - 1].end())
     };
     let (op_start, op_end) = op_text(second);
     let mut d = Diagnostic::error(codes::DS0101, "comparison operators cannot be chained")

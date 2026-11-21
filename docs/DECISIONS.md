@@ -276,6 +276,20 @@ the first character continue a word, so a decomposed `naïve` is one DS0001 like
 Suggestions that quote a name (backticks) escape `\` and the chosen quote, so the fix lexes back to
 the same name. *(M1-20, 2026-11-21.)*
 
+### D-035 — When a syntax fix is certain (M1-21)
+A fix is `MachineApplicable` only if applying it, together with every other such fix, parses and
+keeps the meaning. **`===` and `= =`** are one DS0110 on both tokens with one fix to `==`. **Word
+fixes pad against tokens other fixes turn into words** (`&&`, `||`, `!`), so `a!=1&&!b` becomes
+`a!=1 and not(b)`. **`SELECT` → `project`** is certain only when the rest of the operator is a plain
+column list; `SELECT *`, `SELECT DISTINCT a` and `SELECT a AS b` get a `MaybeIncorrect` fix. A whole
+**`SELECT … FROM` after a pipe** gets the same DS0105 as at the start of a query; its rewrite
+replaces the whole pipeline, and is offered only when no operator comes before the `SELECT`, since
+it would drop them. **DS0106 after an operator that takes a list** (`project`, `extend`,
+`summarize`, `sort`, `top`, `distinct`, `join`, `project-away`, `project-rename`) offers `,` first
+and `;` second, neither certain: `;` would turn a forgotten comma into a second query. The golden
+harness applies all certain fixes in one pass, a replacement before an insertion at the same
+offset. *(M1-21, 2026-11-21.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

@@ -103,7 +103,9 @@ Harness details (M0-03):
   the output ends with `with the machine-applicable fixes applied:`, the fixed query indented four
   spaces, and either `which parses without errors` or `which still has errors:` followed by them
   (the file is shown as `fixed`). `datascript_tests::apply_suggestions` applies the fixes; a
-  suggestion that overlaps one already applied is skipped whole. A fix that does not parse shows
+  suggestion that overlaps one already applied is skipped whole. All fixes are applied together in
+  one pass, so fixes that collide (`a&&!b` giving `andnot(b)`) show up in the re-parse; at one
+  offset a replacement is applied before an insertion, so the insertion lands in front of it. A fix that does not parse shows
   up in review as a diff, so every such suggestion is tested by the case that produces it.
   All diagnostics are printed, errors and warnings, in source order.
 - When a `run` program has warnings and still executes, the warnings print first, then the table.

@@ -1,0 +1,35 @@
+# A column list continued on the next line without a comma: `;` would change the meaning, so the fix is not certain and `,` is mentioned.
+mode: syntax
+---- query
+t | project a
+  b
+---- expected
+PROGRAM@0..18
+  PIPELINE@0..13
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    PROJECT_OP@4..13
+      IDENT@4..11 "project"
+      WHITESPACE@11..12 " "
+      NAMED_EXPR@12..13
+        NAME_REF@12..13
+          IDENT@12..13 "a"
+  WHITESPACE@13..16 "\n  "
+  PIPELINE@16..17
+    NAME_REF@16..17
+      IDENT@16..17 "b"
+  WHITESPACE@17..18 "\n"
+
+error[DS0106]: missing `;` between statements
+  --> query:1:14
+  |
+1 | t | project a
+  |              ^ expected `,` or `;` here
+2 |   b
+  |   - this is read as a new statement
+  |
+  = help: if `b` continues the list, add `,`
+  = help: if it is a new statement, end the previous one with `;`

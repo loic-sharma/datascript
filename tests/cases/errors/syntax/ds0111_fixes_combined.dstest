@@ -1,0 +1,48 @@
+# `!=`, `&&` and `!` together: the fixes applied together still parse.
+mode: syntax
+---- query
+t | where a!=1&&!b
+---- expected
+PROGRAM@0..19
+  PIPELINE@0..18
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..18
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..18
+        BIN_EXPR@10..14
+          NAME_REF@10..11
+            IDENT@10..11 "a"
+          NEQ@11..13 "!="
+          LITERAL@13..14
+            LONG@13..14 "1"
+        AMP2@14..16 "&&"
+        PREFIX_EXPR@16..18
+          BANG@16..17 "!"
+          NAME_REF@17..18
+            IDENT@17..18 "b"
+  WHITESPACE@18..19 "\n"
+
+error[DS0111]: `&&` is not an operator
+  --> query:1:15
+  |
+1 | t | where a!=1&&!b
+  |               ^^
+  |
+  = help: use `and` to require both conditions
+
+error[DS0111]: `!` is not an operator
+  --> query:1:17
+  |
+1 | t | where a!=1&&!b
+  |                 ^
+  |
+  = help: negate it with `not(...)`: `not(b)`
+
+with the machine-applicable fixes applied:
+    t | where a!=1 and not(b)
+which parses without errors
