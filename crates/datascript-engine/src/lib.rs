@@ -4,28 +4,31 @@
 //! - [`Engine`]: what a backend implements. Its futures are `Send` on native targets and
 //!   `?Send` on wasm32 (D-011).
 //! - [`Session`]: what frontends call. It holds the engine, a schema cache and a [`Clock`], and
-//!   offers `check`, `explain` and `run` over a source file, running the source-resolution loop
-//!   (D-022).
+//!   offers `check`, `compile`, `explain` and `run` over a source file, running the
+//!   source-resolution loop (D-022) behind a panic boundary ([`catch_panic`]).
 //! - [`ExecContext`]: per-run settings: the clock value, the base directory for relative paths,
 //!   an optional sandbox and an optional row limit.
-//! - [`table`]: the ASCII result table shared by the CLI and the golden tests.
+//! - [`table`] and [`writers`]: the ASCII result table, CSV and JSON, shared by the frontends and
+//!   the golden tests. All three print values the same way.
 
+mod boundary;
+mod session;
 pub mod table;
+pub mod writers;
 
-use std::collections::HashMap;
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
 
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
-use datascript_compiler::{
-    Analysis, Capabilities, Program, SchemaLookup, SchemaProvider, SourceError, SourceRef,
-};
-use datascript_diagnostics::codes::{DS0004, DS9001};
-use datascript_diagnostics::{Diagnostic, FileId, SourceFile};
+use datascript_compiler::ir::RenderSpec;
+use datascript_compiler::{Capabilities, SourceError, SourceRef};
+use datascript_diagnostics::Diagnostic;
 use futures::{Stream, StreamExt};
+
+pub use boundary::{catch_panic, catch_panic_async};
+pub use session::{RunOutput, Session};
 
 /// `Send + Sync` on native targets, nothing on wasm32 (D-011).
 #[cfg(not(target_arch = "wasm32"))]
@@ -73,7 +76,8 @@ pub trait Engine: MaybeSendSync {
     ) -> Result<ResultStream, Diagnostic>;
 }
 
-/// The batches of one query, as they are produced.
+/// The batches of one query, as they are produced. Dropping it (or its `batches`) cancels the
+/// query: that is how Ctrl-C, LSP cancellation and the web UI's Stop button work.
 pub struct ResultStream {
     /// The result schema, in canonical Arrow types.
     pub schema: SchemaRef,
@@ -89,24 +93,54 @@ impl fmt::Debug for ResultStream {
 }
 
 impl ResultStream {
-    /// Reads every batch.
-    pub async fn collect(mut self) -> Result<QueryResult, Diagnostic> {
+    /// Reads every batch, or the first `row_limit` rows. Once the limit is reached and another
+    /// row arrives, the stream is dropped, which cancels the rest of the query, and the result
+    /// is marked [`truncated`](QueryResult::truncated).
+    ///
+    /// The result has no `render` spec; [`Session::run`] adds the plan's.
+    pub async fn collect(mut self, row_limit: Option<usize>) -> Result<QueryResult, Diagnostic> {
         let mut batches = Vec::new();
+        let mut rows = 0;
+        let mut truncated = false;
         while let Some(batch) = self.batches.next().await {
-            batches.push(batch?);
+            let batch = batch?;
+            if let Some(limit) = row_limit {
+                let room = limit - rows;
+                if batch.num_rows() > room {
+                    if room > 0 {
+                        batches.push(batch.slice(0, room));
+                    }
+                    truncated = true;
+                    break;
+                }
+            }
+            rows += batch.num_rows();
+            batches.push(batch);
         }
         Ok(QueryResult {
             schema: self.schema,
             batches,
+            render: None,
+            diagnostics: Vec::new(),
+            truncated,
         })
     }
 }
 
-/// The complete result of one query. (`render` joins it in M1-10.)
+/// The complete result of one query.
 #[derive(Debug, Clone)]
 pub struct QueryResult {
+    /// The result schema, in canonical Arrow types.
     pub schema: SchemaRef,
     pub batches: Vec<RecordBatch>,
+    /// What a final `render` asks frontends to draw; `None` without one.
+    pub render: Option<RenderSpec>,
+    /// Warnings and notes about running this query. Errors stop the run instead and are in
+    /// [`RunOutput::diagnostics`].
+    pub diagnostics: Vec<Diagnostic>,
+    /// Whether rows were left out because of [`ExecContext::row_limit`]. Frontends say so
+    /// (Q-007, decided in M4-01).
+    pub truncated: bool,
 }
 
 /// The source of `now()` (D-015). Read once per run.
@@ -150,197 +184,8 @@ pub struct ExecContext {
     pub base_dir: PathBuf,
     /// If set, every path must resolve inside this directory (D-016, M4-01).
     pub sandbox: Option<PathBuf>,
-    /// If set, results stop after this many rows (Q-007).
+    /// If set, each result stops after this many rows and is marked truncated (Q-007).
     pub row_limit: Option<usize>,
-}
-
-/// The diagnostics and results of [`Session::run`].
-#[derive(Debug, Clone, Default)]
-pub struct RunOutput {
-    /// Every diagnostic: errors stop the run before anything executes; warnings do not.
-    pub diagnostics: Vec<Diagnostic>,
-    /// One result per query statement, in source order. Empty if there were errors.
-    pub results: Vec<QueryResult>,
-}
-
-/// The facade frontends call. It does not hold a document, so one session can serve many
-/// documents and concurrent requests (the LSP, `ds ui`). On native targets it is `Send + Sync`.
-pub struct Session {
-    engine: Arc<dyn Engine>,
-    clock: Arc<dyn Clock>,
-    /// Schemas fetched so far, by base directory and source. Only successful lookups are cached;
-    /// invalidation when files change is M1-07's.
-    schemas: Mutex<HashMap<(PathBuf, SourceRef), SchemaRef>>,
-}
-
-impl fmt::Debug for Session {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Session")
-            .field("engine", &self.engine.name())
-            .finish_non_exhaustive()
-    }
-}
-
-/// Lookups for one call: the session's cache, plus this call's failures.
-struct CallSchemas<'a> {
-    cache: HashMap<SourceRef, SchemaRef>,
-    failures: &'a HashMap<SourceRef, SourceError>,
-}
-
-impl SchemaProvider for CallSchemas<'_> {
-    fn schema_of(&self, source: &SourceRef) -> SchemaLookup {
-        if let Some(schema) = self.cache.get(source) {
-            return SchemaLookup::Ready(schema.clone());
-        }
-        match self.failures.get(source) {
-            Some(error) => SchemaLookup::Failed(error.clone()),
-            None => SchemaLookup::Pending,
-        }
-    }
-}
-
-impl Session {
-    /// A session over `engine`, reading `now()` from `clock`.
-    pub fn new(engine: Arc<dyn Engine>, clock: Arc<dyn Clock>) -> Self {
-        Session {
-            engine,
-            clock,
-            schemas: Mutex::new(HashMap::new()),
-        }
-    }
-
-    /// The engine.
-    pub fn engine(&self) -> &dyn Engine {
-        self.engine.as_ref()
-    }
-
-    /// A context for one run: reads the clock once (D-015).
-    pub fn exec_context(&self, base_dir: &Path) -> ExecContext {
-        ExecContext {
-            now_micros: self.clock.now_micros(),
-            base_dir: base_dir.to_path_buf(),
-            sandbox: None,
-            row_limit: None,
-        }
-    }
-
-    /// Checks `src` (file `file`), fetching the schemas of the sources it uses.
-    pub async fn check(&self, src: &SourceFile, file: FileId, ctx: &ExecContext) -> Analysis {
-        let mut failures = HashMap::new();
-        // Pass 1 finds every source, pass 2 binds with them all; sources depend only on
-        // constants, so a third pass with pending sources is a bug (D-022).
-        for _pass in 0..2 {
-            let analysis = self.check_once(src, file, ctx, &failures);
-            if analysis.pending_sources.is_empty() {
-                return analysis;
-            }
-            for source in &analysis.pending_sources {
-                match self.engine.schema_of(source, ctx).await {
-                    Ok(schema) => {
-                        self.lock_schemas()
-                            .insert((ctx.base_dir.clone(), source.clone()), schema);
-                    }
-                    Err(error) => {
-                        failures.insert(source.clone(), error);
-                    }
-                }
-            }
-        }
-        let mut analysis = self.check_once(src, file, ctx, &failures);
-        if let Some(source) = analysis.pending_sources.first() {
-            analysis.diagnostics.push(
-                Diagnostic::error(
-                    DS9001,
-                    format!(
-                        "internal error: the schema of {source} is still unknown after two passes"
-                    ),
-                )
-                .in_file(file)
-                .note("this is a bug in DataScript; please report it"),
-            );
-        }
-        analysis
-    }
-
-    /// Checks and plans `src`. Returns the program, or every diagnostic if there are errors.
-    pub async fn compile(
-        &self,
-        src: &SourceFile,
-        file: FileId,
-        ctx: &ExecContext,
-    ) -> Result<Program, Vec<Diagnostic>> {
-        let analysis = self.check(src, file, ctx).await;
-        datascript_compiler::program_of(analysis, file)
-    }
-
-    /// The `explain` printout of `src`, or its diagnostics.
-    pub async fn explain(
-        &self,
-        src: &SourceFile,
-        file: FileId,
-        ctx: &ExecContext,
-    ) -> Result<String, Vec<Diagnostic>> {
-        Ok(self.compile(src, file, ctx).await?.explain())
-    }
-
-    /// Checks, plans and runs every query in `src`. Warns (DS0004) if it has none.
-    pub async fn run(&self, src: &SourceFile, file: FileId, ctx: &ExecContext) -> RunOutput {
-        let program = match self.compile(src, file, ctx).await {
-            Ok(program) => program,
-            Err(diagnostics) => {
-                return RunOutput {
-                    diagnostics,
-                    results: Vec::new(),
-                };
-            }
-        };
-        let mut output = RunOutput::default();
-        if program.queries.is_empty() {
-            // Valid for `check`, but `run` has nothing to show (LANGUAGE.md §2).
-            output.diagnostics.push(
-                Diagnostic::warning(DS0004, "program has no query to run")
-                    .in_file(file)
-                    .help("add a query, such as `from 'data.csv' | take 10`"),
-            );
-        }
-        for query in &program.queries {
-            let result = match self.engine.execute(query, ctx).await {
-                Ok(stream) => stream.collect().await,
-                Err(diagnostic) => Err(diagnostic),
-            };
-            match result {
-                Ok(result) => output.results.push(result),
-                Err(diagnostic) => {
-                    output.diagnostics.push(diagnostic);
-                    output.results.clear();
-                    break;
-                }
-            }
-        }
-        output
-    }
-
-    fn check_once(
-        &self,
-        src: &SourceFile,
-        file: FileId,
-        ctx: &ExecContext,
-        failures: &HashMap<SourceRef, SourceError>,
-    ) -> Analysis {
-        let cache = self
-            .lock_schemas()
-            .iter()
-            .filter(|((dir, _), _)| *dir == ctx.base_dir)
-            .map(|((_, source), schema)| (source.clone(), schema.clone()))
-            .collect();
-        let schemas = CallSchemas { cache, failures };
-        datascript_compiler::check(src, file, &schemas, self.engine.capabilities())
-    }
-
-    fn lock_schemas(&self) -> std::sync::MutexGuard<'_, HashMap<(PathBuf, SourceRef), SchemaRef>> {
-        // A panic while holding the lock cannot leave the map half-updated (single inserts).
-        self.schemas.lock().unwrap_or_else(|e| e.into_inner())
-    }
 }
 
 #[cfg(test)]

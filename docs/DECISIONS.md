@@ -458,6 +458,25 @@ projection-only column has `Type::Error` in the IR; its Arrow type is in the nod
 compiler has one `JoinKind` (`capabilities::JoinKind`, re-exported by `hir` and `ir`). The IR
 derives serde `Serialize` and `Deserialize`. *(M1-06, 2026-11-21.)*
 
+### D-043 — Session caching, row limits and the panic boundary (M1-07)
+**Failed schema lookups are cached like successful ones**, until `Session::invalidate_schemas` or
+`invalidate_source` is called; a source is fetched at most once per call even if a concurrent
+invalidation lands between passes. A one-shot CLI run never needs invalidation; the REPL, the LSP
+and `ds ui` invalidate when files may have changed (M1-12, M3-01, M4-01). The cache key is the
+base directory, the sandbox and the `SourceRef`, because the sandbox can refuse a path that is
+fine without it. **The row limit is enforced by the session**, not the backend: `ResultStream::
+collect` stops after `row_limit` rows, drops the stream (cancelling the query) once one more row
+arrives, and sets `QueryResult::truncated`. How frontends word that is Q-007's (M4-01).
+**`QueryResult`** is `{ schema, batches, render, diagnostics, truncated }`: `render` is copied from
+the plan; `diagnostics` holds per-query warnings (none yet), while errors stop the run and go to
+`RunOutput::diagnostics` together with every non-error diagnostic from checking. **Panics**: every
+`Session` method runs under `catch_unwind` (`catch_panic` / `catch_panic_async`, also public for
+frontends that call the compiler directly) and a panic becomes `DS9001` "internal error:
+DataScript crashed while …" with the panic's first line as a note. On wasm32 panics abort, so M5-01
+adds a panic hook. **Writers**: CSV and JSON print values exactly as the table does (one
+`value_text` function); JSON uses native booleans and numbers where JSON has them and strings
+otherwise (`NaN`, `inf`, datetimes, timespans). *(M1-07, 2026-11-21.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

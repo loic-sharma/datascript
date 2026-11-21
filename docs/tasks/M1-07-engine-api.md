@@ -1,6 +1,6 @@
 # M1-07 — Engine API and Session
 
-**Status:** todo
+**Status:** done — `Session` caches failed lookups with invalidation, keeps non-error diagnostics in `run`, enforces the row limit, and runs behind a DS9001 panic boundary; `QueryResult` gained `render`/`diagnostics`/`truncated`; CSV/JSON writers; fake-engine tests.
 **Depends on:** M1-06
 **Crates:** `datascript-engine`
 **Diagnostic codes:** DS4001–DS4049 (shared with M1-09) (D-018)
@@ -28,13 +28,23 @@ Extends the skeleton from M1-15 rather than starting from nothing.
 - A fake in-memory engine for tests of the session logic.
 
 ## Acceptance criteria
-- [ ] Unit tests with the fake engine: capability errors, schema-cache hits, clock injection, and
+- [x] Unit tests with the fake engine: capability errors, schema-cache hits, clock injection, and
       the resolution loop (two passes, then done; one `schema_of` call per distinct source).
-- [ ] No DataFusion dependency in this crate.
-- [ ] A compile-time test (`fn assert_send<T: Send>()`) for the native `Session` and its futures.
+- [x] No DataFusion dependency in this crate.
+- [x] A compile-time test (`fn assert_send<T: Send>()`) for the native `Session` and its futures.
 
 ## Carried over
-- [ ] (from M1-15) The session caches failed schema lookups correctly and invalidates the cache; `run` keeps warnings when there are no errors; add the panic boundary, the CSV/JSON writer and the `render` field.
-- [ ] (from M0-03) Replace the stand-in DataScript type-name mapping in `datascript-engine::table` with M1-04's mapping (`arrow.rs`).
+- [x] (from M1-15) The session caches failed schema lookups correctly and invalidates the cache; `run` keeps warnings when there are no errors; add the panic boundary, the CSV/JSON writer and the `render` field.
+- [x] (from M0-03) Replace the stand-in DataScript type-name mapping in `datascript-engine::table` with M1-04's mapping (`arrow.rs`).
 
 ## Follow-ups
+Informational (decisions in D-043):
+- Session code moved to `session.rs`; the panic boundary is `boundary.rs` (`catch_panic`,
+  `catch_panic_async`, public). Writers are `writers.rs`; `table::datascript_type` now wraps
+  `datascript_compiler::arrow::from_arrow` (exact `UTC` timezone only).
+- `datascript-engine` also passes `cargo check --target wasm32-unknown-unknown`, though CI does not
+  require it yet.
+- The third-pass DS9001 in the resolution loop has no test: the real binder cannot produce it.
+- Two concurrent calls that miss the cache for the same source both fetch it; harmless.
+- Follow-ups handed to M1-10 (render test), M1-11 (use the writers), M1-12 and M3-01 (cache
+  invalidation), M4-01 (truncation wording, invalidation) and M5-01 (wasm32 panic hook).

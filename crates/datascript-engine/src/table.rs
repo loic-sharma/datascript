@@ -28,10 +28,8 @@ use arrow_array::types::{
 };
 use arrow_array::{Array, RecordBatch};
 use arrow_cast::display::{ArrayFormatter, FormatOptions};
-use arrow_schema::{DataType, Field, Schema, TimeUnit};
-
-/// Arrow field metadata key that names an extension type (D-024).
-const EXTENSION_NAME_KEY: &str = "ARROW:extension:name";
+use arrow_schema::{Field, Schema};
+use datascript_compiler::Type;
 
 /// Formats a query result as a deterministic ASCII table.
 ///
@@ -101,27 +99,11 @@ pub fn format_table(schema: &Schema, batches: &[RecordBatch]) -> String {
     out
 }
 
-/// The DataScript type name of a result field, or `None` when the Arrow type has no DataScript
-/// type (LANGUAGE.md §5). Result fields use the canonical Arrow types.
-pub fn datascript_type_name(field: &Field) -> Option<&'static str> {
-    let extension = field.metadata().get(EXTENSION_NAME_KEY).map(String::as_str);
-    Some(match (field.data_type(), extension) {
-        (DataType::Boolean, _) => "bool",
-        (DataType::Int32, _) => "int",
-        (DataType::Int64, _) => "long",
-        (DataType::Float64, _) => "real",
-        (DataType::Decimal128(38, 18), _) => "decimal",
-        (DataType::Utf8, Some("arrow.json")) => "dynamic",
-        (DataType::Utf8, _) => "string",
-        (DataType::Timestamp(TimeUnit::Microsecond, Some(tz)), _) if is_utc(tz) => "datetime",
-        (DataType::Duration(TimeUnit::Microsecond), _) => "timespan",
-        (DataType::FixedSizeBinary(16), Some("arrow.uuid")) => "guid",
-        _ => return None,
-    })
-}
-
-fn is_utc(tz: &str) -> bool {
-    matches!(tz, "UTC" | "+00:00" | "Z")
+/// The DataScript type of a result field, or `None` when its Arrow type has no DataScript type.
+/// Result fields use the canonical Arrow types (LANGUAGE.md §5), so this is
+/// [`datascript_compiler::arrow::from_arrow`].
+pub fn datascript_type(field: &Field) -> Option<Type> {
+    datascript_compiler::arrow::from_arrow(field).ok()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -143,21 +125,27 @@ struct Column {
 
 impl Column {
     fn new(field: &Field, batches: &[RecordBatch], index: usize) -> Self {
-        let ds_type = datascript_type_name(field);
+        let ds_type = datascript_type(field);
         let align = match ds_type {
-            Some("real") => Align::Decimal,
-            Some("int" | "long") => Align::Right,
+            Some(Type::Real) => Align::Decimal,
+            Some(Type::Int | Type::Long) => Align::Right,
             _ => Align::Left,
         };
         let type_name = match ds_type {
-            Some(name) => name.to_string(),
+            Some(ty) => ty.to_string(),
             // Readable but untyped columns (LANGUAGE.md §5.1) show their Arrow type.
             None => format!("arrow:{}", field.data_type()),
         };
 
         let mut cells = Vec::new();
         for batch in batches {
-            format_array(batch.column(index).as_ref(), ds_type, &mut cells);
+            let array = batch.column(index).as_ref();
+            cells.extend(
+                (0..array.len()).map(|i| match value_text(array, ds_type, i) {
+                    Some(text) => escape_string(&text),
+                    None => "null".to_string(),
+                }),
+            );
         }
 
         let (mut int_width, mut frac_width) = (0, 0);
@@ -232,36 +220,34 @@ fn pad_right_aligned(s: &str, width: usize) -> String {
     out
 }
 
-fn format_array(array: &dyn Array, ds_type: Option<&str>, cells: &mut Vec<String>) {
-    let len = array.len();
-    let value = |i: usize| -> Option<String> {
-        if array.is_null(i) {
-            return None;
+/// The text of value `i` of `array`, whose DataScript type is `ty`, or `None` for null. Strings
+/// are not escaped. The table, CSV and JSON writers all print values this way.
+pub(crate) fn value_text(array: &dyn Array, ty: Option<Type>, i: usize) -> Option<String> {
+    if array.is_null(i) {
+        return None;
+    }
+    Some(match ty {
+        Some(Type::Bool) => array.as_boolean().value(i).to_string(),
+        Some(Type::Int) => array.as_primitive::<Int32Type>().value(i).to_string(),
+        Some(Type::Long) => array.as_primitive::<Int64Type>().value(i).to_string(),
+        Some(Type::Real) => format_real(array.as_primitive::<Float64Type>().value(i)),
+        Some(Type::String | Type::Dynamic) => array.as_string::<i32>().value(i).to_string(),
+        Some(Type::DateTime) => {
+            format_datetime(array.as_primitive::<TimestampMicrosecondType>().value(i))
         }
-        Some(match ds_type {
-            Some("bool") => array.as_boolean().value(i).to_string(),
-            Some("int") => array.as_primitive::<Int32Type>().value(i).to_string(),
-            Some("long") => array.as_primitive::<Int64Type>().value(i).to_string(),
-            Some("real") => format_real(array.as_primitive::<Float64Type>().value(i)),
-            Some("string" | "dynamic") => escape_string(array.as_string::<i32>().value(i)),
-            Some("datetime") => {
-                format_datetime(array.as_primitive::<TimestampMicrosecondType>().value(i))
-            }
-            Some("timespan") => {
-                format_timespan(array.as_primitive::<DurationMicrosecondType>().value(i))
-            }
-            _ => return fallback(array, i),
-        })
-    };
-    cells.extend((0..len).map(|i| value(i).unwrap_or_else(|| "null".to_string())));
+        Some(Type::TimeSpan) => {
+            format_timespan(array.as_primitive::<DurationMicrosecondType>().value(i))
+        }
+        _ => fallback(array, i),
+    })
 }
 
 /// Formats values of types the table has no dedicated rule for, with Arrow's own display.
-fn fallback(array: &dyn Array, i: usize) -> Option<String> {
+fn fallback(array: &dyn Array, i: usize) -> String {
     let options = FormatOptions::default().with_null("null");
     match ArrayFormatter::try_new(array, &options) {
-        Ok(formatter) => Some(escape_string(&formatter.value(i).to_string())),
-        Err(_) => Some(format!("<{}>", array.data_type())),
+        Ok(formatter) => formatter.value(i).to_string(),
+        Err(_) => format!("<{}>", array.data_type()),
     }
 }
 
@@ -381,6 +367,9 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
+    use arrow_schema::extension::EXTENSION_TYPE_NAME_KEY;
+    use arrow_schema::{DataType, TimeUnit};
+
     use arrow_array::{
         ArrayRef, BinaryArray, BooleanArray, DurationMicrosecondArray, Float64Array, Int32Array,
         Int64Array, StringArray, TimestampMicrosecondArray,
@@ -435,7 +424,7 @@ mod tests {
                 ts_field("t"),
                 Field::new("d", DataType::Duration(TimeUnit::Microsecond), true),
                 Field::new("j", DataType::Utf8, true).with_metadata(HashMap::from([(
-                    EXTENSION_NAME_KEY.to_string(),
+                    EXTENSION_TYPE_NAME_KEY.to_string(),
                     "arrow.json".to_string(),
                 )])),
                 Field::new("raw", DataType::Binary, true),

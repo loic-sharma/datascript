@@ -18,4 +18,7 @@ disable the disk manager on wasm, keep `target_partitions = 1`).
 - [ ] `wasm-pack build` succeeds in CI for both modules. Both sizes are recorded and tracked.
 - [ ] A headless test (`wasm-bindgen-test`) runs a query over an in-memory CSV and a Parquet file.
 
+## Carried over
+- [ ] (from M1-07) `catch_panic` / `catch_panic_async` in `datascript-engine` use `catch_unwind`, which catches nothing on wasm32 (panics abort). Install a panic hook that reports DS9001 to the JS side instead (ARCHITECTURE.md § Engine abstraction).
+
 ## Follow-ups

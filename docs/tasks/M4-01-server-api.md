@@ -25,4 +25,7 @@ Design-review additions:
 - [ ] The API contract is documented in `docs/` (shared with the WASM runtime adapter).
 - [ ] `/api/run` with `'/etc/passwd' | take 1`, `'../x.csv'` and a symlink pointing out of the root all fail with DS3007.
 
+## Carried over
+- [ ] (from M1-07) `ExecContext::row_limit` is enforced by the session and sets `QueryResult::truncated` (D-043). Decide Q-007's wording (an info diagnostic needs a code from this task's block) and show it. Invalidate the session's schema cache when files under the root change, since failed lookups are cached too.
+
 ## Follow-ups

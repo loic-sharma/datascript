@@ -20,5 +20,6 @@
 
 ## Carried over
 - [ ] (from M0-02) Diagnostic lines split on `\n` only; a lone `\r` is not a line break, while LSP treats it as one. Align the two.
+- [ ] (from M1-07) The session caches schemas and failed lookups until told otherwise (D-043). Watch the workspace's data files and call `Session::invalidate_source` / `invalidate_schemas` when they change, then re-check open documents. Call `parse` and `complete` through `datascript_engine::catch_panic`.
 
 ## Follow-ups

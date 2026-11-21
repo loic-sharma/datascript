@@ -23,4 +23,7 @@
       separately from the terminal I/O.
 - [ ] Ctrl-C cancels a running query without exiting. Ctrl-D exits.
 
+## Carried over
+- [ ] (from M1-07) The session caches failed schema lookups too (D-043). Call `Session::invalidate_schemas` before each submission (or on a `.reload` command) so a file created or edited after an error is read again.
+
 ## Follow-ups

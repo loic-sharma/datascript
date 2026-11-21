@@ -75,7 +75,7 @@ source text
   ▼
   │  execute        (backend)     stream of Arrow RecordBatches
   ▼
-QueryResult { schema, batches, render: Option<RenderSpec>, warnings }
+QueryResult { schema, batches, render: Option<RenderSpec>, diagnostics, truncated }
 ```
 
 Each stage keeps going after errors where it can, so one run reports as many independent problems
@@ -197,10 +197,15 @@ pub struct ResultStream { pub schema: SchemaRef, pub batches: BatchStream }  // 
   schema cache, fetch `pending_sources` through `Engine::schema_of`, bind again (D-022).
   Its methods are `check`, `compile`, `explain` and `run`, each taking `(src, file, ctx)`.
   `Session::exec_context(base_dir)` builds the `ExecContext` for one call, reading the clock once
-  (D-015). The schema cache is keyed by base directory and `SourceRef`.
+  (D-015). The schema cache is keyed by base directory, sandbox and `SourceRef`, holds failed
+  lookups too, and is cleared with `invalidate_schemas` / `invalidate_source` (D-043). The session
+  enforces `ExecContext::row_limit` and marks the result `truncated`.
+- `datascript_engine::table` and `datascript_engine::writers` turn results into the ASCII table,
+  CSV, JSON and NDJSON, printing values the same way in all four.
 - **Panics**: frontends call the compiler and engine through a boundary that turns a panic into
   `DS9001` (`catch_unwind` on native, a panic hook on wasm32). The LSP and `ds ui` must survive a
-  compiler bug.
+  compiler bug. Every `Session` method is behind it; `catch_panic` and `catch_panic_async` are
+  public for frontends that call the compiler directly (`parse`, `complete`).
 
 Future backends (not planned in detail): a SQL emitter (IR → SQL text for DuckDB, SQLite, or
 Postgres), which would prove the abstraction works, and remote engines.
