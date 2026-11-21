@@ -1,0 +1,47 @@
+# Aggregates are only allowed in `summarize`'s aggregate list.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, small: int, timestamp: datetime, wait: timespan, shipped: bool)
+---- query
+let total = count();
+from 'orders.csv' | where sum(amount) > 1;
+from 'orders.csv' | summarize sum(count()) by sum(qty)
+---- expected
+error[DS2004]: aggregate function `count` cannot be used in a `let`
+  --> query:1:13
+  |
+1 | let total = count();
+  |             ^^^^^ this combines many rows into one value
+  |
+  = help: aggregate in `summarize` first, then use the result: `| summarize result = count() by ...`
+
+error[DS2004]: aggregate function `sum` cannot be used in `where`
+  --> query:2:27
+  |
+2 | from 'orders.csv' | where sum(amount) > 1;
+  |                           ^^^ this combines many rows into one value
+  |
+  = help: aggregate in `summarize` first, then use the result: `| summarize result = sum(amount) by ...`
+
+error[DS9001]: `summarize` is not implemented yet
+  --> query:3:21
+  |
+3 | from 'orders.csv' | summarize sum(count()) by sum(qty)
+  |                     ^^^^^^^^^ not supported by this version of DataScript
+  |
+  = note: this version can read a `.csv` file, a tabular `let` or a pipeline in parentheses, and apply `where`, `project` of columns and `take`
+
+error[DS2004]: aggregate function `count` cannot be used inside another aggregate
+  --> query:3:35
+  |
+3 | from 'orders.csv' | summarize sum(count()) by sum(qty)
+  |                                   ^^^^^ inside `sum`
+  |
+  = help: aggregate once, or compute the inner value in another `summarize`
+
+error[DS2004]: aggregate function `sum` cannot be used in `by`
+  --> query:3:47
+  |
+3 | from 'orders.csv' | summarize sum(count()) by sum(qty)
+  |                                               ^^^ this combines many rows into one value
+  |
+  = help: `by` lists the grouping keys; put the aggregate before `by`: `summarize total = sum(amount) by key`

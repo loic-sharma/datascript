@@ -113,7 +113,9 @@ from big | summarize count() by customerId                // query statement (pr
 
 - `let name = <expr>` binds a scalar or tabular expression. Lets are immutable and lexically
   scoped to the rest of the program. Re-binding a name is an error (`DS1003`) (≠ KQL, which allows
-  shadowing).
+  shadowing). In an expression, a column of the current row wins over a scalar `let` of the same
+  name; a `let` value has no row, so it can only use earlier `let`s (D-038). A table cannot be used
+  as a value: a tabular `let` in an expression is `DS1006`, a pipeline inside an expression `DS2010`.
 - **Scalar or tabular?** The syntax decides (D-036). A `let` whose value *is* a pipeline (it
   starts with `from` or a generator, or is a pipeline in parentheses) is tabular. Everything else,
   including a `let` bound to a string or to a bare name, is scalar: `let alias = orders;` does not

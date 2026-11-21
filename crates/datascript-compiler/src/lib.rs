@@ -6,6 +6,7 @@
 //! - [`catalog`]: the [`FunctionCatalog`], overload resolution, `DS2002` and `DS2006`.
 //! - [`capabilities`]: what a backend supports ([`Capabilities`]).
 //! - [`source`]: [`SourceRef`], [`SchemaProvider`] and [`SourceError`] (D-022, D-023).
+//! - [`hir`]: the typed HIR the binder produces.
 //! - [`ir`]: the logical plan IR and its `explain` printout.
 //! - [`check`] and [`compile`]: the entry points that parse, bind and plan a program.
 //!
@@ -17,12 +18,14 @@ mod binder;
 mod builtins;
 pub mod capabilities;
 pub mod catalog;
+pub mod hir;
 pub mod ir;
 pub mod operators;
+mod plan;
 pub mod source;
 pub mod types;
 
-pub use binder::{BoundQuery, StageSchema};
+pub use binder::StageSchema;
 pub use capabilities::Capabilities;
 pub use catalog::{FunctionCatalog, FunctionDef, FunctionKind};
 pub use ir::Program;
@@ -35,9 +38,8 @@ use datascript_diagnostics::{Diagnostic, DiagnosticSink, Diagnostics, FileId, So
 /// What [`check`] found out about a program.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Analysis {
-    /// One entry per query statement. For now this is the plan itself; M1-05 and M1-06 put a
-    /// typed HIR between the binder and the planner.
-    pub hir: Vec<BoundQuery>,
+    /// The bound program: every name resolved, every expression typed.
+    pub hir: hir::Hir,
     /// Syntax and semantic diagnostics, sorted and capped.
     pub diagnostics: Vec<Diagnostic>,
     /// The schema after each pipeline stage whose schema is known.
@@ -66,8 +68,9 @@ pub fn check(
     _caps: &Capabilities,
 ) -> Analysis {
     let parse = datascript_syntax::parse(src.text(), file);
-    let mut binder = binder::Binder::new(file, src.text(), schemas);
-    let hir = binder.bind_program(&parse.program());
+    let program = parse.program();
+    let mut binder = binder::Binder::new(file, src.text(), schemas, &program, &parse.errors);
+    let hir = binder.bind_program(&program);
     let mut diagnostics = Diagnostics::new();
     for d in parse.errors.into_iter().chain(binder.diagnostics) {
         diagnostics.emit(d);
@@ -110,17 +113,21 @@ pub fn program_of(analysis: Analysis, file: FileId) -> Result<Program, Vec<Diagn
     if diagnostics.iter().any(Diagnostic::is_error) {
         return Err(diagnostics);
     }
-    let queries = analysis
-        .hir
-        .into_iter()
-        .filter_map(|query| query.plan)
-        .map(|root| ir::QueryPlan {
-            output_schema: root.schema.clone(),
-            root,
-        })
-        .collect();
+    let mut queries = Vec::new();
+    let mut internal = Vec::new();
+    for query in analysis.hir.queries() {
+        match plan::plan_query(query) {
+            Ok(plan) => queries.push(plan),
+            Err(d) => internal.push(d),
+        }
+    }
+    if !internal.is_empty() {
+        return Err(internal);
+    }
     Ok(Program { queries })
 }
 
+#[cfg(test)]
+mod binder_tests;
 #[cfg(test)]
 mod catalog_tests;

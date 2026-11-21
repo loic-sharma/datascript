@@ -1,0 +1,8 @@
+# Scalar function calls are resolved against the catalog, with `T` parameters widened.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, small: int, timestamp: datetime, wait: timespan, shipped: bool)
+---- query
+from 'orders.csv'
+| where strlen(orderId) > 3 and iff(shipped, 1, 2.5) > 1 and coalesce(qty, 0) >= 0
+| where tolower(customerId) startswith "c" and timestamp > ago(7d) and round(amount, 2) > 0
+---- expected

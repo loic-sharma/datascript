@@ -37,5 +37,6 @@ M1-05. Split out of M1-05 so each task fits one session.
 - [ ] (from M1-15) A table name as a source works (DS9001 in the skeleton); columns with no DataScript type give DS2008 instead of a silent error type; `caps` is consulted.
 - [ ] (from M1-24) Table positions are the operand of `from` (`Pipeline::source()`, after `Pipeline::from_token()`) and the right side of `join`/`union`/`lookup`. A constant string or a scalar `let` bound to one is a path there (D-020, D-036).
 - [ ] (from M1-24) When the reader definitions land, replace the check in `catalog_tests::syntax_readers_match_the_compiler` with a comparison of `datascript_syntax::READERS` against them (today it only checks each name reads a known `SourceFormat`).
+- [ ] (from M1-05) A name in `from` that is not a tabular `let` still gives DS9001 "a table name as a source" (`Binder::bind_source`); a scalar `let` there that is not a constant string needs its own error. `let alias = orders;` where `orders` is a host table gives DS1002 today; it should get DS1006 with the `from` fix, as it does for a tabular `let` (`Binder::bind_scalar_let`).
 
 ## Follow-ups

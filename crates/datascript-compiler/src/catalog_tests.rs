@@ -581,3 +581,12 @@ fn syntax_readers_match_the_compiler() {
         );
     }
 }
+
+#[test]
+fn planned_functions_are_known_and_not_in_the_catalog() {
+    for (name, milestone) in crate::catalog::PLANNED {
+        let unknown = catalog().lookup(name).unwrap_err();
+        assert_eq!(unknown.planned, Some(*milestone), "{name}");
+    }
+    assert_eq!(catalog().lookup("strln").unwrap_err().planned, None);
+}

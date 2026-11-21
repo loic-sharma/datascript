@@ -1,0 +1,12 @@
+# Tabular `let`s and parenthesized pipelines are inlined into the plan; scalar `let`s are replaced by their values.
+mode: explain
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, small: int, timestamp: datetime, wait: timespan, shipped: bool)
+---- query
+let threshold = 100;
+let big = from 'orders.csv' | where amount > threshold;
+from (from big | take 10) | project orderId, amount
+---- expected
+Project: orderId, amount
+  Limit: 10
+    Filter: amount > 100.0
+      Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, small: int, timestamp: datetime, wait: timespan, shipped: bool)

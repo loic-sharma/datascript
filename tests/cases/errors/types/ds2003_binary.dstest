@@ -1,0 +1,38 @@
+# Operators applied to the wrong types say where each type came from.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, small: int, timestamp: datetime, wait: timespan, shipped: bool)
+---- query
+let label = "big";
+from 'orders.csv' | where orderId + 1 > 0;
+from 'orders.csv' | where qty * label > 0;
+from 'orders.csv' | where qty and shipped
+---- expected
+error[DS2003]: cannot add `string` and `long`
+  --> query:2:27
+  |
+2 | from 'orders.csv' | where orderId + 1 > 0;
+  |                           ^^^^^^^   - this is `long`
+  |                           |
+  |                           this is `string` (column `orderId` was read from orders.csv)
+  |
+  = help: if `orderId` holds numbers, convert it first: `toreal(orderId) + 1`
+
+error[DS2003]: cannot multiply `long` by `string`
+  --> query:3:33
+  |
+3 | from 'orders.csv' | where qty * label > 0;
+  |                           ---   ^^^^^ this is `string` (`label` is defined by a `let`)
+  |                           |
+  |                           this is `long` (column `qty` was read from orders.csv)
+  |
+  = help: if `label` holds numbers, convert it first: `qty * toreal(label)`
+
+error[DS2003]: `and` needs two `bool` values, found `long` and `bool`
+  --> query:4:27
+  |
+4 | from 'orders.csv' | where qty and shipped
+  |                           ^^^     ------- this is `bool` (column `shipped` was read from orders.csv)
+  |                           |
+  |                           this is `long` (column `qty` was read from orders.csv)
+  |
+  = help: `and` combines conditions; write a comparison such as `x > 0` on each side

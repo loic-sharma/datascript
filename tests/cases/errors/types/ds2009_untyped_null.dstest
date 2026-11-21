@@ -1,0 +1,40 @@
+# An untyped `null` with nothing to give it a type, including a function whose result would be `null`.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, small: int, timestamp: datetime, wait: timespan, shipped: bool)
+---- query
+let x = null;
+let y = abs(null);
+let z = iff(true, null, null);
+let w = null + null;
+---- expected
+error[DS2009]: cannot tell what type this `null` has
+  --> query:1:9
+  |
+1 | let x = null;
+  |         ^^^^ nothing here gives this `null` a type
+  |
+  = help: write a typed null instead, such as `long(null)`, `string(null)` or `datetime(null)`
+
+error[DS2009]: cannot tell what type this `null` has
+  --> query:2:13
+  |
+2 | let y = abs(null);
+  |             ^^^^ nothing here gives this `null` a type
+  |
+  = help: write a typed null instead, such as `long(null)`, `string(null)` or `datetime(null)`
+
+error[DS2009]: cannot tell what type this `null` has
+  --> query:3:19
+  |
+3 | let z = iff(true, null, null);
+  |                   ^^^^ nothing here gives this `null` a type
+  |
+  = help: write a typed null instead, such as `long(null)`, `string(null)` or `datetime(null)`
+
+error[DS2009]: cannot tell what type this `null` has
+  --> query:4:9
+  |
+4 | let w = null + null;
+  |         ^^^^^^^^^^^ nothing here gives this `null` a type
+  |
+  = help: write a typed null instead, such as `long(null)`, `string(null)` or `datetime(null)`

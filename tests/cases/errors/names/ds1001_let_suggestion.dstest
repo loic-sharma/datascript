@@ -1,0 +1,15 @@
+# An unknown column suggests a `let` with a close name, and lists the columns.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, small: int, timestamp: datetime, wait: timespan, shipped: bool)
+---- query
+let threshold = 10;
+from 'orders.csv' | where amount > threshhold
+---- expected
+error[DS1001]: unknown column `threshhold`
+  --> query:2:36
+  |
+2 | from 'orders.csv' | where amount > threshhold
+  |                                    ^^^^^^^^^^ no column named `threshhold` here
+  |
+  = help: a `let` with a similar name exists: `threshold`
+  = note: columns available at this point: orderId, customerId, amount, qty, small, timestamp, wait, shipped

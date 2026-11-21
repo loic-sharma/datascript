@@ -18,7 +18,9 @@ use datafusion::error::DataFusionError;
 use datafusion::logical_expr::{LogicalPlan, LogicalPlanBuilder, Operator, binary_expr, cast};
 use datafusion::prelude::{Expr as DfExpr, SessionConfig, SessionContext, lit};
 use datascript_compiler::arrow::{from_arrow_source, to_arrow, to_arrow_type};
-use datascript_compiler::ir::{BinaryOp, Expr, ExprKind, Plan, PlanNode, QueryPlan, Value};
+use datascript_compiler::ir::{
+    BinaryOp, Expr, ExprKind, Plan, PlanNode, PrefixOp, QueryPlan, Value,
+};
 use datascript_compiler::{Capabilities, SourceError, SourceRef};
 use datascript_diagnostics::codes::{DS4002, DS9001};
 use datascript_diagnostics::{Diagnostic, Span};
@@ -248,15 +250,15 @@ impl Lowering<'_> {
             builder = Some(match (&node.node, builder) {
                 (PlanNode::Scan { source }, _) => self.scan(source, node).await?,
                 (PlanNode::Filter { predicate, .. }, Some(b)) => {
-                    b.filter(lower_expr(predicate)).map_err(fail)?
+                    b.filter(lower_expr(predicate)?).map_err(fail)?
                 }
-                (PlanNode::Project { columns, .. }, Some(b)) => b
-                    .project(
-                        columns
-                            .iter()
-                            .map(|item| lower_expr(&item.expr).alias(&item.name)),
-                    )
-                    .map_err(fail)?,
+                (PlanNode::Project { columns, .. }, Some(b)) => {
+                    let exprs = columns
+                        .iter()
+                        .map(|item| Ok(lower_expr(&item.expr)?.alias(&item.name)))
+                        .collect::<Result<Vec<_>, Diagnostic>>()?;
+                    b.project(exprs).map_err(fail)?
+                }
                 (PlanNode::Limit { count, .. }, Some(b)) => {
                     let count = usize::try_from(*count).unwrap_or(usize::MAX);
                     b.limit(0, Some(count)).map_err(fail)?
@@ -309,8 +311,8 @@ impl Lowering<'_> {
     }
 }
 
-fn lower_expr(expr: &Expr) -> DfExpr {
-    match &expr.kind {
+fn lower_expr(expr: &Expr) -> Result<DfExpr, Diagnostic> {
+    Ok(match &expr.kind {
         // `Column::new_unqualified`, not `col()`, which lowercases unquoted names.
         ExprKind::Column(name) => DfExpr::Column(Column::new_unqualified(name)),
         ExprKind::Literal(value) => lit(match value {
@@ -318,17 +320,59 @@ fn lower_expr(expr: &Expr) -> DfExpr {
             Value::Long(n) => ScalarValue::Int64(Some(*n)),
             Value::Real(x) => ScalarValue::Float64(Some(*x)),
             Value::String(s) => ScalarValue::Utf8(Some(s.clone())),
+            Value::DateTime(us) => ScalarValue::TimestampMicrosecond(Some(*us), Some("UTC".into())),
+            Value::TimeSpan(us) => ScalarValue::DurationMicrosecond(Some(*us)),
+            Value::Null => ScalarValue::try_from(&to_arrow_type(expr.ty))
+                .map_err(|e| engine_error(expr.span, &e))?,
         }),
-        ExprKind::Binary { op, left, right } => {
-            binary_expr(lower_expr(left), lower_op(*op), lower_expr(right))
+        ExprKind::Binary { op, left, right } => binary_expr(
+            lower_expr(left)?,
+            lower_op(*op, expr.span)?,
+            lower_expr(right)?,
+        ),
+        ExprKind::Unary { op, operand } => match op {
+            PrefixOp::Neg => DfExpr::Negative(Box::new(lower_expr(operand)?)),
+            PrefixOp::Not => DfExpr::Not(Box::new(lower_expr(operand)?)),
+        },
+        ExprKind::In {
+            expr: lhs,
+            list,
+            negated,
+            case_insensitive: false,
+        } => {
+            let list = list.iter().map(lower_expr).collect::<Result<Vec<_>, _>>()?;
+            lower_expr(lhs)?.in_list(list, *negated)
         }
-        ExprKind::Cast(inner) => cast(lower_expr(inner), to_arrow_type(expr.ty)),
-    }
+        ExprKind::Between {
+            expr: lhs,
+            low,
+            high,
+            negated,
+        } => {
+            let (lhs, low, high) = (lower_expr(lhs)?, lower_expr(low)?, lower_expr(high)?);
+            if *negated {
+                lhs.not_between(low, high)
+            } else {
+                lhs.between(low, high)
+            }
+        }
+        ExprKind::Cast(inner) => cast(lower_expr(inner)?, to_arrow_type(expr.ty)),
+        ExprKind::In {
+            case_insensitive: true,
+            ..
+        } => return Err(not_implemented(expr.span, "`in~`")),
+        ExprKind::Call { function, .. } => {
+            return Err(not_implemented(
+                expr.span,
+                &format!("the function `{function}`"),
+            ));
+        }
+    })
 }
 
-/// The binder only lets comparisons through so far (M1-15); M1-09 maps the rest.
-fn lower_op(op: BinaryOp) -> Operator {
-    match op {
+/// The arithmetic, comparison and logical operators; M1-09 maps the string operators.
+fn lower_op(op: BinaryOp, span: Span) -> Result<Operator, Diagnostic> {
+    Ok(match op {
         BinaryOp::Eq => Operator::Eq,
         BinaryOp::NotEq => Operator::NotEq,
         BinaryOp::Lt => Operator::Lt,
@@ -342,11 +386,20 @@ fn lower_op(op: BinaryOp) -> Operator {
         BinaryOp::Mul => Operator::Multiply,
         BinaryOp::Div => Operator::Divide,
         BinaryOp::Mod => Operator::Modulo,
-        // Never reached: the binder reports these as not implemented.
         BinaryOp::EqCi | BinaryOp::NotEqCi | BinaryOp::String { .. } | BinaryOp::MatchesRegex => {
-            Operator::Eq
+            let symbol = datascript_compiler::operators::op_symbol(op);
+            return Err(not_implemented(span, &format!("the `{symbol}` operator")));
         }
-    }
+    })
+}
+
+/// A plan this engine cannot run yet (M1-09).
+fn not_implemented(span: Span, what: &str) -> Diagnostic {
+    Diagnostic::error(
+        DS9001,
+        format!("{what} is not implemented in the DataFusion engine yet"),
+    )
+    .primary(span, "not supported by this version of DataScript")
 }
 
 /// DS4002: DataFusion failed. Its message goes in a note (DIAGNOSTICS.md rule 10).

@@ -366,6 +366,24 @@ needs no special case: after `range x` the generator is not complete.
 - **`FROM` in capitals at a pipeline head** is DS0105 with a certain fix to `from`, and parses as
   the keyword. *(M1-25, 2026-11-21.)*
 
+### D-038 — Binder scopes, recovery and untyped results (M1-05)
+**Columns win over scalar `let`s.** In an expression a name is first a column of the current row,
+then a scalar `let`. `let`s cannot shadow each other (DS1003), but a column can appear later from a
+file the program does not control, so making that an error would break scripts when a file gains a
+column. A `let` value has no row, so a name there must be a `let` (DS1002, with a note that a `let`
+cannot use columns). **A table is not a value**: a tabular `let` used in an expression, or
+`let alias = orders;`, is DS1006 (the name is the problem, with a fix inserting `from`); a pipeline
+inside an expression (`(from t | count) + 1`, `x in (from t | ...)`) is DS2010. **Syntax errors
+silence the node they are in**: for each syntax or lexical error the binder finds the innermost
+expression, operator or `let` around it and gives it the error type without binding it, so a
+syntax error adds no semantic errors while the rest of the statement, and other statements, are
+still checked. Errors directly in a pipeline (a missing `|`) and insertion points mark nothing.
+**Untyped results**: a function whose result would have the internal `Null` type (`abs(null)`,
+`iff(p, null, null)`) is DS2009 at the `null` argument, like `null + null` where a value needs a
+type. **Aggregate context** is one parameter of expression binding (`Agg`): rows (DS2004 names the
+place: `where`, `by`, a `let`), `summarize`'s aggregate list (a column outside an aggregate, or an
+item with no aggregate, is DS2005), or inside an aggregate (no nesting). *(M1-05, 2026-11-21.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

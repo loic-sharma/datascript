@@ -45,5 +45,6 @@ Design-review additions:
 - [ ] (from M1-15) `lower_op` lowers every operator and expression faithfully (the skeleton maps only comparisons).
 - [ ] (from M1-15) DataFusion runtime errors are traced to the node that caused them, not reported as DS4002 on the query's last node.
 - [ ] (from review of M1-04) DataFusion built-ins that differ from the catalog; each needs a mapping or UDF and a golden case: `log` is base-10 in DataFusion (natural log is `ln`); `pow(Int64, Int64)` returns Int64 (catalog says `real`); `floor`/`ceil`/`round` on integers return Float64; `substr`/`strpos` are 1-based but `substring`/`indexof` are 0-based; `date_trunc('week')` starts Monday but `startofweek` is Sunday; `percentile` needs exact nearest-rank (a UDAF, not `percentile_cont`/`approx_percentile_cont`); `to*` conversions need `try_cast`; `trim(regex, s)` needs `regexp_replace`; `isempty` on non-strings needs custom logic; integer `/0` is a DataFusion error that must surface as DS4003, not DS4002.
+- [ ] (from M1-05) The binder now accepts every operator of LANGUAGE.md §4.1 and catalog calls; `lower_expr` returns DS9001 "not implemented in the DataFusion engine yet" for `ExprKind::Call`, `in~`/`!in~`, `=~`/`!~`, the string operators and `matches regex`. Unary minus on `long` must raise DS4003 on overflow (D-014).
 
 ## Follow-ups

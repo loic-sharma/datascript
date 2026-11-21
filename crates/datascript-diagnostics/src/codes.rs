@@ -123,6 +123,8 @@ pub const DS1003: Code = Code::new(1003);
 pub const DS1004: Code = Code::new(1004);
 /// duplicate output column name
 pub const DS1005: Code = Code::new(1005);
+/// a table name used where a value is expected (`let alias = orders;`)
+pub const DS1006: Code = Code::new(1006);
 /// `join` renamed colliding non-key columns (says how to rename explicitly; `on key` columns are merged, D-019)
 pub const DS1007: Code = Code::new(1007);
 /// predicate is not `bool`
@@ -141,6 +143,12 @@ pub const DS2006: Code = Code::new(2006);
 pub const DS2008: Code = Code::new(2008);
 /// untyped `null` with no context (suggest `long(null)`, …)
 pub const DS2009: Code = Code::new(2009);
+/// a pipeline (a table) used where a value is expected
+pub const DS2010: Code = Code::new(2010);
+/// named argument in a call to a function that takes none
+pub const DS2011: Code = Code::new(2011);
+/// field access or indexing on a value that is not `dynamic` (`dynamic` is M2)
+pub const DS2012: Code = Code::new(2012);
 /// `take`/`limit` before `sort`: the rows kept are arbitrary (planned, M1-14)
 pub const DS2101: Code = Code::new(2101);
 /// predicate is always true or always false (planned, M1-14)
@@ -435,6 +443,12 @@ pub const REGISTRY: &[CodeInfo] = &[
         status: CodeStatus::Active,
     },
     CodeInfo {
+        code: DS1006,
+        severity: Some(Severity::Error),
+        summary: "a table name used where a value is expected (`let alias = orders;`)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
         code: DS1007,
         severity: Some(Severity::Info),
         summary: "`join` renamed colliding non-key columns (says how to rename explicitly; `on key` columns are merged, D-019)",
@@ -492,6 +506,24 @@ pub const REGISTRY: &[CodeInfo] = &[
         code: DS2009,
         severity: Some(Severity::Error),
         summary: "untyped `null` with no context (suggest `long(null)`, …)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS2010,
+        severity: Some(Severity::Error),
+        summary: "a pipeline (a table) used where a value is expected",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS2011,
+        severity: Some(Severity::Error),
+        summary: "named argument in a call to a function that takes none",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS2012,
+        severity: Some(Severity::Error),
+        summary: "field access or indexing on a value that is not `dynamic` (`dynamic` is M2)",
         status: CodeStatus::Active,
     },
     CodeInfo {

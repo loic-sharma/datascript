@@ -33,5 +33,7 @@ Source resolution and the capability pass (M1-17). `render` (M1-10).
 ## Carried over
 - [ ] (from M1-15) `project` takes expressions and renames, with DS1005 for duplicate names (the skeleton takes bare columns, and DataFusion then fails with DS4002).
 - [ ] (from M1-15) Un-skip `tests/cases/harness/check.dstest` (needs `summarize` and aggregates) and `harness/run.dstest` once M1-09 can run it.
+- [ ] (from M1-05) Replace `hir::Op::Unsupported` (and its DS9001) with real schemas. The binder already checks the expressions of `extend`, `summarize`, `sort`, `top` and `distinct` (`Binder::bind_operator`); reuse `Binder::aggregate_item` (DS2005) and `Agg::Row("`by`")` (DS2004) rather than re-checking. `project` still rejects named and computed items with DS9001 (`Binder::bind_project`).
+- [ ] (from M1-05) Un-skip `tests/cases/harness/check.dstest` and re-bless the cases that show DS9001 for `summarize` today: `errors/types/ds2004_aggregate_outside_summarize`, `errors/types/ds2005_not_aggregated`, `skeleton/not_implemented`.
 
 ## Follow-ups

@@ -642,7 +642,20 @@ pub struct UnknownFunction {
     /// The DataScript function for a name from SQL, KQL or another language
     /// (`len` → `strlen`), if known (DIAGNOSTICS.md rule 7).
     pub equivalent: Option<&'static str>,
+    /// The milestone that adds this function, if it is in LANGUAGE.md §7 but not built yet
+    /// ([`PLANNED`]).
+    pub planned: Option<&'static str>,
 }
+
+/// Functions of LANGUAGE.md §7 that a later milestone adds, with that milestone, so the binder
+/// can say "not available yet" instead of "unknown function".
+pub const PLANNED: &[(&str, &str)] = &[
+    ("arg_max", "M2"),
+    ("arg_min", "M2"),
+    ("make_list", "M2"),
+    ("make_set", "M2"),
+    ("split", "M2"),
+];
 
 /// The registry of functions.
 #[derive(Debug, Clone)]
@@ -713,9 +726,14 @@ impl FunctionCatalog {
             .find(|(foreign, _)| *foreign == lowered)
             .map(|&(_, ours)| ours)
             .filter(|ours| self.functions.contains_key(ours));
+        let planned = PLANNED
+            .iter()
+            .find(|(planned, _)| *planned == name)
+            .map(|&(_, milestone)| milestone);
         Err(UnknownFunction {
             suggestions: did_you_mean(name, self.functions.keys().copied()),
             equivalent,
+            planned,
         })
     }
 

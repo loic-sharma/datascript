@@ -1,0 +1,23 @@
+# A `let` value has no columns: an unknown name there is DS1002.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, small: int, timestamp: datetime, wait: timespan, shipped: bool)
+---- query
+let rate = 2;
+let doubled = amount * rat;
+---- expected
+error[DS1002]: unknown name `amount`
+  --> query:2:15
+  |
+2 | let doubled = amount * rat;
+  |               ^^^^^^ no `let` with this name is defined before here
+  |
+  = note: a `let` value is computed once, not per row, so it cannot use columns
+
+error[DS1002]: unknown name `rat`
+  --> query:2:24
+  |
+2 | let doubled = amount * rat;
+  |                        ^^^ no `let` with this name is defined before here
+  |
+  = help: a `let` with a similar name exists: `rate`
+  = note: a `let` value is computed once, not per row, so it cannot use columns

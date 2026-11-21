@@ -1,0 +1,16 @@
+# `in`, `between`, unary minus and a datetime literal run on DataFusion.
+mode: run
+order: any
+---- query
+from '../../data/orders.csv'
+| where amount between (100 .. 200) and customerId !in ("c-001") and -amount < -150
+| where timestamp >= datetime(2024-01-01)
+| project orderId, amount
+| take 3
+---- expected
+orderId | amount
+string  | real
+--------+-------
+o-0011  |  185.0
+o-0035  |  156.5
+o-0039  |  167.0

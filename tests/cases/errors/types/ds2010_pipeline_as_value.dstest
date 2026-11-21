@@ -1,0 +1,23 @@
+# A pipeline inside a scalar expression is a table, not a value.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, small: int, timestamp: datetime, wait: timespan, shipped: bool)
+---- query
+let t = from 'orders.csv';
+let x = (from t | count) + 1;
+from 'orders.csv' | where qty in (from t | project qty)
+---- expected
+error[DS2010]: a table cannot be used as a value
+  --> query:2:9
+  |
+2 | let x = (from t | count) + 1;
+  |         ^^^^^^^^^^^^^^^^ this is a table
+  |
+  = help: a `let` defines a table only when the pipeline is its whole value: `let t = from ...;`
+
+error[DS2010]: a table cannot be used as a value
+  --> query:3:35
+  |
+3 | from 'orders.csv' | where qty in (from t | project qty)
+  |                                   ^^^^^^^^^^^^^^^^^^^^ this is a table
+  |
+  = note: `in` with a table is not available yet; it is planned for M2

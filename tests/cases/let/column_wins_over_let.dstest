@@ -1,0 +1,16 @@
+# A column wins over a scalar `let` of the same name (D-038): `amount` here is the column, a `real`, so comparing it with a string is an error.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, small: int, timestamp: datetime, wait: timespan, shipped: bool)
+---- query
+let amount = "x";
+from 'orders.csv' | where amount == amount + 1 | where amount == "y"
+---- expected
+error[DS2003]: cannot compare `real` with `string`
+  --> query:2:56
+  |
+2 | from 'orders.csv' | where amount == amount + 1 | where amount == "y"
+  |                                                        ^^^^^^    --- this is `string`
+  |                                                        |
+  |                                                        this is `real` (column `amount` was read from orders.csv)
+  |
+  = help: convert the string first, e.g. `amount == toreal("y")`, or convert the other side with `tostring()`

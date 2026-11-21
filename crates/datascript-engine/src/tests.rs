@@ -112,7 +112,8 @@ fn sources_are_fetched_then_bound_again() {
         analysis.diagnostics
     );
     assert!(analysis.pending_sources.is_empty());
-    assert!(analysis.hir[0].plan.is_some());
+    let query = analysis.hir.queries().next().expect("one query");
+    assert!(query.pipeline.columns.is_some());
     assert_eq!(engine.lookups.load(Ordering::SeqCst), 1);
 
     // The schema is cached: a second check does not ask the engine again.

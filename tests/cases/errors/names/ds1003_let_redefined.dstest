@@ -1,0 +1,17 @@
+# A `let` name cannot be defined twice (no shadowing, ≠ KQL).
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, small: int, timestamp: datetime, wait: timespan, shipped: bool)
+---- query
+let x = 1;
+let x = 2;
+from 'orders.csv' | where qty > x
+---- expected
+error[DS1003]: `x` is already defined
+  --> query:2:5
+  |
+1 | let x = 1;
+  |     - first defined here
+2 | let x = 2;
+  |     ^ defined again here
+  |
+  = help: a `let` name cannot be reused; give this one another name, such as `x2`

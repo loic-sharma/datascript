@@ -168,6 +168,7 @@ design decision and implemented by the task named in the allocation table.
 | DS1003 | error | name already defined |
 | DS1004 | error | unknown function |
 | DS1005 | error | duplicate output column name |
+| DS1006 | error | a table name used where a value is expected (`let alias = orders;`) |
 | DS1007 | info | `join` renamed colliding non-key columns (says how to rename explicitly; `on key` columns are merged, D-019) |
 | DS2001 | error | predicate is not `bool` |
 | DS2002 | error | wrong number of arguments |
@@ -178,6 +179,9 @@ design decision and implemented by the task named in the allocation table.
 | DS2007 | — | *retired, never implemented* (was: name used both as a table and as a scalar, D-010; superseded by D-020) |
 | DS2008 | error | column type has no DataScript equivalent and can only be projected |
 | DS2009 | error | untyped `null` with no context (suggest `long(null)`, …) |
+| DS2010 | error | a pipeline (a table) used where a value is expected |
+| DS2011 | error | named argument in a call to a function that takes none |
+| DS2012 | error | field access or indexing on a value that is not `dynamic` (`dynamic` is M2) |
 | DS2101 | warning | `take`/`limit` before `sort`: the rows kept are arbitrary *(planned, M1-14)* |
 | DS2102 | warning | predicate is always true or always false *(planned, M1-14)* |
 | DS2103 | warning | `sort` key without `asc`/`desc` (default is asc, ≠ KQL); machine-applicable fix inserts `asc` *(planned, M1-14, D-005)* |

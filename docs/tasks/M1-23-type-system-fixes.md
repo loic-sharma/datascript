@@ -48,5 +48,6 @@ M1-08/M1-09.
 - [ ] Any spec change is in LANGUAGE.md and DECISIONS.md.
 
 ## Carried over
+- [ ] (from M1-05) `catalog::PLANNED` and `UnknownFunction::planned` landed in M1-05 and the binder uses them (DS1004 "not available yet"); drop that bullet from the scope, keep the list in sync. The binder reports a function whose result type is `Null` as DS2009 at the `null` argument, so defaulting the type here would change `errors/types/ds2009_untyped_null.dstest`.
 
 ## Follow-ups

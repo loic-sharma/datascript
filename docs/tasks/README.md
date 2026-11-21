@@ -61,7 +61,7 @@ Two shared files are touched by many tasks:
 | [M1-23](M1-23-type-system-fixes.md) | Type system and catalog fixes | M1-04 | todo | M1-18…M1-22 |
 | [M1-24](M1-24-from-keyword.md) | Require `from` at the start of a query | M1-22 | done | M1-23 |
 | [M1-25](M1-25-from-diagnostics.md) | `from` mistakes and statement starts | M1-24 | done | M1-23, M1-05 and later |
-| [M1-05](M1-05-binder.md) | Binder core and expression checking | M1-15, M1-24 | todo | M1-03 |
+| [M1-05](M1-05-binder.md) | Binder core and expression checking | M1-15, M1-24 | done | M1-03 |
 | [M1-16](M1-16-operator-schemas-joins.md) | Binder: operator schemas, column naming, joins | M1-05 | todo | M1-03, M1-17 |
 | [M1-17](M1-17-source-resolution-capabilities.md) | Binder: source resolution and capability pass | M1-05 | todo | M1-03, M1-16 |
 | [M1-06](M1-06-logical-plan-ir.md) | Logical plan IR and `explain` | M1-16, M1-17 | todo | M1-03 |

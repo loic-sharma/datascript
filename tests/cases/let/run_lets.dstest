@@ -1,0 +1,14 @@
+# Scalar and tabular `let`s run: the tabular `let` is inlined into the query.
+mode: run
+order: any
+---- query
+let threshold = 200;
+let big = from '../../data/orders.csv' | where amount > threshold;
+from big | project orderId, amount | take 3
+---- expected
+orderId | amount
+string  | real
+--------+-------
+o-0006  | 251.75
+o-0028  | 245.75
+o-0029  | 205.5

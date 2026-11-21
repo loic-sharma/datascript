@@ -9,6 +9,6 @@ error[DS2003]: cannot compare `string` with `long`
 1 | from '../../data/orders.csv' | where orderId > 100
   |                                      ^^^^^^^   --- this is `long`
   |                                      |
-  |                                      this is `string`
+  |                                      this is `string` (column `orderId` was read from ../../data/orders.csv)
   |
   = help: if `orderId` holds `long` values, convert it first: `tolong(orderId) > 100`

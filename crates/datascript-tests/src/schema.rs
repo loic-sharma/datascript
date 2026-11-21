@@ -2,22 +2,21 @@
 //!
 //! `schema: orders(orderId: string, amount: real); 'data/x.csv'(n: long)` declares the schemas a
 //! `check` or `explain` case sees without reading any file (TESTING.md, "Header keys"). Type names
-//! are DataScript types (LANGUAGE.md §5); the harness maps them to the canonical Arrow types
-//! itself so the compiler is not involved in reading test files.
+//! are DataScript types (LANGUAGE.md §5), mapped to the canonical Arrow types by the compiler's
+//! own mapping, so cases see exactly the types a real source would have.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use arrow_schema::{DataType, Field, Schema, SchemaRef, TimeUnit};
-use datascript_compiler::{SchemaLookup, SchemaProvider, SourceError, SourceRef};
+use arrow_schema::{Field, Schema, SchemaRef};
+use datascript_compiler::arrow::to_arrow;
+use datascript_compiler::{SchemaLookup, SchemaProvider, SourceError, SourceRef, Type};
 use datascript_diagnostics::did_you_mean;
 
 /// DataScript type names accepted in `schema:`.
 pub const TYPE_NAMES: &[&str] = &[
     "bool", "int", "long", "real", "decimal", "string", "datetime", "timespan", "guid", "dynamic",
 ];
-
-const EXTENSION_NAME_KEY: &str = "ARROW:extension:name";
 
 /// Schemas declared by a case's `schema:` header, keyed by source name.
 ///
@@ -59,32 +58,10 @@ impl SchemaProvider for MockSchemaProvider {
     }
 }
 
-/// The canonical Arrow field for a DataScript type (LANGUAGE.md §5).
+/// The canonical Arrow field for a DataScript type name (LANGUAGE.md §5), from the compiler's
+/// mapping (`datascript_compiler::arrow`).
 pub fn canonical_field(name: &str, ds_type: &str) -> Option<Field> {
-    let (data_type, extension) = match ds_type {
-        "bool" => (DataType::Boolean, None),
-        "int" => (DataType::Int32, None),
-        "long" => (DataType::Int64, None),
-        "real" => (DataType::Float64, None),
-        "decimal" => (DataType::Decimal128(38, 18), None),
-        "string" => (DataType::Utf8, None),
-        "datetime" => (
-            DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())),
-            None,
-        ),
-        "timespan" => (DataType::Duration(TimeUnit::Microsecond), None),
-        "guid" => (DataType::FixedSizeBinary(16), Some("arrow.uuid")),
-        "dynamic" => (DataType::Utf8, Some("arrow.json")),
-        _ => return None,
-    };
-    let field = Field::new(name, data_type, true);
-    Some(match extension {
-        Some(ext) => field.with_metadata(HashMap::from([(
-            EXTENSION_NAME_KEY.to_string(),
-            ext.to_string(),
-        )])),
-        None => field,
-    })
+    Type::from_name(ds_type).map(|ty| to_arrow(name, ty))
 }
 
 /// Parses the value of a `schema:` header. Errors are messages without a line number.
@@ -273,6 +250,9 @@ impl Cursor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arrow_schema::{DataType, TimeUnit};
+
+    const EXTENSION_NAME_KEY: &str = "ARROW:extension:name";
 
     #[test]
     fn parses_tables_and_types() {

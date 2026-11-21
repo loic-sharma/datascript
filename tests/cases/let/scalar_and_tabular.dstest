@@ -1,0 +1,9 @@
+# Scalar and tabular `let`s, decided by the syntax (D-036), used by a query.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, small: int, timestamp: datetime, wait: timespan, shipped: bool)
+---- query
+let threshold = 100;
+let factor = threshold * 2;
+let big = from 'orders.csv' | where amount > factor;
+from big | where qty > threshold | take 5
+---- expected

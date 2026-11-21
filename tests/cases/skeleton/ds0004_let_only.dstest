@@ -1,0 +1,9 @@
+# A program of only `let` statements has nothing to run: DS0004.
+mode: run
+---- query
+let x = 1;
+---- expected
+warning[DS0004]: program has no query to run
+  --> query
+  |
+  = help: add a query, such as `from 'data.csv' | take 10`
