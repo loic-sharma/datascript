@@ -322,3 +322,12 @@ option to export the full result. Decide in M4-01.
 D-014 says these are runtime errors and calls that "following KQL". Check real KQL behaviour in
 M1-09. If KQL wraps or returns null, either keep the rule and mark it ≠ KQL in LANGUAGE.md §4.1,
 or follow KQL. Either way, record the answer here.
+
+### Q-009 — Require `from` at the start of a query *(decided, lands with M1-24)*
+The maintainer chose to require `from` at every pipeline head (`from 'orders.csv' | take 5`), with
+the right side of `join`/`union`/`lookup` left bare, generators (`range`, `datatable`, `print`)
+starting a query on their own, `from` kept contextual, and no bare-source fallback. It lets the
+parser know where a table starts, makes a `let`'s kind syntactic, makes the missing-`;` fix certain
+before a `from` line, and helps completion; the cost is a habit KQL users must change, softened by a
+machine-applicable fix. Until [M1-24](tasks/M1-24-from-keyword.md) lands, LANGUAGE.md still
+describes bare sources. M1-24 turns this into D-036 and updates D-006, D-020 and D-029.

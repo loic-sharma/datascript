@@ -1,7 +1,7 @@
 # M1-05 — Binder core and expression checking
 
 **Status:** todo
-**Depends on:** M1-15
+**Depends on:** M1-15, M1-24
 **Crates:** `datascript-compiler`
 **Diagnostic codes:** DS1001–DS1029, DS2001–DS2029 (M1-04 owns DS2002/2003/2006/2009) (D-018)
 
