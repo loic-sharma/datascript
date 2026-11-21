@@ -142,7 +142,8 @@ impl CsvTable {
         let unreadable = |e: &dyn std::fmt::Display| SourceError::Unreadable {
             reason: e.to_string(),
         };
-        let url = ListingTableUrl::parse(path.to_string_lossy()).map_err(|e| unreadable(&e))?;
+        let url = ListingTableUrl::parse(strip_verbatim(&path).to_string_lossy())
+            .map_err(|e| unreadable(&e))?;
         let options = ListingOptions::new(Arc::new(CsvFormat::default().with_has_header(true)))
             .with_file_extension(file_extension(&path));
         let raw = options
@@ -179,6 +180,25 @@ fn resolve(path: &str, base_dir: &Path) -> PathBuf {
         path.to_path_buf()
     } else {
         base_dir.join(path)
+    }
+}
+
+/// `path` without a Windows verbatim prefix: `\\?\C:\x` becomes `C:\x` and
+/// `\\?\UNC\server\share\x` becomes `\\server\share\x`.
+///
+/// `canonicalize` returns verbatim paths on Windows, and `ListingTableUrl` (through the `url`
+/// crate) cannot turn one into a `file://` URL that maps back to an absolute path. Other paths,
+/// and every path on other platforms, come back unchanged.
+fn strip_verbatim(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = s.strip_prefix(r"\\?\")
+        && rest.as_bytes().get(1) == Some(&b':')
+    {
+        PathBuf::from(rest)
+    } else {
+        path.to_path_buf()
     }
 }
 
@@ -349,6 +369,23 @@ mod tests {
 
     fn fixtures() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/data")
+    }
+
+    #[test]
+    fn strip_verbatim_removes_windows_prefixes() {
+        let strip = |s: &str| strip_verbatim(Path::new(s)).to_string_lossy().into_owned();
+        assert_eq!(strip(r"\\?\C:\data\orders.csv"), r"C:\data\orders.csv");
+        assert_eq!(
+            strip(r"\\?\UNC\server\share\orders.csv"),
+            r"\\server\share\orders.csv"
+        );
+        assert_eq!(strip(r"C:\data\orders.csv"), r"C:\data\orders.csv");
+        assert_eq!(strip("/data/orders.csv"), "/data/orders.csv");
+        // Verbatim paths that are not disk or UNC paths have no plain form; leave them alone.
+        assert_eq!(
+            strip(r"\\?\Volume{abc}\orders.csv"),
+            r"\\?\Volume{abc}\orders.csv"
+        );
     }
 
     fn ctx() -> ExecContext {
