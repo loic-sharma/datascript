@@ -1,0 +1,25 @@
+# Bad unicode escapes.
+mode: syntax
+---- query
+'\u{110000}' '\uABCD'
+---- expected
+STRING@0..12 "'\\u{110000}'"
+WHITESPACE@12..13 " "
+STRING@13..21 "'\\uABCD'"
+WHITESPACE@21..22 "\n"
+
+error[DS0005]: invalid unicode escape `\u{110000}`
+  --> query:1:2
+  |
+1 | '\u{110000}' '\uABCD'
+  |  ^^^^^^^^^^ not a valid unicode escape
+  |
+  = help: write `\u{` followed by 1 to 6 hex digits and `}`, e.g. `\u{1F600}`
+
+error[DS0005]: invalid unicode escape `\u`
+  --> query:1:15
+  |
+1 | '\u{110000}' '\uABCD'
+  |               ^^ not a valid unicode escape
+  |
+  = help: write `\u{` followed by 1 to 6 hex digits and `}`, e.g. `\u{1F600}`

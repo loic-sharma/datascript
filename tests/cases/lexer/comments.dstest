@@ -1,0 +1,19 @@
+# Line and block comments are trivia.
+mode: syntax
+---- query
+t // to end of line
+/* block
+   comment */ | take 1
+---- expected
+IDENT@0..1 "t"
+WHITESPACE@1..2 " "
+LINE_COMMENT@2..19 "// to end of line"
+WHITESPACE@19..20 "\n"
+BLOCK_COMMENT@20..42 "/* block\n   comment */"
+WHITESPACE@42..43 " "
+PIPE@43..44 "|"
+WHITESPACE@44..45 " "
+IDENT@45..49 "take"
+WHITESPACE@49..50 " "
+LONG@50..51 "1"
+WHITESPACE@51..52 "\n"

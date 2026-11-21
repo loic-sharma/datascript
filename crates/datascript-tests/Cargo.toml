@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 datascript-diagnostics = { path = "../datascript-diagnostics" }
+datascript-syntax = { path = "../datascript-syntax" }
 arrow-schema.workspace = true
 libtest-mimic.workspace = true
 similar.workspace = true

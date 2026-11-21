@@ -179,6 +179,19 @@ JSON form and the LSP, so the help text spells out the rewrite, as in the DS0110
 location-less diagnostic carries an optional `file` so renderers can name the file (style rule 11).
 *(M0-02, 2026-11-20.)*
 
+### D-028 — Lexical details settled by the lexer
+M1-01 had to pin down cases LANGUAGE.md §1 left open. Strings (normal and verbatim) end at the end
+of their line, so an unterminated string spoils one line, not the rest of the file. A malformed
+literal keeps its literal kind (`1x` is a `TIMESPAN` token with DS0003); only text that starts no
+token becomes `ERROR`, so the parser sees an expression where the user meant one and does not
+cascade. `literal::*` re-reads values for later stages, which treat an `Err` as already reported.
+`['x']` is one token only with no trivia inside the brackets, so `['a', 'b']` stays a list (M2
+`dynamic` literals must read a lone `["a"]` inside `dynamic(...)` as a one-element array).
+Non-ASCII letters in an unquoted name and SQL-style `` `name` `` are DS0001 with a quoting fix
+rather than a run of errors. Unicode white space (no-break space, BOM) is white space, but
+zero-width characters are DS0001, since they are invisible and almost always pasted by accident.
+*(M1-01, 2026-11-20.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

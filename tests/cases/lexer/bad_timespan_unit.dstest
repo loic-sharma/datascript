@@ -1,0 +1,25 @@
+# A number followed by an unknown unit names the valid units.
+mode: syntax
+---- query
+t | where duration > 1x
+---- expected
+IDENT@0..1 "t"
+WHITESPACE@1..2 " "
+PIPE@2..3 "|"
+WHITESPACE@3..4 " "
+IDENT@4..9 "where"
+WHITESPACE@9..10 " "
+IDENT@10..18 "duration"
+WHITESPACE@18..19 " "
+GT@19..20 ">"
+WHITESPACE@20..21 " "
+TIMESPAN@21..23 "1x"
+WHITESPACE@23..24 "\n"
+
+error[DS0003]: unknown timespan unit `x`
+  --> query:1:23
+  |
+1 | t | where duration > 1x
+  |                       ^ not a timespan unit
+  |
+  = help: valid units are `d`, `h`, `m` (minutes), `s`, `ms`, `us` (or `µs`) and `tick` (100 ns)

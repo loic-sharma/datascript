@@ -1,0 +1,42 @@
+# Two independent lexical errors are both reported.
+mode: syntax
+---- query
+t | where a == 'x\q' and b > 3y
+---- expected
+IDENT@0..1 "t"
+WHITESPACE@1..2 " "
+PIPE@2..3 "|"
+WHITESPACE@3..4 " "
+IDENT@4..9 "where"
+WHITESPACE@9..10 " "
+IDENT@10..11 "a"
+WHITESPACE@11..12 " "
+EQ2@12..14 "=="
+WHITESPACE@14..15 " "
+STRING@15..20 "'x\\q'"
+WHITESPACE@20..21 " "
+AND_KW@21..24 "and"
+WHITESPACE@24..25 " "
+IDENT@25..26 "b"
+WHITESPACE@26..27 " "
+GT@27..28 ">"
+WHITESPACE@28..29 " "
+TIMESPAN@29..31 "3y"
+WHITESPACE@31..32 "\n"
+
+error[DS0005]: unknown escape sequence `\q`
+  --> query:1:18
+  |
+1 | t | where a == 'x\q' and b > 3y
+  |                  ^^ not a valid escape
+  |
+  = help: to write a backslash, double it: `'x\\q'`
+  = note: valid escapes are `\\`, `\"`, `\'`, `\n`, `\r`, `\t`, `\0` and `\u{...}`
+
+error[DS0003]: unknown timespan unit `y`
+  --> query:1:31
+  |
+1 | t | where a == 'x\q' and b > 3y
+  |                               ^ not a timespan unit
+  |
+  = help: valid units are `d`, `h`, `m` (minutes), `s`, `ms`, `us` (or `µs`) and `tick` (100 ns)

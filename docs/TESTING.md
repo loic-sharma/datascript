@@ -10,7 +10,7 @@ are behaviour, and they are reviewed in diffs like any other output.
 |---|---|---|
 | Golden tests | `tests/cases/**/*.dstest`, run by the `datascript-tests` crate | End-to-end: parse → bind → plan → execute, or the diagnostics |
 | Unit tests | `#[cfg(test)]` in each crate | Lexer edge cases, type rules, small algorithms |
-| Parser snapshots | `tests/cases/syntax/*.dstest` with `mode: syntax` | CST dumps for tricky parses and recovery |
+| Parser snapshots | `tests/cases/syntax/*.dstest` with `mode: syntax` | CST dumps for tricky parses and recovery (until M1-02 lands, `syntax` mode prints the token list: `KIND@start..end "text"`, then the lexical diagnostics) |
 | LSP tests | `crates/datascript-lsp/tests` (M3) | Request/response scripts against an in-process server |
 | Web/WASM tests | `web/` (Vitest + Playwright, M4/M5) | UI flows and runtime parity with the CLI |
 

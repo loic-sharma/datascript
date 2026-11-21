@@ -1,0 +1,33 @@
+# An unterminated string ends at the end of its line; the next line lexes normally.
+mode: syntax
+---- query
+t | where name == 'abc
+| take 1
+---- expected
+IDENT@0..1 "t"
+WHITESPACE@1..2 " "
+PIPE@2..3 "|"
+WHITESPACE@3..4 " "
+IDENT@4..9 "where"
+WHITESPACE@9..10 " "
+IDENT@10..14 "name"
+WHITESPACE@14..15 " "
+EQ2@15..17 "=="
+WHITESPACE@17..18 " "
+STRING@18..22 "'abc"
+WHITESPACE@22..23 "\n"
+PIPE@23..24 "|"
+WHITESPACE@24..25 " "
+IDENT@25..29 "take"
+WHITESPACE@29..30 " "
+LONG@30..31 "1"
+WHITESPACE@31..32 "\n"
+
+error[DS0002]: unterminated string
+  --> query:1:19
+  |
+1 | t | where name == 'abc
+  |                   ^^^^ this string is never closed
+  |
+  = help: add a closing `'` at the end of the string
+  = note: a string ends at the end of its line

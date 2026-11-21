@@ -18,10 +18,12 @@ pub mod bless;
 pub mod case;
 pub mod driver;
 pub mod output;
+pub mod pipeline;
 pub mod runner;
 pub mod schema;
 
 pub use case::{CaseError, ExpectedSection, Mode, Order, TestCase};
 pub use driver::{CaseInput, Driver, DriverConfig, DriverError, DriverResult, StubDriver};
+pub use pipeline::PipelineDriver;
 pub use runner::Drivers;
 pub use schema::MockSchemaProvider;

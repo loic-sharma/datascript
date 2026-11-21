@@ -40,7 +40,7 @@ Two shared files are touched by many tasks:
 
 | ID | Task | Depends on | Status | Parallel with |
 |---|---|---|---|---|
-| [M1-01](M1-01-lexer.md) | Lexer | M0-02, M0-03 | todo | M1-04 |
+| [M1-01](M1-01-lexer.md) | Lexer | M0-02, M0-03 | done | M1-04 |
 | [M1-02](M1-02-parser.md) | Parser and syntax tree | M1-01 | todo | M1-04 |
 | [M1-03](M1-03-syntax-diagnostics.md) | Syntax diagnostics quality pass | M1-02 | todo | M1-05 and later |
 | [M1-04](M1-04-types-function-catalog.md) | Type system and function catalog | M0-02 | todo | M1-01, M1-02 |

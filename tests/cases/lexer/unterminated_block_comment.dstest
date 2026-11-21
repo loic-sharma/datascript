@@ -1,0 +1,24 @@
+# An unterminated block comment points at where it starts.
+mode: syntax
+---- query
+t | take 1 /* note
+| where x > 1
+---- expected
+IDENT@0..1 "t"
+WHITESPACE@1..2 " "
+PIPE@2..3 "|"
+WHITESPACE@3..4 " "
+IDENT@4..8 "take"
+WHITESPACE@8..9 " "
+LONG@9..10 "1"
+WHITESPACE@10..11 " "
+BLOCK_COMMENT@11..33 "/* note\n| where x > 1\n"
+
+error[DS0006]: unterminated block comment
+  --> query:1:12
+  |
+1 | t | take 1 /* note
+  |            ^^ this comment is never closed
+  |
+  = help: close it with `*/`
+  = note: block comments do not nest

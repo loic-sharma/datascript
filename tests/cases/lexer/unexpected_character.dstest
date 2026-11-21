@@ -1,0 +1,57 @@
+# Characters that start no token.
+mode: syntax
+---- query
+t | where x > 1 # comment?
+| extend y = `z`
+---- expected
+IDENT@0..1 "t"
+WHITESPACE@1..2 " "
+PIPE@2..3 "|"
+WHITESPACE@3..4 " "
+IDENT@4..9 "where"
+WHITESPACE@9..10 " "
+IDENT@10..11 "x"
+WHITESPACE@11..12 " "
+GT@12..13 ">"
+WHITESPACE@13..14 " "
+LONG@14..15 "1"
+WHITESPACE@15..16 " "
+ERROR@16..17 "#"
+WHITESPACE@17..18 " "
+IDENT@18..25 "comment"
+ERROR@25..26 "?"
+WHITESPACE@26..27 "\n"
+PIPE@27..28 "|"
+WHITESPACE@28..29 " "
+IDENT@29..35 "extend"
+WHITESPACE@35..36 " "
+IDENT@36..37 "y"
+WHITESPACE@37..38 " "
+EQ@38..39 "="
+WHITESPACE@39..40 " "
+ERROR@40..43 "`z`"
+WHITESPACE@43..44 "\n"
+
+error[DS0001]: unexpected character `#`
+  --> query:1:17
+  |
+1 | t | where x > 1 # comment?
+  |                 ^ not valid here
+  |
+  = help: comments start with `//`
+
+error[DS0001]: unexpected character `?`
+  --> query:1:26
+  |
+1 | t | where x > 1 # comment?
+  |                          ^ not valid here
+  |
+  = help: for a conditional value, use `iff(condition, then, else)`
+
+error[DS0001]: names are not quoted with backticks
+  --> query:2:14
+  |
+2 | | extend y = `z`
+  |              ^^^ backticks are not a quote
+  |
+  = help: quote the name with brackets: `['z']`

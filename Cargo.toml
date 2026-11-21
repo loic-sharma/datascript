@@ -23,6 +23,7 @@ arrow-cast = { version = "59", default-features = false }
 parquet = { version = "59", default-features = false, features = ["arrow"] }
 libtest-mimic = "0.8"
 similar = "3"
+proptest = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

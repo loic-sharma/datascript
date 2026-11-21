@@ -19,13 +19,18 @@ is marked **≠ KQL**. Where this document and the function catalog are silent, 
   reserved word, are quoted: `['order id']` or `["order id"]`.
 - **Punctuation and operators**: `|` `;` `,` `(` `)` `[` `]` `{` `}` `.` `..` `=` `==` `!=` `<`
   `<=` `>` `>=` `=~` `!~` `+` `-` `*` `/` `%` `:` `!` `~`. `$left` and `$right` are single tokens
-  (used in `join ... on`).
+  (used in `join ... on`). `<>`, `&&` and `||` are lexed as tokens only so that the parser can
+  suggest `!=`, `and` and `or` (`DS0107`, `DS0111`).
 - **Negated and case-insensitive operator forms**: `!` directly followed (no trivia) by one of
   `in`, `between`, `has`, `contains`, `startswith`, `endswith` or their `_cs` variants is the
   negated operator (`!has`, `!in`). `in~` and `!in~` are `in`/`!in` directly followed by `~`. The
   lexer reads the whole identifier after `!` before deciding, so `!has_error` is `!` followed by
   the name `has_error`. A `!` that does not start one of these forms (`!x`, `!has_error`) is `DS0111`
   with a suggestion to use `not(...)`.
+- **Unexpected characters** (`#`, `` ` ``, `?`, `\` outside a string, invisible characters such as
+  U+200B) are `DS0001`. A word with non-ASCII letters (`naïve`) is one `DS0001` suggesting
+  `['naïve']`; `` `name` `` is one `DS0001` suggesting `['name']`. Unicode white space (no-break
+  space, BOM) counts as white space.
 - **Literals**
 
 | Kind | Examples | Notes |
@@ -45,12 +50,29 @@ typed forms `<type>(null)` are literals, not function calls, so their contents a
 expressions (`datetime(2024-01-31)` is not a subtraction). The type names stay unreserved
 (§1.1); the rules apply only when the name is directly followed by `(`:
 
-- `datetime(` and `timespan(`: the lexer reads everything up to the next `)` as **one literal
-  token** and checks it (`DS0003`). A body of `null` makes a typed null.
+- `datetime(` and `timespan(`: the lexer reads everything up to the next `)` (or the end of the
+  line, which is `DS0003`) as **one literal token** and checks it (`DS0003`). A body of `null`
+  makes a typed null. White space around the body is allowed.
+  - `datetime` bodies: `YYYY-MM-DD`, optionally followed by `T` or a space, `hh:mm`, optional
+    `:ss` and a fraction (truncated to µs), and an optional `Z` or `±hh:mm` offset. Month, day,
+    hour, minute and second may have one or two digits.
+  - `timespan` bodies: `[-][d.]hh:mm[:ss[.fffffff]]` (hours 0–23, minutes and seconds 0–59), or a
+    short-form timespan such as `90m`.
 - `<type>(null)` for the other type names (`bool`, `int`, `long`, `real`, `decimal`, `string`,
   `guid`, `dynamic`): the parser recognizes the type name, `(`, `null`, `)` sequence as a typed-null
   literal.
 - `dynamic(...)` (M2): the parser reads a JSON-like literal body (arrays, objects, scalar literals).
+
+**Lexical details** (D-028):
+
+- `_` in a number must sit between two digits (`1_000`, not `1_` or `1__0`).
+- A timespan is a number directly followed by a unit; the number cannot have an exponent (`1e3s`
+  is `DS0003`). An unknown unit (`1x`, `10min`) is `DS0003` listing the valid units.
+- Strings, including verbatim ones, end at the end of their line. An unterminated string
+  (`DS0002`) covers the opening quote to the end of the line, and the next line lexes normally.
+- `\u{...}` takes 1 to 6 hex digits naming a Unicode scalar value; anything else is `DS0005`.
+- A quoted name `['x']` / `["x"]` is one token only when there is no trivia between the brackets
+  and the string. `[ 'x' ]` and `['a', 'b']` are a bracket, strings and a bracket.
 
 ### 1.1 Keywords
 

@@ -10,7 +10,7 @@ use libtest_mimic::{Arguments, Failed, Trial};
 
 use crate::bless::bless;
 use crate::case::{Order, TestCase};
-use crate::driver::{CaseInput, Driver, DriverConfig, DriverError, StubDriver, dispatch};
+use crate::driver::{CaseInput, Driver, DriverConfig, DriverError, dispatch};
 use crate::output::{canonicalize, diff, normalize_paths};
 
 /// The drivers available to the harness, one per engine name.
@@ -47,10 +47,11 @@ impl Drivers {
         self
     }
 
-    /// The drivers that exist today. Until the pipeline lands every engine is a stub, so every
-    /// case is ignored.
+    /// The drivers that exist today: the [`PipelineDriver`](crate::PipelineDriver), which supports
+    /// only the modes whose pipeline stages exist.
     pub fn current() -> Self {
-        Self::new(DriverConfig::default()).with(StubDriver::new(crate::case::DEFAULT_ENGINE))
+        Self::new(DriverConfig::default())
+            .with(crate::PipelineDriver::new(crate::case::DEFAULT_ENGINE))
     }
 
     fn get(&self, engine: &str) -> Option<Arc<dyn Driver>> {

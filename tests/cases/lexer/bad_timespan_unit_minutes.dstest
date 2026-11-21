@@ -1,0 +1,26 @@
+# Common unit spellings get a targeted hint.
+mode: syntax
+---- query
+t | where duration > 10min
+---- expected
+IDENT@0..1 "t"
+WHITESPACE@1..2 " "
+PIPE@2..3 "|"
+WHITESPACE@3..4 " "
+IDENT@4..9 "where"
+WHITESPACE@9..10 " "
+IDENT@10..18 "duration"
+WHITESPACE@18..19 " "
+GT@19..20 ">"
+WHITESPACE@20..21 " "
+TIMESPAN@21..26 "10min"
+WHITESPACE@26..27 "\n"
+
+error[DS0003]: unknown timespan unit `min`
+  --> query:1:24
+  |
+1 | t | where duration > 10min
+  |                        ^^^ not a timespan unit
+  |
+  = help: valid units are `d`, `h`, `m` (minutes), `s`, `ms`, `us` (or `µs`) and `tick` (100 ns)
+  = help: for minutes, write `m`: `30m`

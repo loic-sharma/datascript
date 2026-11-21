@@ -1,0 +1,22 @@
+# Names with non-ASCII letters must be quoted.
+mode: syntax
+---- query
+t | project naïve
+---- expected
+IDENT@0..1 "t"
+WHITESPACE@1..2 " "
+PIPE@2..3 "|"
+WHITESPACE@3..4 " "
+IDENT@4..11 "project"
+WHITESPACE@11..12 " "
+ERROR@12..18 "naïve"
+WHITESPACE@18..19 "\n"
+
+error[DS0001]: names with non-ASCII characters must be quoted: `naïve`
+  --> query:1:13
+  |
+1 | t | project naïve
+  |             ^^^^^ unquoted name with non-ASCII characters
+  |
+  = help: quote the name: `['naïve']`
+  = note: unquoted names use only the letters A-Z and a-z, digits and `_`

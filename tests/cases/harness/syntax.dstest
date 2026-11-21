@@ -1,6 +1,24 @@
 # Sample `syntax` case: dumps the CST of a short pipeline.
-# The CST dump format is defined by M1-02; bless this file once that mode is supported.
+# Until M1-02 adds the CST dump, `syntax` mode prints the token list.
 mode: syntax
 ---- query
 orders | where amount > 10 | take 5
 ---- expected
+IDENT@0..6 "orders"
+WHITESPACE@6..7 " "
+PIPE@7..8 "|"
+WHITESPACE@8..9 " "
+IDENT@9..14 "where"
+WHITESPACE@14..15 " "
+IDENT@15..21 "amount"
+WHITESPACE@21..22 " "
+GT@22..23 ">"
+WHITESPACE@23..24 " "
+LONG@24..26 "10"
+WHITESPACE@26..27 " "
+PIPE@27..28 "|"
+WHITESPACE@28..29 " "
+IDENT@29..33 "take"
+WHITESPACE@33..34 " "
+LONG@34..35 "5"
+WHITESPACE@35..36 "\n"

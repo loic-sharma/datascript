@@ -1,0 +1,25 @@
+# `project-away` lexes as three tokens; the parser joins them (D-026).
+mode: syntax
+---- query
+t | project-away x | project - away y
+---- expected
+IDENT@0..1 "t"
+WHITESPACE@1..2 " "
+PIPE@2..3 "|"
+WHITESPACE@3..4 " "
+IDENT@4..11 "project"
+MINUS@11..12 "-"
+IDENT@12..16 "away"
+WHITESPACE@16..17 " "
+IDENT@17..18 "x"
+WHITESPACE@18..19 " "
+PIPE@19..20 "|"
+WHITESPACE@20..21 " "
+IDENT@21..28 "project"
+WHITESPACE@28..29 " "
+MINUS@29..30 "-"
+WHITESPACE@30..31 " "
+IDENT@31..35 "away"
+WHITESPACE@35..36 " "
+IDENT@36..37 "y"
+WHITESPACE@37..38 "\n"

@@ -1,0 +1,17 @@
+# datetime(...) is one literal token when the name is directly followed by `(`.
+mode: syntax
+---- query
+datetime(2024-01-31) datetime(2024-01-31T12:00:00Z) datetime(null) datetime (x)
+---- expected
+DATETIME@0..20 "datetime(2024-01-31)"
+WHITESPACE@20..21 " "
+DATETIME@21..51 "datetime(2024-01-31T12:00:00Z)"
+WHITESPACE@51..52 " "
+DATETIME@52..66 "datetime(null)"
+WHITESPACE@66..67 " "
+IDENT@67..75 "datetime"
+WHITESPACE@75..76 " "
+L_PAREN@76..77 "("
+IDENT@77..78 "x"
+R_PAREN@78..79 ")"
+WHITESPACE@79..80 "\n"
