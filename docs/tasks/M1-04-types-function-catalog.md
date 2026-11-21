@@ -1,6 +1,6 @@
 # M1-04 — Type system and function catalog
 
-**Status:** todo
+**Status:** done — `Type`, Arrow mappings, §4.1 operator table, `FunctionCatalog` with the M1 set and overload resolution (DS2002/2003/2006/2009 builders), `Capabilities`.
 **Depends on:** M0-02
 **Crates:** `datascript-compiler`
 **Diagnostic codes:** DS2002, DS2003, DS2006, DS2009 (inside M1-05's block) (D-018)
@@ -36,9 +36,14 @@ Design-review additions:
   D-014) is a plain data type defined here, not in the engine crate (ARCHITECTURE.md).
 
 ## Acceptance criteria
-- [ ] Unit tests for coercion and overload resolution, including the error-type short circuit.
-- [ ] A test that every catalog entry has docs and at least one example.
-- [ ] Builds for wasm32.
-- [ ] Every row of LANGUAGE.md §4.1 and §5.1 has a unit test.
+- [x] Unit tests for coercion and overload resolution, including the error-type short circuit.
+- [x] A test that every catalog entry has docs and at least one example.
+- [x] Builds for wasm32.
+- [x] Every row of LANGUAGE.md §4.1 and §5.1 has a unit test.
 
 ## Follow-ups
+- The diagnostics are builders (`BinaryTypeError::diagnostic`, `ArityError::diagnostic`,
+  `ArgTypeError::diagnostic`, `operators::untyped_null`); golden `check` cases for them come with
+  the binder (M1-05), which also adds where a type came from to the labels.
+- `UnknownFunction` carries did-you-mean and foreign-name equivalents; M1-05 owns DS1004 and
+  turns it into the diagnostic.

@@ -355,7 +355,7 @@ Source columns are widened to a DataScript type at the scan (D-012):
 | Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32 | `long` | All integers widen to `long` (D-021) |
 | UInt64 | `long` | Values above `i64::MAX` are a runtime error (`DS4003`) naming the column |
 | Float16, Float32, Float64 | `real` | |
-| Decimal128, Decimal256 | `real` in M1, `decimal` from M2 | Precision loss in M1 is documented in the `getschema` output |
+| Decimal32, Decimal64, Decimal128, Decimal256 | `real` in M1, `decimal` from M2 | Precision loss in M1 is documented in the `getschema` output |
 | Utf8, LargeUtf8, Utf8View, Dictionary(_, Utf8 \| LargeUtf8 \| Utf8View) | `string` | |
 | Timestamp(any unit, any or no timezone) | `datetime` | Converted to UTC. No timezone means UTC. Nanoseconds are truncated to µs |
 | Date32, Date64 | `datetime` | Midnight UTC |
@@ -405,7 +405,7 @@ Semantics follow KQL unless noted (D-014). All datetime functions work in UTC.
   `isnull(x)`, `isnotnull(x)`, `isempty(x)`, `isnotempty(x)`.
 - **Conversion**: `tostring`, `toint`, `tolong`, `toreal`, `tobool`, `todatetime`, `totimespan`.
   A value that does not convert becomes null (as in KQL).
-- **String**: `strlen` (in Unicode scalar values), `tolower`, `toupper`, `trim`,
+- **String**: `strlen` (in Unicode scalar values), `tolower`, `toupper`, `trim(regex, s)` (as in KQL, D-031),
   `substring(s, start [, len])` (0-based), `strcat(...)`, `replace_string(s, find, repl)`,
   `split(s, sep)` (M2, returns dynamic), `indexof` (0-based, -1 if absent),
   `extract(regex, group, s)`.

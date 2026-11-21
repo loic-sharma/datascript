@@ -8,6 +8,9 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+arrow-schema.workspace = true
+datascript-diagnostics = { path = "../datascript-diagnostics" }
+datascript-syntax = { path = "../datascript-syntax" }
 
 [lints]
 workspace = true

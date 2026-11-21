@@ -229,6 +229,15 @@ opening one; brackets left open at the same place share one error with a label e
 `mode: syntax` output shows the query with every machine-applicable fix applied and whether it
 parses (TESTING.md). *(M1-03, 2026-11-20.)*
 
+### D-031 — Function catalog details settled by M1-04
+LANGUAGE.md §7 lists names, not signatures; where it is silent the catalog follows KQL (D-014).
+`trim` takes `(regex, source)` as in KQL, not a single string. `now`, `startof*`/`endof*` and
+`indexof` take KQL's optional trailing arguments. Arrow `Decimal32` and `Decimal64` (newer than
+the table was written against) read as `real` like the other decimals. A `T` parameter widens
+all its arguments to one type, so `iff(p, 1, 2.5)` is `real`; an untyped `null` operand takes the
+type of the first operator row the other operand fits (`dt - null` is `datetime`). *(M1-04,
+2026-11-20.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

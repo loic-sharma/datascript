@@ -382,6 +382,11 @@ dependencies = [
 [[package]]
 name = "datascript-compiler"
 version = "0.0.0"
+dependencies = [
+ "arrow-schema",
+ "datascript-diagnostics",
+ "datascript-syntax",
+]
 
 [[package]]
 name = "datascript-datafusion"
