@@ -12,7 +12,7 @@ use arrow_array::types::Int32Type;
 use arrow_array::{
     ArrayRef, BinaryArray, Date32Array, Decimal128Array, DictionaryArray, Float32Array,
     Float64Array, Int16Array, Int64Array, RecordBatch, StringArray, TimestampMicrosecondArray,
-    TimestampNanosecondArray, UInt32Array,
+    TimestampNanosecondArray, UInt32Array, UInt64Array,
 };
 use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
@@ -58,6 +58,7 @@ pub fn generate() -> Vec<Fixture> {
     files.extend(edge_files());
     files.extend(reordered_files());
     files.push(fixture("types.parquet", types_parquet()));
+    files.extend(source_files(&orders_csv(&orders)));
     files
 }
 
@@ -369,6 +370,81 @@ fn reordered_files() -> Vec<Fixture> {
             "name,id,score,extra\ngnu,7,70,x\nhen,8,80,y\n",
         ),
     ]
+}
+
+/// Files for source tests (M1-08): glob widening and conflicts, compression, JSON arrays, reader
+/// options, unreadable files, and `UInt64` values above `i64::MAX`.
+fn source_files(orders_csv: &str) -> Vec<Fixture> {
+    vec![
+        fixture("widen/a.csv", "id,score\n1,10\n2,20\n"),
+        fixture("widen/b.csv", "id,score\n3,30.5\n4,40.25\n"),
+        fixture(
+            "conflict/a.csv",
+            "id,when\n1,2024-01-01T00:00:00Z\n2,2024-01-02T00:00:00Z\n",
+        ),
+        fixture("conflict/b.csv", "id,when\n3,soon\n4,later\n"),
+        fixture("compressed/orders.csv.gz", gzip(orders_csv.as_bytes())),
+        fixture(
+            "compressed/orders.tsv.zst",
+            zstd(orders_csv.replace(',', "\t").as_bytes()),
+        ),
+        fixture("compressed/orders.dat", gzip(orders_csv.as_bytes())),
+        fixture(
+            "json/array.json",
+            "[\n  {\"id\": 1, \"name\": \"ant\", \"score\": 1.5},\n  \
+             {\"id\": 2, \"name\": \"bee\", \"score\": null},\n  \
+             {\"id\": 3, \"name\": \"cat\", \"score\": 3.25}\n]\n",
+        ),
+        fixture(
+            "json/lines.json",
+            "{\"id\": 1, \"name\": \"ant\"}\n{\"id\": 2, \"name\": \"bee\"}\n",
+        ),
+        fixture(
+            "options/semicolon.txt",
+            "1;'a;b';1.5\n2;NA;2.5\n3;plain;NA\n",
+        ),
+        fixture("bad/broken.json", "{\"id\": 1}\n{\"id\": \n"),
+        fixture("bad/not_parquet.parquet", "this is not a parquet file\n"),
+        fixture("uint64.parquet", uint64_parquet()),
+    ]
+}
+
+/// A gzip file holding `bytes` in one stored (uncompressed) deflate block.
+///
+/// Built by hand because compressed output depends on flate2's backend, which Cargo's feature
+/// unification picks differently when the whole workspace is built (DataFusion's `compression`
+/// feature changes it). A stored block is the same everywhere. No file name, zero mtime.
+fn gzip(bytes: &[u8]) -> Vec<u8> {
+    let len = u16::try_from(bytes.len()).expect("a stored block holds at most 65535 bytes");
+    let mut crc = flate2::Crc::new();
+    crc.update(bytes);
+    let mut out = vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff];
+    out.push(1); // BFINAL = 1, BTYPE = 00 (stored)
+    out.extend_from_slice(&len.to_le_bytes());
+    out.extend_from_slice(&(!len).to_le_bytes());
+    out.extend_from_slice(bytes);
+    out.extend_from_slice(&crc.sum().to_le_bytes());
+    out.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+    out
+}
+
+fn zstd(bytes: &[u8]) -> Vec<u8> {
+    zstd::encode_all(bytes, 3).expect("compress in memory")
+}
+
+fn uint64_parquet() -> Vec<u8> {
+    let columns: Vec<(&str, ArrayRef)> = vec![
+        ("id", Arc::new(Int64Array::from(vec![1, 2, 3]))),
+        (
+            "big",
+            Arc::new(UInt64Array::from(vec![
+                Some(1),
+                Some(i64::MAX as u64),
+                Some(u64::MAX),
+            ])),
+        ),
+    ];
+    parquet_bytes(columns)
 }
 
 // ---------------------------------------------------------------------------------------------

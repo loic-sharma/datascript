@@ -220,7 +220,8 @@ string. URLs are not sources in M1; in WASM, URL contents are fetched by `regist
 TSV that means each file's own header row: columns are never matched by position, so files whose
 headers list the same columns in a different order read correctly. A column missing from some
 files is null there. The same column with different types is widened by the rules in §4.2 (e.g. `long` and
-`real` → `real`); if no widening exists, `DS3005` names the two files and the column.
+`real` → `real`); if no widening exists, `DS3005` names the two files and the column. A glob that matches nothing
+is `DS3004`; one that is not a valid pattern (an unclosed `[`) is `DS3009`.
 
 Reader options (M1 set):
 
@@ -231,7 +232,8 @@ Reader options (M1 set):
 | `read_json` | `format = "ndjson" \| "array"`, `compression` |
 
 `delimiter`, `quote` and `escape` are one character; `infer_rows` is at least 1; `compression` is
-`"gzip"`, `"bzip2"`, `"xz"` or `"zstd"`. Reader options must be constant expressions (literals or
+`"gzip"`, `"bzip2"`, `"xz"` or `"zstd"`. Empty CSV fields are null; `null_value` names one more
+text that reads as null. Reader options must be constant expressions (literals or
 scalar `let`s bound to literals), because schemas are fetched before the program can be fully
 bound (ARCHITECTURE.md § Source resolution). A non-constant option or path is `DS3006`, an
 unknown option `DS3003`, a value of the wrong kind `DS2041`, an option given twice `DS2043`, and
@@ -420,11 +422,12 @@ Source columns are widened to a DataScript type at the scan (D-012):
 | Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32 | `long` | All integers widen to `long` (D-021) |
 | UInt64 | `long` | Values above `i64::MAX` are a runtime error (`DS4003`) naming the column |
 | Float16, Float32, Float64 | `real` | |
-| Decimal32, Decimal64, Decimal128, Decimal256 | `real` in M1, `decimal` from M2 | Precision loss in M1 is documented in the `getschema` output |
+| Decimal32, Decimal64, Decimal128, Decimal256 | `real` in M1, `decimal` from M2 | Values beyond `real` precision are rounded in M1 (D-044) |
 | Utf8, LargeUtf8, Utf8View, Dictionary(_, Utf8 \| LargeUtf8 \| Utf8View) | `string` | |
 | Timestamp(any unit, any or no timezone) | `datetime` | Converted to UTC. No timezone means UTC. Nanoseconds are truncated to µs |
 | Date32, Date64 | `datetime` | Midnight UTC |
 | Duration(any unit) | `timespan` | Nanoseconds truncated to µs |
+| Null (a column with no values, such as a CSV column that is empty in every row) | `string` | In a glob it takes the type the other files have (D-044) |
 | FixedSizeBinary(16) with extension type `arrow.uuid` | none in M1; `guid` from M2 (M2-10) | Without the extension type: none |
 | Utf8 with extension type `arrow.json` | none in M1; `dynamic` from M2 (M2-03) | |
 | Struct, List, LargeList, Map | none in M1; `dynamic` from M2 (M2-03) | |

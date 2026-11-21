@@ -477,6 +477,30 @@ adds a panic hook. **Writers**: CSV and JSON print values exactly as the table d
 `value_text` function); JSON uses native booleans and numbers where JSON has them and strings
 otherwise (`NaN`, `inf`, datetimes, timespans). *(M1-07, 2026-11-21.)*
 
+### D-044 — How the DataFusion engine reads sources (M1-08)
+**Globs are read file by file.** The engine infers each file's schema on its own and merges them
+by name. When every file has the same schema, one `ListingTable` reads them all; otherwise each
+file is its own table, projected to the merged columns (typed nulls where a file lacks one) and
+combined with `UNION ALL` in path order, because DataFusion applies a table schema to CSV files by
+position. **The engine remembers what `schema_of` found** (files and per-file schemas, keyed like
+the session cache: base directory, sandbox, `SourceRef`), and the scan uses it instead of
+inferring again; every `schema_of` call reads afresh and replaces the entry, so a session that
+invalidates also refreshes the engine. **Columns with only nulls** (an all-empty CSV column, Arrow
+`Null`) read as `string`, and in a glob take the other files' type; LANGUAGE.md §5.1 has the row.
+**Host tables** are registered on the engine (`DataFusionEngine::with_table(name, SourceRef)`), not
+in `ExecContext`, so the session cache key does not change; their relative paths resolve against
+the run's base directory, so hosts pass absolute paths for `--table` (M1-11). A host table whose
+file is missing is `DS3008`, since `NotFound` for a table means "no such table" (`DS1002`).
+**Workarounds for DataFusion 55**: it applies `null_regex` when inferring a CSV schema but not
+when reading rows, so with `null_value` the scan reads text and applies `nullif` before the cast;
+Parquet is read without view types so columns keep the file's types (`Binary`, not `BinaryView`,
+in `DS2008`). `UInt64` columns go through a checked UDF, so a value above `i64::MAX` is `DS4003`
+naming the column. **`DS3009`** (invalid glob pattern) was added in M1-08's block. **Decimal
+precision**: LANGUAGE.md §5.1 no longer says `getschema` shows the loss; `getschema` shows the
+DataScript type (`real`), and keeping the file's type in the HIR is not worth it before M2 makes
+decimals exact. **wasm**: the crate's `wasm` feature is empty and `compression` (default) is
+native-only; `.cargo/config.toml` sets the getrandom backend for wasm32. *(M1-08, 2026-11-21.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

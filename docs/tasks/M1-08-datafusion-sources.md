@@ -1,6 +1,6 @@
 # M1-08 — DataFusion backend: sources and schemas
 
-**Status:** todo
+**Status:** done: the DataFusion engine reads CSV, TSV, Parquet, JSON and NDJSON (compressed too), globs merged by name, reader options and host tables, widened at the scan; every DS3xxx source error has golden cases, and the crate checks for wasm32 in CI.
 **Depends on:** M1-07, M0-04, M0-05
 **Crates:** `datascript-datafusion`
 **Diagnostic codes:** DS3001–DS3049 (D-018)
@@ -40,22 +40,33 @@ Design-review additions:
   The CI runner needs a wasm-capable `clang` for zstd-sys, plus the getrandom rustflag).
 
 ## Acceptance criteria
-- [ ] Golden `check` cases in `tests/cases/sources/` for every source form and every DS3xxx error.
-- [ ] The harness `Driver` wires `check` mode to the real session with this backend.
-- [ ] Golden cases over a Parquet fixture with `Timestamp(ns)`, `Int16`, `Float32` and a dictionary string column.
-- [ ] `'../../data/reordered/*.csv'` returns correctly aligned rows (golden `run` once M1-09 lands;
+- [x] Golden `check` cases in `tests/cases/sources/` for every source form and every DS3xxx error.
+- [x] The harness `Driver` wires `check` mode to the real session with this backend.
+- [x] Golden cases over a Parquet fixture with `Timestamp(ns)`, `Int16`, `Float32` and a dictionary string column.
+- [x] `'../../data/reordered/*.csv'` returns correctly aligned rows (golden `run` once M1-09 lands;
       `check` of the merged schema here).
-- [ ] The wasm32 check of this crate runs in CI.
+- [x] The wasm32 check of this crate runs in CI.
 
 ## Carried over
-- [ ] (from M1-15) Replace the temporary `SourceError::Unreadable { reason }` (reported as DS9001) with specific cases and DS3008.
-- [ ] (from M1-15) Read all supported extensions (not only `.csv`), globs, reader options and host tables; the scan reuses the schema read during checking instead of reading it again.
-- [ ] (from M0-04) Confirm DataFusion's CSV inference reads `2024-02-29T23:59:59Z` timestamps as UTC timestamps, not strings, with a golden case.
-- [ ] (from review of M1-04) Struct, List and Map columns must not be widened to `arrow.json` text by `widen()` in M1 (the text is not JSON, or the cast fails); report them as unsupported (DS2008) until M2-03, matching M1-23.
-- [ ] (from review of M1-04) A `UInt64` value above `i64::MAX` fails the scan cast with a generic DS4002. Report DS4003 naming the column, as LANGUAGE.md §5.1 requires.
-- [ ] (from M1-17) `SourceRef` now has `Path`, `Glob`, `Reader(ReaderCall)` and `Table`. `CsvTable::open` handles only `Path` and `read_csv` without options; other cases return `SourceError::Unreadable` ("not supported yet"), and `Table` returns `NotFound` (the binder reports DS1002 "unknown table"). Implement them, and register host tables so `Table` lookups find them.
-- [ ] (from M1-17) `DataFusionEngine`'s `Capabilities::formats` is `{Csv}`, so other formats are DS4001 before any read (`tests/cases/sources/datafusion_formats.dstest`). Add each format as it can be read, and re-bless that case.
-- [ ] (from M1-17) The binder already builds DS3002 (unknown extension) and DS3003 (unknown or planned reader option) and checks option values (DS2041–DS2043) from `source::READERS` (D-041), so `SourceError` needs no `UnknownFormat` case. Golden cases for them are in `tests/cases/sources/`; add the engine-side DS3xxx cases next to them.
-- [ ] (from M1-06) LANGUAGE.md §5.1 says decimal precision loss in M1 "is documented in the `getschema` output", but `getschema` is planned from the HIR columns, which only hold the widened type (`real`). Keep the source's Arrow type for widened columns (as `hir::Column::arrow_only` does for untyped ones) and show it in the `DataType` text, or change the spec.
+- [x] (from M1-15) Replace the temporary `SourceError::Unreadable { reason }` (reported as DS9001) with specific cases and DS3008.
+- [x] (from M1-15) Read all supported extensions (not only `.csv`), globs, reader options and host tables; the scan reuses the schema read during checking instead of reading it again.
+- [x] (from M0-04) Confirm DataFusion's CSV inference reads `2024-02-29T23:59:59Z` timestamps as UTC timestamps, not strings, with a golden case.
+- [x] (from review of M1-04) Struct, List and Map columns must not be widened to `arrow.json` text by `widen()` in M1 (the text is not JSON, or the cast fails); report them as unsupported (DS2008) until M2-03, matching M1-23.
+- [x] (from review of M1-04) A `UInt64` value above `i64::MAX` fails the scan cast with a generic DS4002. Report DS4003 naming the column, as LANGUAGE.md §5.1 requires.
+- [x] (from M1-17) `SourceRef` now has `Path`, `Glob`, `Reader(ReaderCall)` and `Table`. `CsvTable::open` handles only `Path` and `read_csv` without options; other cases return `SourceError::Unreadable` ("not supported yet"), and `Table` returns `NotFound` (the binder reports DS1002 "unknown table"). Implement them, and register host tables so `Table` lookups find them.
+- [x] (from M1-17) `DataFusionEngine`'s `Capabilities::formats` is `{Csv}`, so other formats are DS4001 before any read (`tests/cases/sources/datafusion_formats.dstest`). Add each format as it can be read, and re-bless that case.
+- [x] (from M1-17) The binder already builds DS3002 (unknown extension) and DS3003 (unknown or planned reader option) and checks option values (DS2041–DS2043) from `source::READERS` (D-041), so `SourceError` needs no `UnknownFormat` case. Golden cases for them are in `tests/cases/sources/`; add the engine-side DS3xxx cases next to them.
+- [x] (from M1-06) LANGUAGE.md §5.1 says decimal precision loss in M1 "is documented in the `getschema` output", but `getschema` is planned from the HIR columns, which only hold the widened type (`real`). Keep the source's Arrow type for widened columns (as `hir::Column::arrow_only` does for untyped ones) and show it in the `DataType` text, or change the spec.
 
 ## Follow-ups
+Informational (no owner needed):
+- Every source form and DS3xxx error has a case in `tests/cases/sources/`. The scan already runs
+  (`take`, `where`, `project`), so `glob_reordered.dstest` and several others are `run` cases, not
+  just `check`. DS3007 has unit tests only (no host sets a sandbox yet; M4-01 owns the rest).
+  Permission denied and directory paths are unit tests too, since git cannot hold them.
+- The decimal item from M1-06 was settled by changing LANGUAGE.md §5.1, not `getschema` (D-044).
+- DS3009 (invalid glob pattern) is new, from this task's block.
+- Only gzip and zstd have fixtures; bzip2 and xz go through the same DataFusion code path.
+- Gzip fixtures hold one stored block, since compressed bytes depend on flate2's backend and
+  Cargo picks a different one when the whole workspace builds.
+- Fixed in passing: the DS2008 help had stray spaces in `project-away {name}`.

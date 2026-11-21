@@ -1,0 +1,52 @@
+# Every file format reads from its extension, compressed ones included (LANGUAGE.md §3.1).
+# A `.json` file may hold one array or one object per line; the engine detects which.
+mode: check
+show: schema
+---- query
+from '../../data/orders.csv' | take 1;
+from '../../data/orders.parquet' | take 1;
+from '../../data/events/2024-01.ndjson' | take 1;
+from '../../data/json/array.json' | take 1;
+from '../../data/json/lines.json' | take 1;
+from '../../data/compressed/orders.csv.gz' | take 1;
+from '../../data/compressed/orders.tsv.zst' | take 1
+---- expected
+query 1 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  timestamp: datetime
+
+query 2 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  timestamp: datetime
+
+query 3 columns:
+  ts: string
+  user: string
+  event: string
+  duration_ms: long
+  props: (error)
+
+query 4 columns:
+  id: long
+  name: string
+  score: real
+
+query 5 columns:
+  id: long
+  name: string
+
+query 6 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  timestamp: datetime
+
+query 7 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  timestamp: datetime

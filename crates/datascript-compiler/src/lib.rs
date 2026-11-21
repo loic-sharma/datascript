@@ -30,7 +30,8 @@ pub use capabilities::Capabilities;
 pub use catalog::{FunctionCatalog, FunctionDef, FunctionKind};
 pub use ir::Program;
 pub use source::{
-    NoSchemas, OptionValue, ReaderCall, SchemaLookup, SchemaProvider, SourceError, SourceRef,
+    FileType, NoSchemas, OptionValue, ReadProblem, ReaderCall, SchemaLookup, SchemaProvider,
+    SourceError, SourceRef,
 };
 pub use types::Type;
 

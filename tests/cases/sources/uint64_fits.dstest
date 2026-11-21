@@ -1,0 +1,10 @@
+# `UInt64` values up to the largest `long` read normally.
+mode: run
+---- query
+from '../../data/uint64.parquet' | where id < 3
+---- expected
+id   | big
+long | long
+-----+--------------------
+   1 |                   1
+   2 | 9223372036854775807

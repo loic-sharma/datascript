@@ -1,0 +1,42 @@
+# Parquet columns are widened at the scan (LANGUAGE.md §5.1): Timestamp(ns) and Date32 to
+# `datetime`, Int16 and UInt32 to `long`, Float32 to `real`, a dictionary to `string`, a
+# decimal to `real`. Binary has no DataScript type and can only be projected.
+mode: check
+show: schema
+---- query
+from '../../data/types.parquet' | take 1;
+from '../../data/types.parquet' | where bin == 'x'
+---- expected
+error[DS2008]: column `bin` has a type DataScript cannot use yet
+  --> query:2:41
+  |
+2 | from '../../data/types.parquet' | where bin == 'x'
+  |                                         ^^^ this column is `Binary` in Arrow
+  |
+  = help: it can only be projected as it is: `project bin`, `project-away bin`
+  = note: column `bin` was read from ../../data/types.parquet
+  = note: nested, JSON and GUID columns become `dynamic` and `guid` values in M2
+
+query 1 columns:
+  id: long
+  ts_ns: datetime
+  ts_tz: datetime
+  date: datetime
+  i16: long
+  u32: long
+  f32: real
+  dict: string
+  dec: real
+  bin: (error)
+
+query 2 columns:
+  id: long
+  ts_ns: datetime
+  ts_tz: datetime
+  date: datetime
+  i16: long
+  u32: long
+  f32: real
+  dict: string
+  dec: real
+  bin: (error)

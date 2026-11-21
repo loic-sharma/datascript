@@ -17,7 +17,8 @@
 use std::collections::HashSet;
 
 use datascript_diagnostics::codes::{
-    DS1002, DS2006, DS2040, DS2041, DS2042, DS2043, DS3001, DS3002, DS3003, DS3006, DS4001, DS9001,
+    DS1002, DS2006, DS2040, DS2041, DS2042, DS2043, DS3001, DS3002, DS3003, DS3004, DS3005, DS3006,
+    DS3007, DS3008, DS3009, DS4001,
 };
 use datascript_diagnostics::{Applicability, Diagnostic, Span, Suggestion, TextEdit, did_you_mean};
 use datascript_syntax::ast::{self, AstNode};
@@ -29,8 +30,8 @@ use crate::capabilities::SourceFormat;
 use crate::hir::{Column, Expr, ExprKind, Source};
 use crate::ir::Value;
 use crate::source::{
-    self, OptionKind, OptionValue, ReaderCall, ReaderDef, SchemaLookup, SourceError, SourceRef,
-    format_of_path,
+    self, OptionKind, OptionValue, ReadProblem, ReaderCall, ReaderDef, SchemaLookup, SourceError,
+    SourceRef, format_of_path,
 };
 
 /// The constant value of a bound expression: a literal, or a `let` bound to one.
@@ -523,14 +524,165 @@ impl Binder<'_> {
                 let path = source.path().unwrap_or_default();
                 self.file_not_found(span, path, nearby)
             }
-            (_, SourceError::Unreadable { reason }) => {
+            (_, SourceError::NoMatches) => self.no_matches(span, source),
+            (_, SourceError::BadPattern { reason, position }) => {
+                self.bad_pattern(span, source, reason, *position)
+            }
+            (
+                _,
+                SourceError::Conflict {
+                    column,
+                    first,
+                    second,
+                },
+            ) => {
+                let glob = source.path().unwrap_or_default();
                 self.diagnostics.push(
-                    Diagnostic::error(DS9001, format!("cannot read the schema of {source}"))
-                        .primary(span, "this source could not be read")
-                        .note(format!("the engine said: {reason}")),
+                    Diagnostic::error(
+                        DS3005,
+                        format!("the files matched by `{glob}` disagree on the type of `{column}`"),
+                    )
+                    .primary(span, format!("column `{column}` cannot be merged"))
+                    .help(
+                        "read the files separately, convert the column to one type, and \
+                         combine them with `union`",
+                    )
+                    .note(format!("`{column}` is `{}` in `{}`", first.ty, first.file))
+                    .note(format!(
+                        "`{column}` is `{}` in `{}`",
+                        second.ty, second.file
+                    )),
                 );
             }
+            (_, SourceError::OutsideSandbox { root }) => {
+                let path = source.path().unwrap_or_default();
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        DS3007,
+                        format!("`{path}` is outside the directory that can be read"),
+                    )
+                    .primary(span, "this path leads outside it")
+                    .note(format!("only files inside `{root}` can be read")),
+                );
+            }
+            (_, SourceError::Unreadable { file, problem }) => {
+                self.unreadable(span, source, file, problem)
+            }
         }
+    }
+
+    /// `DS3004`: a glob that matched no file.
+    fn no_matches(&mut self, span: Span, source: &SourceRef) {
+        let glob = source.path().unwrap_or_default();
+        let mut d = Diagnostic::error(DS3004, format!("no files match `{glob}`"))
+            .primary(span, "this pattern matched nothing");
+        d = if glob.contains("**") {
+            d.note("`*` matches within one directory and `**` matches any number of directories")
+        } else {
+            d.note(
+                "`*` and `?` match within one directory; to match files in subdirectories too, \
+                 use `**`, such as `'logs/**/*.csv'`",
+            )
+        };
+        if glob.starts_with('~') {
+            d = d.note("`~` is not expanded; write the full path");
+        }
+        self.diagnostics.push(d);
+    }
+
+    /// `DS3009`: a glob that is not a valid pattern. Points at the character the pattern parser
+    /// names when the literal spells the pattern without escapes.
+    fn bad_pattern(&mut self, span: Span, source: &SourceRef, reason: &str, position: usize) {
+        let glob = source.path().unwrap_or_default();
+        // For a misplaced `**` the parser names the start of the path part; point at the `**`.
+        let position = match glob.get(position..).and_then(|rest| rest.find('*')) {
+            Some(offset) if reason.starts_with("recursive") => position + offset,
+            _ => position,
+        };
+        let text = &self.text[span.range()];
+        let at = match text.get(1..text.len().saturating_sub(1)) {
+            Some(inner) if inner == glob && position < glob.len() => {
+                let start = span.start + 1 + position as u32;
+                let len = glob[position..].chars().next().map_or(1, char::len_utf8) as u32;
+                Span::new(self.file, start, start + len)
+            }
+            _ => span,
+        };
+        // The pattern parser's messages, in plain words.
+        let label = match reason {
+            "invalid range pattern" => "this `[` has no matching `]`".to_string(),
+            "wildcards are either regular `*` or recursive `**`" => {
+                "use `*` or `**`; three or more `*` in a row mean nothing".to_string()
+            }
+            "recursive wildcards must form a single path component" => {
+                "`**` must be a whole part of the path, as in `logs/**/x.csv`".to_string()
+            }
+            other => other.to_string(),
+        };
+        self.diagnostics.push(
+            Diagnostic::error(DS3009, format!("`{glob}` is not a valid glob pattern"))
+                .primary(at, label)
+                .note(
+                    "in a glob, `*` and `?` match characters within a directory, `**` any number \
+                     of directories, and `[abc]` one of the characters listed; to match `[` \
+                     itself, write `[[]`",
+                ),
+        );
+    }
+
+    /// `DS3008`: a file that exists but cannot be read.
+    fn unreadable(&mut self, span: Span, source: &SourceRef, file: &str, problem: &ReadProblem) {
+        let format = source.format().map(|f| match f {
+            SourceFormat::Csv => "CSV",
+            SourceFormat::Tsv => "TSV",
+            SourceFormat::Parquet => "Parquet",
+            SourceFormat::Json => "JSON",
+            SourceFormat::Ndjson => "NDJSON",
+        });
+        let d = match problem {
+            ReadProblem::PermissionDenied => {
+                Diagnostic::error(DS3008, format!("cannot read `{file}`"))
+                    .primary(span, "permission denied")
+                    .help("check that the file can be read by the user running DataScript")
+            }
+            ReadProblem::IsDirectory => {
+                let mut d = Diagnostic::error(DS3008, format!("`{file}` is a directory"))
+                    .primary(span, "a directory, not a file");
+                if let Some(ext) = source
+                    .path()
+                    .and_then(|p| p.rsplit_once('.'))
+                    .map(|(_, e)| e)
+                {
+                    let path = source
+                        .path()
+                        .unwrap_or_default()
+                        .trim_end_matches(['/', '\\']);
+                    d = d.help(format!(
+                        "to read the files in it, use a glob such as `'{path}/*.{ext}'`"
+                    ));
+                }
+                d
+            }
+            ReadProblem::Malformed(reason) => {
+                let (message, label) = match &format {
+                    Some(f) => (
+                        format!("cannot read `{file}` as {f}"),
+                        format!("this file is not valid {f}"),
+                    ),
+                    None => (
+                        format!("cannot read `{file}`"),
+                        "this file could not be read".to_string(),
+                    ),
+                };
+                Diagnostic::error(DS3008, message)
+                    .primary(span, label)
+                    .note(format!("the reader said: {reason}"))
+            }
+            ReadProblem::Io(reason) => Diagnostic::error(DS3008, format!("cannot read `{file}`"))
+                .primary(span, "this file could not be read")
+                .note(format!("the system said: {reason}")),
+        };
+        self.diagnostics.push(d);
     }
 
     fn file_not_found(&mut self, span: Span, path: &str, nearby: &[String]) {

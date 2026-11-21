@@ -1,0 +1,11 @@
+# `compression` reads a compressed file whose name says nothing about it; `infer_rows` limits
+# how many rows the schema is inferred from.
+mode: run
+---- query
+from read_csv('../../data/compressed/orders.dat', compression = 'gzip', infer_rows = 5)
+| where orderId == 'o-0001'
+---- expected
+orderId | customerId | amount | timestamp
+string  | string     | real   | datetime
+--------+------------+--------+---------------------
+o-0001  | c-042      |  183.5 | 2023-12-02T08:26:08Z

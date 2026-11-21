@@ -1,0 +1,11 @@
+# The merged schema of the reordered files: columns in order of first appearance.
+mode: check
+show: schema
+---- query
+from '../../data/reordered/*.csv' | take 1
+---- expected
+query 1 columns:
+  id: long
+  name: string
+  score: long
+  extra: string

@@ -1,0 +1,21 @@
+# DS3008: files that exist but are not valid for their format.
+mode: check
+---- query
+from '../../data/bad/broken.json' | take 1;
+from '../../data/bad/not_parquet.parquet' | take 1
+---- expected
+error[DS3008]: cannot read `../../data/bad/broken.json` as JSON
+  --> query:1:6
+  |
+1 | from '../../data/bad/broken.json' | take 1;
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this file is not valid JSON
+  |
+  = note: the reader said: Arrow error: Json error: Not valid JSON: EOF while parsing a value at line 1 column 6
+
+error[DS3008]: cannot read `../../data/bad/not_parquet.parquet` as Parquet
+  --> query:2:6
+  |
+2 | from '../../data/bad/not_parquet.parquet' | take 1
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this file is not valid Parquet
+  |
+  = note: the reader said: Parquet error: Parquet error: Invalid Parquet file. Corrupt footer

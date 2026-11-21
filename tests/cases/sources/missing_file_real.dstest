@@ -1,0 +1,26 @@
+# DS3001 from the DataFusion engine: the nearby files come from the real directory.
+mode: check
+---- query
+from '../../data/order.csv' | take 1;
+from '../../data/nothing-like-it.csv' | take 1;
+from '../../data/missing/orders.csv' | take 1
+---- expected
+error[DS3001]: file `../../data/order.csv` not found
+  --> query:1:6
+  |
+1 | from '../../data/order.csv' | take 1;
+  |      ^^^^^^^^^^^^^^^^^^^^^^ no file at this path
+  |
+  = help: a file with a similar name exists: `../../data/orders.csv`
+
+error[DS3001]: file `../../data/nothing-like-it.csv` not found
+  --> query:2:6
+  |
+2 | from '../../data/nothing-like-it.csv' | take 1;
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no file at this path
+
+error[DS3001]: file `../../data/missing/orders.csv` not found
+  --> query:3:6
+  |
+3 | from '../../data/missing/orders.csv' | take 1
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ no file at this path

@@ -1,32 +1,39 @@
 //! Apache DataFusion backend for DataScript.
 //!
-//! [`DataFusionEngine`] implements [`Engine`]: it reads source schemas, lowers the IR to a
-//! DataFusion `LogicalPlan`, and runs it. The walking skeleton (M1-15) handles CSV files and the
-//! `Scan`, `Filter`, `Project` and `Limit` nodes; M1-08 and M1-09 build it out.
+//! [`DataFusionEngine`] implements [`Engine`]: it reads source schemas ([`sources`]), lowers the
+//! IR to a DataFusion `LogicalPlan`, and runs it. Lowering handles the `Scan`, `Filter`,
+//! `Project` and `Limit` nodes so far; M1-09 builds it out.
+//!
+//! Features: `compression` (default) reads `.gz`, `.bz2`, `.xz` and `.zst` CSV, TSV and JSON
+//! files. `wasm` is the set that builds for `wasm32-unknown-unknown`; use it with
+//! `--no-default-features` (docs/spikes/datafusion-wasm.md).
 
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+mod checked;
+mod sources;
 
-use arrow_schema::{Field, Schema, SchemaRef};
+use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
+use arrow_schema::{DataType, SchemaRef};
 use datafusion::common::{Column, ScalarValue};
-use datafusion::datasource::file_format::csv::CsvFormat;
-use datafusion::datasource::listing::{
-    ListingOptions, ListingTable, ListingTableConfig, ListingTableUrl,
-};
+use datafusion::datasource::listing::{ListingTable, ListingTableConfig};
 use datafusion::datasource::provider_as_source;
 use datafusion::error::DataFusionError;
+use datafusion::functions::expr_fn::nullif;
 use datafusion::logical_expr::{LogicalPlan, LogicalPlanBuilder, Operator, binary_expr, cast};
 use datafusion::prelude::{Expr as DfExpr, SessionConfig, SessionContext, lit};
-use datascript_compiler::arrow::{from_arrow_source, to_arrow, to_arrow_type};
-use datascript_compiler::capabilities::SourceFormat;
+use datascript_compiler::arrow::to_arrow_type;
 use datascript_compiler::ir::{
     BinaryOp, Expr, ExprKind, Plan, PlanNode, PrefixOp, QueryPlan, Value,
 };
 use datascript_compiler::{Capabilities, SourceError, SourceRef};
-use datascript_diagnostics::codes::{DS4002, DS9001};
+use datascript_diagnostics::codes::{DS4002, DS4003, DS9001};
 use datascript_diagnostics::{Diagnostic, Span};
 use datascript_engine::{Engine, ExecContext, ResultStream};
 use futures::StreamExt;
+
+use crate::sources::Resolved;
 
 /// Settings that make results deterministic in tests (D-017).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,23 +51,66 @@ impl Default for DataFusionConfig {
     }
 }
 
+/// The key of a resolved source: relative paths depend on the base directory, and what may be
+/// read on the sandbox.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct SourceKey {
+    base_dir: PathBuf,
+    sandbox: Option<PathBuf>,
+    source: SourceRef,
+}
+
+impl SourceKey {
+    fn new(source: &SourceRef, ctx: &ExecContext) -> Self {
+        SourceKey {
+            base_dir: ctx.base_dir.clone(),
+            sandbox: ctx.sandbox.clone(),
+            source: source.clone(),
+        }
+    }
+}
+
 /// The DataFusion engine.
+///
+/// It remembers the files and per-file schemas it found for each source in `schema_of`, so the
+/// scan reads exactly the files the program was checked against without inferring their schemas
+/// again. Each `schema_of` call reads the source afresh and replaces what it remembered, so a
+/// session that invalidates its schema cache also refreshes this one.
 #[derive(Debug)]
 pub struct DataFusionEngine {
     config: DataFusionConfig,
     capabilities: Capabilities,
+    /// Host tables (`--table name=path`, web UI drag-drop): name to source.
+    tables: BTreeMap<String, SourceRef>,
+    resolved: Mutex<HashMap<SourceKey, Arc<Resolved>>>,
 }
 
 impl DataFusionEngine {
     pub fn new(config: DataFusionConfig) -> Self {
         DataFusionEngine {
             config,
-            // Only CSV files can be read until M1-08.
-            capabilities: Capabilities {
-                formats: [SourceFormat::Csv].into(),
-                ..Capabilities::full()
-            },
+            capabilities: Capabilities::full(),
+            tables: BTreeMap::new(),
+            resolved: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Registers a host table: `from name` reads `source`, a path, glob or reader call. Its
+    /// relative paths resolve against the run's base directory, like paths in the program.
+    /// Registering a name again replaces it.
+    ///
+    /// The host checks the path's format first (`datascript_compiler::source::format_of_path`);
+    /// a host table whose format cannot be told fails when it is read.
+    pub fn with_table(mut self, name: impl Into<String>, source: SourceRef) -> Self {
+        self.tables.insert(name.into(), source);
+        self
+    }
+
+    /// The registered host tables, sorted by name.
+    pub fn tables(&self) -> impl Iterator<Item = (&str, &SourceRef)> {
+        self.tables
+            .iter()
+            .map(|(name, source)| (name.as_str(), source))
     }
 
     fn context(&self) -> SessionContext {
@@ -68,6 +118,38 @@ impl DataFusionEngine {
             .with_target_partitions(self.config.target_partitions)
             .with_batch_size(self.config.batch_size);
         SessionContext::new_with_config(config)
+    }
+
+    /// Reads `source` and remembers what was found.
+    async fn resolve(
+        &self,
+        session: &SessionContext,
+        source: &SourceRef,
+        ctx: &ExecContext,
+    ) -> Result<Arc<Resolved>, SourceError> {
+        let resolved = Arc::new(sources::resolve(session, source, &self.tables, ctx).await?);
+        self.remembered()
+            .insert(SourceKey::new(source, ctx), resolved.clone());
+        Ok(resolved)
+    }
+
+    /// What `schema_of` found for `source`, or a fresh read if it was never asked.
+    async fn resolved(
+        &self,
+        session: &SessionContext,
+        source: &SourceRef,
+        ctx: &ExecContext,
+    ) -> Result<Arc<Resolved>, SourceError> {
+        let known = self.remembered().get(&SourceKey::new(source, ctx)).cloned();
+        match known {
+            Some(resolved) => Ok(resolved),
+            None => self.resolve(session, source, ctx).await,
+        }
+    }
+
+    fn remembered(&self) -> std::sync::MutexGuard<'_, HashMap<SourceKey, Arc<Resolved>>> {
+        // A panic while holding the lock leaves the map consistent (inserts are atomic).
+        self.resolved.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -77,7 +159,8 @@ impl Default for DataFusionEngine {
     }
 }
 
-#[async_trait::async_trait]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 impl Engine for DataFusionEngine {
     fn name(&self) -> &str {
         "datafusion"
@@ -92,8 +175,8 @@ impl Engine for DataFusionEngine {
         source: &SourceRef,
         ctx: &ExecContext,
     ) -> Result<SchemaRef, SourceError> {
-        let table = CsvTable::open(&self.context(), source, ctx).await?;
-        Ok(table.widened)
+        let resolved = self.resolve(&self.context(), source, ctx).await?;
+        Ok(resolved.widened.clone())
     }
 
     async fn execute(
@@ -103,6 +186,7 @@ impl Engine for DataFusionEngine {
     ) -> Result<ResultStream, Diagnostic> {
         let session = self.context();
         let mut lowering = Lowering {
+            engine: self,
             session: &session,
             ctx,
             tables: 0,
@@ -125,129 +209,9 @@ impl Engine for DataFusionEngine {
     }
 }
 
-/// A CSV file registered as a `ListingTable`, with its schema as read and as widened.
-struct CsvTable {
-    url: ListingTableUrl,
-    options: ListingOptions,
-    raw: SchemaRef,
-    widened: SchemaRef,
-}
-
-impl CsvTable {
-    async fn open(
-        session: &SessionContext,
-        source: &SourceRef,
-        ctx: &ExecContext,
-    ) -> Result<CsvTable, SourceError> {
-        let path = match source {
-            SourceRef::Path(path) => path,
-            // `read_csv('x.csv')` with no options reads like the path; the rest is M1-08.
-            SourceRef::Reader(call) if call.function == "read_csv" && call.options.is_empty() => {
-                &call.path
-            }
-            // No host tables are registered yet (M1-08).
-            SourceRef::Table(_) => return Err(SourceError::NotFound { nearby: Vec::new() }),
-            other => {
-                return Err(SourceError::Unreadable {
-                    reason: format!("reading {other} is not supported yet"),
-                });
-            }
-        };
-        let path = resolve(path, &ctx.base_dir);
-        if !path.is_file() {
-            return Err(SourceError::NotFound {
-                nearby: nearby_files(&path),
-            });
-        }
-        let unreadable = |e: &dyn std::fmt::Display| SourceError::Unreadable {
-            reason: e.to_string(),
-        };
-        let url = ListingTableUrl::parse(strip_verbatim(&path).to_string_lossy())
-            .map_err(|e| unreadable(&e))?;
-        let options = ListingOptions::new(Arc::new(CsvFormat::default().with_has_header(true)))
-            .with_file_extension(file_extension(&path));
-        let raw = options
-            .infer_schema(&session.state(), &url)
-            .await
-            .map_err(|e| unreadable(&e))?;
-        let widened = widen(&raw);
-        Ok(CsvTable {
-            url,
-            options,
-            raw,
-            widened,
-        })
-    }
-}
-
-/// The schema with each column widened to its DataScript type's canonical Arrow type
-/// (LANGUAGE.md §5.1). Columns with no DataScript type keep their Arrow type.
-fn widen(raw: &Schema) -> SchemaRef {
-    let fields: Vec<Field> = raw
-        .fields()
-        .iter()
-        .map(|field| match from_arrow_source(field) {
-            Ok(ty) => to_arrow(field.name(), ty),
-            Err(_) => field.as_ref().clone(),
-        })
-        .collect();
-    Arc::new(Schema::new(fields))
-}
-
-fn resolve(path: &str, base_dir: &Path) -> PathBuf {
-    let path = Path::new(path);
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        base_dir.join(path)
-    }
-}
-
-/// `path` without a Windows verbatim prefix: `\\?\C:\x` becomes `C:\x` and
-/// `\\?\UNC\server\share\x` becomes `\\server\share\x`.
-///
-/// `canonicalize` returns verbatim paths on Windows, and `ListingTableUrl` (through the `url`
-/// crate) cannot turn one into a `file://` URL that maps back to an absolute path. Other paths,
-/// and every path on other platforms, come back unchanged.
-fn strip_verbatim(path: &Path) -> PathBuf {
-    let s = path.to_string_lossy();
-    if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
-        PathBuf::from(format!(r"\\{rest}"))
-    } else if let Some(rest) = s.strip_prefix(r"\\?\")
-        && rest.as_bytes().get(1) == Some(&b':')
-    {
-        PathBuf::from(rest)
-    } else {
-        path.to_path_buf()
-    }
-}
-
-/// The extension as `ListingOptions` wants it (with the dot); empty if there is none.
-fn file_extension(path: &Path) -> String {
-    path.extension()
-        .map(|ext| format!(".{}", ext.to_string_lossy()))
-        .unwrap_or_default()
-}
-
-/// File names in the directory of `path`, sorted, for a did-you-mean.
-fn nearby_files(path: &Path) -> Vec<String> {
-    let Some(dir) = path.parent() else {
-        return Vec::new();
-    };
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut names: Vec<String> = entries
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_ok_and(|t| t.is_file()))
-        .filter_map(|entry| entry.file_name().into_string().ok())
-        .collect();
-    names.sort();
-    names
-}
-
 /// Lowers IR plans to DataFusion logical plans.
 struct Lowering<'a> {
+    engine: &'a DataFusionEngine,
     session: &'a SessionContext,
     ctx: &'a ExecContext,
     /// Scans so far; each gets its own table name.
@@ -299,45 +263,103 @@ impl Lowering<'_> {
         builder.build().map_err(|e| engine_error(plan.span, &e))
     }
 
-    /// Scans a CSV file and casts each column to the canonical type of `plan.schema`.
+    /// Scans a source and casts each column to the type of `plan.schema`.
+    ///
+    /// Files with the same schema are read by one table. Otherwise each file is read with its
+    /// own schema, projected to the merged columns (null where a file lacks one), and the files
+    /// are combined with `UNION ALL`, in path order. That keeps CSV columns aligned by name when
+    /// headers differ: DataFusion applies a table schema to CSV files by position.
     async fn scan(
         &mut self,
         source: &SourceRef,
         plan: &Plan,
     ) -> Result<LogicalPlanBuilder, Diagnostic> {
         let span = plan.span;
-        let table = CsvTable::open(self.session, source, self.ctx)
+        let resolved = self
+            .engine
+            .resolved(self.session, source, self.ctx)
             .await
             .map_err(|e| {
-                // The schema was read during checking, so the file changed since.
+                // The schema was read during checking, so the files changed since.
                 internal(
                     span,
                     &format!("the source changed while the query ran: {e:?}"),
                 )
             })?;
-        let config = ListingTableConfig::new(table.url)
-            .with_listing_options(table.options)
-            .with_schema(table.raw.clone());
         let fail = |e: DataFusionError| engine_error(span, &e);
-        let provider = ListingTable::try_new(config).map_err(fail)?;
-        self.tables += 1;
-        let name = format!("source{}", self.tables);
-        let builder = LogicalPlanBuilder::scan(name, provider_as_source(Arc::new(provider)), None)
-            .map_err(fail)?;
-        let columns = plan.schema.fields().iter().map(|field| {
-            let column = DfExpr::Column(Column::new_unqualified(field.name()));
-            let read_as = table
-                .raw
-                .field_with_name(field.name())
-                .map(|f| f.data_type());
-            if read_as.is_ok_and(|t| t == field.data_type()) {
-                column
-            } else {
-                cast(column, field.data_type().clone()).alias(field.name())
-            }
-        });
-        builder.project(columns).map_err(fail)
+        let groups: Vec<Vec<&sources::SourceFile>> = if resolved.uniform() {
+            vec![resolved.files.iter().collect()]
+        } else {
+            resolved.files.iter().map(|f| vec![f]).collect()
+        };
+        let mut combined: Option<LogicalPlanBuilder> = None;
+        let null_value = resolved.reader.null_value();
+        for files in groups {
+            let raw = files[0].raw.clone();
+            // With `null_value`, read text and turn the value into null here (see `CsvReader`).
+            let read_as = match null_value {
+                Some(_) => as_text(&raw),
+                None => raw.clone(),
+            };
+            let urls = files.iter().map(|f| f.url.clone()).collect();
+            let config = ListingTableConfig::new_with_multi_paths(urls)
+                .with_listing_options(resolved.reader.listing_options())
+                .with_schema(read_as.clone());
+            let provider = ListingTable::try_new(config).map_err(fail)?;
+            self.tables += 1;
+            let name = format!("source{}", self.tables);
+            let builder =
+                LogicalPlanBuilder::scan(name, provider_as_source(Arc::new(provider)), None)
+                    .map_err(fail)?;
+            let columns = plan
+                .schema
+                .fields()
+                .iter()
+                .map(|field| scan_column(&read_as, field.name(), field.data_type(), null_value))
+                .collect::<Vec<_>>();
+            let builder = builder.project(columns).map_err(fail)?;
+            combined = Some(match combined {
+                None => builder,
+                Some(before) => before.union(builder.build().map_err(fail)?).map_err(fail)?,
+            });
+        }
+        combined.ok_or_else(|| internal(span, "a source with no files"))
     }
+}
+
+/// Column `name` of a file with schema `raw`, as type `target`: cast if needed, null if the
+/// file does not have it, null where it holds `null_value`. `UInt64` is converted with a check,
+/// since values above `i64::MAX` must be an error naming the column (LANGUAGE.md §5.1).
+fn scan_column(
+    raw: &arrow_schema::Schema,
+    name: &str,
+    target: &DataType,
+    null_value: Option<&str>,
+) -> DfExpr {
+    let Ok(field) = raw.field_with_name(name) else {
+        return cast(lit(ScalarValue::Null), target.clone()).alias(name);
+    };
+    let mut column = DfExpr::Column(Column::new_unqualified(name));
+    if let Some(text) = null_value {
+        column = nullif(column, lit(text));
+    }
+    if field.data_type() == target {
+        column.alias(name)
+    } else if field.data_type() == &DataType::UInt64 && target == &DataType::Int64 {
+        checked::uint64_to_long(name).call(vec![column]).alias(name)
+    } else {
+        cast(column, target.clone()).alias(name)
+    }
+}
+
+/// `schema` with every column read as text.
+fn as_text(schema: &arrow_schema::Schema) -> SchemaRef {
+    let fields: Vec<arrow_schema::Field> = schema
+        .fields()
+        .iter()
+        .map(|f| arrow_schema::Field::new(f.name(), DataType::Utf8, true))
+        .collect();
+    Arc::new(arrow_schema::Schema::new(fields))
 }
 
 fn lower_expr(expr: &Expr) -> Result<DfExpr, Diagnostic> {
@@ -431,8 +453,21 @@ fn not_implemented(span: Span, what: &str) -> Diagnostic {
     .primary(span, "not supported by this version of DataScript")
 }
 
-/// DS4002: DataFusion failed. Its message goes in a note (DIAGNOSTICS.md rule 10).
+/// DS4002: DataFusion failed. Its message goes in a note (DIAGNOSTICS.md rule 10). A value
+/// out of range at the scan is DS4003 instead.
 fn engine_error(span: Span, error: &DataFusionError) -> Diagnostic {
+    if let Some(out_of_range) = checked::find_out_of_range(error) {
+        return Diagnostic::error(
+            DS4003,
+            format!("a value in column `{}` is too large", out_of_range.column),
+        )
+        .primary(span, "while reading this source")
+        .note(format!(
+            "the file has {}, but the largest `long` is {}",
+            out_of_range.value,
+            i64::MAX
+        ));
+    }
     Diagnostic::error(DS4002, "the query failed while running")
         .primary(span, "this step failed")
         .note(format!("DataFusion said: {}", error.strip_backtrace()))
@@ -468,6 +503,7 @@ fn internal(span: Span, message: &str) -> Diagnostic {
 mod tests {
     use super::*;
     use arrow_schema::{DataType, TimeUnit};
+    use std::path::Path;
 
     fn fixtures() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/data")
@@ -475,7 +511,11 @@ mod tests {
 
     #[test]
     fn strip_verbatim_removes_windows_prefixes() {
-        let strip = |s: &str| strip_verbatim(Path::new(s)).to_string_lossy().into_owned();
+        let strip = |s: &str| {
+            sources::strip_verbatim(Path::new(s))
+                .to_string_lossy()
+                .into_owned()
+        };
         assert_eq!(strip(r"\\?\C:\data\orders.csv"), r"C:\data\orders.csv");
         assert_eq!(
             strip(r"\\?\UNC\server\share\orders.csv"),
@@ -539,5 +579,211 @@ mod tests {
             panic!("expected NotFound");
         };
         assert!(nearby.contains(&"orders.csv".to_string()), "{nearby:?}");
+    }
+
+    /// A fresh directory under the system temp directory, removed when dropped.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(name: &str) -> TempDir {
+            let dir =
+                std::env::temp_dir().join(format!("datascript-df-{name}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            TempDir(dir)
+        }
+
+        fn write(&self, name: &str, contents: &str) -> PathBuf {
+            let path = self.0.join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, contents).unwrap();
+            path
+        }
+
+        fn ctx(&self) -> ExecContext {
+            ExecContext {
+                base_dir: self.0.clone(),
+                ..ctx()
+            }
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn schema_of(
+        engine: &DataFusionEngine,
+        source: SourceRef,
+        ctx: &ExecContext,
+    ) -> Result<SchemaRef, SourceError> {
+        block_on(engine.schema_of(&source, ctx))
+    }
+
+    fn columns(schema: &SchemaRef) -> Vec<(String, DataType)> {
+        schema
+            .fields()
+            .iter()
+            .map(|f| (f.name().clone(), f.data_type().clone()))
+            .collect()
+    }
+
+    #[test]
+    fn a_directory_is_unreadable() {
+        let dir = TempDir::new("isdir");
+        std::fs::create_dir_all(dir.0.join("logs.csv")).unwrap();
+        let err = schema_of(
+            &DataFusionEngine::default(),
+            SourceRef::Path("logs.csv".into()),
+            &dir.ctx(),
+        );
+        assert_eq!(
+            err,
+            Err(SourceError::Unreadable {
+                file: "logs.csv".into(),
+                problem: datascript_compiler::ReadProblem::IsDirectory,
+            })
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn permission_denied_is_reported() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = TempDir::new("perm");
+        let path = dir.write("secret.csv", "a\n1\n");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Root can read anything; the check means nothing then.
+        if std::fs::File::open(&path).is_ok() {
+            return;
+        }
+        let err = schema_of(
+            &DataFusionEngine::default(),
+            SourceRef::Path("secret.csv".into()),
+            &dir.ctx(),
+        );
+        assert_eq!(
+            err,
+            Err(SourceError::Unreadable {
+                file: "secret.csv".into(),
+                problem: datascript_compiler::ReadProblem::PermissionDenied,
+            })
+        );
+    }
+
+    #[test]
+    fn sandbox_rejects_paths_outside_it() {
+        let dir = TempDir::new("sandbox");
+        dir.write("inside/a.csv", "a\n1\n");
+        dir.write("outside.csv", "a\n1\n");
+        let ctx = ExecContext {
+            base_dir: dir.0.join("inside"),
+            sandbox: Some(dir.0.join("inside")),
+            ..ctx()
+        };
+        let engine = DataFusionEngine::default();
+        assert!(schema_of(&engine, SourceRef::Path("a.csv".into()), &ctx).is_ok());
+        for source in [
+            SourceRef::Path("../outside.csv".into()),
+            SourceRef::Path("../missing.csv".into()),
+            SourceRef::Glob("../*.csv".into()),
+        ] {
+            assert!(
+                matches!(
+                    schema_of(&engine, source.clone(), &ctx),
+                    Err(SourceError::OutsideSandbox { .. })
+                ),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn null_columns_take_the_other_files_type() {
+        let dir = TempDir::new("nullmerge");
+        dir.write("a.csv", "id,x\n1,\n2,\n");
+        dir.write("b.csv", "id,x\n3,4\n");
+        dir.write("c.csv", "id,y\n5,\n");
+        let engine = DataFusionEngine::default();
+        let schema = schema_of(&engine, SourceRef::Glob("*.csv".into()), &dir.ctx()).unwrap();
+        assert_eq!(
+            columns(&schema),
+            [
+                ("id".into(), DataType::Int64),
+                ("x".into(), DataType::Int64),
+                ("y".into(), DataType::Utf8),
+            ]
+        );
+    }
+
+    #[test]
+    fn conflicts_name_the_first_typed_file() {
+        let dir = TempDir::new("conflict");
+        dir.write("a.csv", "x\n\n");
+        dir.write("b.csv", "x\n1\n");
+        dir.write("c.csv", "x\ntrue\n");
+        let err = schema_of(
+            &DataFusionEngine::default(),
+            SourceRef::Glob("*.csv".into()),
+            &dir.ctx(),
+        );
+        assert_eq!(
+            err,
+            Err(SourceError::Conflict {
+                column: "x".into(),
+                first: datascript_compiler::FileType {
+                    file: "b.csv".into(),
+                    ty: "long".into()
+                },
+                second: datascript_compiler::FileType {
+                    file: "c.csv".into(),
+                    ty: "bool".into()
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn host_tables_resolve_and_report_their_files() {
+        let dir = TempDir::new("hosttables");
+        dir.write("data/orders.csv", "id\n1\n");
+        let engine = DataFusionEngine::default()
+            .with_table("orders", SourceRef::Path("data/orders.csv".into()))
+            .with_table("gone", SourceRef::Path("data/gone.csv".into()));
+        let ctx = dir.ctx();
+        assert!(schema_of(&engine, SourceRef::Table("orders".into()), &ctx).is_ok());
+        assert_eq!(
+            schema_of(&engine, SourceRef::Table("ordrs".into()), &ctx),
+            Err(SourceError::NotFound {
+                nearby: vec!["gone".into(), "orders".into()]
+            })
+        );
+        assert!(matches!(
+            schema_of(&engine, SourceRef::Table("gone".into()), &ctx),
+            Err(SourceError::Unreadable { file, .. }) if file == "data/gone.csv"
+        ));
+    }
+
+    #[test]
+    fn globs_are_sorted_and_cross_directories_with_double_star() {
+        let dir = TempDir::new("globs");
+        dir.write("b.csv", "n\n2\n");
+        dir.write("a.csv", "n\n1\n");
+        dir.write("sub/deep/c.csv", "n,m\n3,x\n");
+        let engine = DataFusionEngine::default();
+        let ctx = dir.ctx();
+        let flat = schema_of(&engine, SourceRef::Glob("*.csv".into()), &ctx).unwrap();
+        assert_eq!(flat.fields().len(), 1);
+        let deep = schema_of(&engine, SourceRef::Glob("**/*.csv".into()), &ctx).unwrap();
+        assert_eq!(deep.fields().len(), 2);
+        let key = SourceKey::new(&SourceRef::Glob("**/*.csv".into()), &ctx);
+        let files: Vec<String> = engine.remembered()[&key]
+            .files
+            .iter()
+            .map(|f| f.url.as_str().rsplit('/').next().unwrap().to_string())
+            .collect();
+        assert_eq!(files, ["a.csv", "b.csv", "c.csv"]);
     }
 }

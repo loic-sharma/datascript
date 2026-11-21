@@ -1,0 +1,13 @@
+# CSV inference reads `2024-02-29T23:59:59Z` as a UTC `datetime`, not a string (from M0-04):
+# the leap-day order and the one at midnight on March 1 keep their dates.
+mode: run
+---- query
+from '../../data/orders.csv'
+| where timestamp >= datetime(2024-02-29T12:00:00Z) and timestamp <= datetime(2024-03-01T00:00:00Z)
+| project orderId, timestamp
+---- expected
+orderId | timestamp
+string  | datetime
+--------+---------------------
+o-0029  | 2024-02-29T23:59:59Z
+o-0030  | 2024-03-01T00:00:00Z

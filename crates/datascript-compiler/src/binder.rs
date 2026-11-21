@@ -561,7 +561,7 @@ impl<'a> Binder<'a> {
                 )
                 .primary(span, format!("this column is `{arrow}` in Arrow"))
                 .help(format!(
-                    "it can only be projected as it is: `project {name}`, `project-away                      {name}`"
+                    "it can only be projected as it is: `project {name}`, `project-away {name}`"
                 ));
                 if let Some(source) = &column.read_from {
                     d = d.note(format!("column `{name}` was read from {source}"));

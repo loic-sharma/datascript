@@ -15,6 +15,8 @@ path = "src/main.rs"
 arrow-array.workspace = true
 arrow-schema.workspace = true
 parquet.workspace = true
+flate2 = "1"
+zstd = { version = "0.13", default-features = false }
 
 [lints]
 workspace = true

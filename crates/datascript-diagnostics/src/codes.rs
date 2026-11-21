@@ -187,6 +187,8 @@ pub const DS3006: Code = Code::new(3006);
 pub const DS3007: Code = Code::new(3007);
 /// file could not be read (permission denied, malformed CSV/JSON row at runtime)
 pub const DS3008: Code = Code::new(3008);
+/// invalid glob pattern
+pub const DS3009: Code = Code::new(3009);
 /// function, `join` kind or file format not supported by this engine (reported by `check`, from the engine's capabilities)
 pub const DS4001: Code = Code::new(4001);
 /// engine runtime error
@@ -654,6 +656,12 @@ pub const REGISTRY: &[CodeInfo] = &[
         code: DS3008,
         severity: Some(Severity::Error),
         summary: "file could not be read (permission denied, malformed CSV/JSON row at runtime)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS3009,
+        severity: Some(Severity::Error),
+        summary: "invalid glob pattern",
         status: CodeStatus::Active,
     },
     CodeInfo {

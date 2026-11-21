@@ -1,0 +1,30 @@
+# DS3009: a glob that is not a valid pattern. The error points at the character.
+mode: check
+---- query
+from '../../data/[a.csv' | take 1;
+from '../../data/a**/x.csv' | take 1;
+from '../../data/***.csv' | take 1
+---- expected
+error[DS3009]: `../../data/[a.csv` is not a valid glob pattern
+  --> query:1:18
+  |
+1 | from '../../data/[a.csv' | take 1;
+  |                  ^ this `[` has no matching `]`
+  |
+  = note: in a glob, `*` and `?` match characters within a directory, `**` any number of directories, and `[abc]` one of the characters listed; to match `[` itself, write `[[]`
+
+error[DS3009]: `../../data/a**/x.csv` is not a valid glob pattern
+  --> query:2:19
+  |
+2 | from '../../data/a**/x.csv' | take 1;
+  |                   ^ `**` must be a whole part of the path, as in `logs/**/x.csv`
+  |
+  = note: in a glob, `*` and `?` match characters within a directory, `**` any number of directories, and `[abc]` one of the characters listed; to match `[` itself, write `[[]`
+
+error[DS3009]: `../../data/***.csv` is not a valid glob pattern
+  --> query:3:20
+  |
+3 | from '../../data/***.csv' | take 1
+  |                    ^ use `*` or `**`; three or more `*` in a row mean nothing
+  |
+  = note: in a glob, `*` and `?` match characters within a directory, `**` any number of directories, and `[abc]` one of the characters listed; to match `[` itself, write `[[]`

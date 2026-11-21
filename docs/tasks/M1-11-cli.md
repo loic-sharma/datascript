@@ -34,5 +34,6 @@ Design-review additions — several query statements in machine formats:
 ## Carried over
 - [ ] (from M1-15) The CLI accepts more than one file, `-e`, stdin, `--format`, `--color` and `--table` (the skeleton takes one file per command).
 - [ ] (from M1-07) Use `datascript_engine::writers` (`write_csv`, `write_ndjson`, `json_rows` for the `{statement, columns, rows}` objects) for `--format csv|ndjson|json`, and run through `Session`, whose methods already turn panics into DS9001.
+- [ ] (from M1-08) `--table name=path`: check the path's format with `datascript_compiler::source::format_of_path` (a diagnostic, not a bare string, when it has none), make the path absolute against the current directory (the engine resolves relative host-table paths against the script's directory), and register it with `DataFusionEngine::with_table(name, SourceRef::for_path(path))` (D-044).
 
 ## Follow-ups

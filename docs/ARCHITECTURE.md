@@ -119,9 +119,9 @@ statement do not stop other statements from being checked.
   `schema_of(source: &SourceRef) -> SchemaLookup`, where `SchemaLookup` is `Ready(Schema)`,
   `Failed(SourceError)`, or `Pending`. A file path, glob, `read_csv(...)` call, or host table name
   is a `SourceRef`. `Schema` is an `arrow_schema::Schema` already widened to DataScript types
-  (LANGUAGE.md §5.1). `SourceError` is structured (`NotFound { nearby }`, `UnknownFormat`,
-  `NoMatches`, `Conflict { files, column, types }`, `Unreadable`, `OutsideRoot`, …) and carries no
-  span; the binder turns it into the DS3xxx diagnostic at **every** place the source appears.
+  (LANGUAGE.md §5.1). `SourceError` is structured (`NotFound { nearby }`, `NoMatches`,
+  `BadPattern`, `Conflict { column, first, second }`, `OutsideSandbox`, `Unreadable { file,
+  problem }`) and carries no span; the binder turns it into the DS3xxx diagnostic at **every** place the source appears.
 - **Source resolution** (D-022): schema lookups are async (they read files), but binding is sync.
   The binder never reads files: it asks the provider, which is a cache. On a miss the provider
   answers `Pending`; the binder gives that source the error type silently (no diagnostic, no

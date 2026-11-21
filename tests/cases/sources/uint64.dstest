@@ -1,0 +1,13 @@
+# DS4003: a `UInt64` value above the largest `long` fails the scan and names the column
+# (LANGUAGE.md §5.1).
+mode: run
+---- query
+from '../../data/uint64.parquet'
+---- expected
+error[DS4003]: a value in column `big` is too large
+  --> query:1:6
+  |
+1 | from '../../data/uint64.parquet'
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^ while reading this source
+  |
+  = note: the file has 18446744073709551615, but the largest `long` is 9223372036854775807

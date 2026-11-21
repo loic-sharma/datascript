@@ -1,0 +1,30 @@
+# Compressed and JSON files read the same rows as their plain forms.
+mode: run
+---- query
+from '../../data/compressed/orders.csv.gz' | where orderId == 'o-0029';
+from '../../data/compressed/orders.tsv.zst' | where orderId == 'o-0030';
+from '../../data/json/array.json';
+from '../../data/json/lines.json'
+---- expected
+orderId | customerId | amount | timestamp
+string  | string     | real   | datetime
+--------+------------+--------+---------------------
+o-0029  | c-042      |  205.5 | 2024-02-29T23:59:59Z
+
+orderId | customerId | amount | timestamp
+string  | string     | real   | datetime
+--------+------------+--------+---------------------
+o-0030  | c-001      |   75.0 | 2024-03-01T00:00:00Z
+
+id   | name   | score
+long | string | real
+-----+--------+--------
+   1 | ant    |    1.5
+   2 | bee    | null
+   3 | cat    |    3.25
+
+id   | name
+long | string
+-----+-------
+   1 | ant
+   2 | bee

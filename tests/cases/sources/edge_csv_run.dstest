@@ -1,0 +1,24 @@
+# Quoted fields: commas, newlines, doubled quotes, empty and padded values.
+mode: run
+---- query
+from '../../data/edge/quoted.csv';
+from '../../data/edge/nulls.csv'
+---- expected
+id   | text               | amount
+long | string             | real
+-----+--------------------+-------
+   1 | a, b               |    1.5
+   2 | line one\nline two |    2.5
+   3 | she said "hi"      |    3.5
+   4 | null               |    4.5
+   5 | plain              |    5.5
+   6 |  padded            |    6.5
+
+id   | name   | value  | when                 | always_null
+long | string | real   | datetime             | string
+-----+--------+--------+----------------------+------------
+   1 | alpha  |    1.5 | 2024-01-01T00:00:00Z | null
+   2 | null   |    2.5 | 2024-01-02T00:00:00Z | null
+   3 | gamma  | null   | 2024-01-03T00:00:00Z | null
+   4 | delta  |    4.5 | null                 | null
+   5 | null   | null   | null                 | null

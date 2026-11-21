@@ -1,0 +1,12 @@
+# `score` is `long` in one file and `real` in the other, so it is `real` (LANGUAGE.md §4.2).
+mode: run
+---- query
+from '../../data/widen/*.csv'
+---- expected
+id   | score
+long | real
+-----+------
+   1 | 10.0
+   2 | 20.0
+   3 | 30.5
+   4 | 40.25

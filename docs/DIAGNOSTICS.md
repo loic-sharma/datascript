@@ -201,6 +201,7 @@ design decision and implemented by the task named in the allocation table.
 | DS3006 | error | source path or reader option is not a constant |
 | DS3007 | error | path is outside the UI root directory *(planned, M4-01, D-016)* |
 | DS3008 | error | file could not be read (permission denied, malformed CSV/JSON row at runtime) |
+| DS3009 | error | invalid glob pattern |
 | DS4001 | error | function, `join` kind or file format not supported by this engine (reported by `check`, from the engine's capabilities) |
 | DS4002 | error | engine runtime error |
 | DS4003 | error | arithmetic error: integer division by zero, overflow, or out-of-range value (D-014) |

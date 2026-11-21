@@ -1,0 +1,12 @@
+# `read_csv` options (LANGUAGE.md §3.1): delimiter, no header, quote and null text. Columns
+# of a file without a header are named `column_1`, `column_2`, …
+mode: run
+---- query
+from read_csv('../../data/options/semicolon.txt', delimiter = ';', header = false, quote = "'", null_value = 'NA')
+---- expected
+column_1 | column_2 | column_3
+long     | string   | real
+---------+----------+---------
+       1 | a;b      |      1.5
+       2 | null     |      2.5
+       3 | plain    |   null

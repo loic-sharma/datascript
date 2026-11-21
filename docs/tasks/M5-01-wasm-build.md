@@ -20,5 +20,6 @@ disable the disk manager on wasm, keep `target_partitions = 1`).
 
 ## Carried over
 - [ ] (from M1-07) `catch_panic` / `catch_panic_async` in `datascript-engine` use `catch_unwind`, which catches nothing on wasm32 (panics abort). Install a panic hook that reports DS9001 to the JS side instead (ARCHITECTURE.md § Engine abstraction).
+- [ ] (from M1-08) `datascript-datafusion` builds for wasm32 (`--no-default-features --features wasm`, CI job `wasm-datafusion`), but source resolution uses `std::fs` and the `glob` crate: on wasm32, resolve paths and globs against the registered files (an `InMemory` object store at `memory://`, docs/spikes/datafusion-wasm.md) instead. Compressed files are off there (`compression` is a native default); decide whether to turn it on after testing decoding on wasm32.
 
 ## Follow-ups

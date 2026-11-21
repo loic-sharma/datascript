@@ -50,5 +50,7 @@ Design-review additions:
 - [ ] (from M1-16) Un-skip `tests/cases/harness/run.dstest` once it can run (needs `summarize`).
 - [ ] (from M1-06) Lower the IR nodes M1-06 added: `Values`, `Aggregate`, `Sort`, `TopN`, `Distinct`, `Join` (one expression per side in each `JoinCondition`) and `Union`. Until then `Lowering::plan` reports them with `cannot_run_yet` (DS9001 "`summarize` and `count` cannot run yet", …); delete that function when every node lowers, and replace `tests/cases/skeleton/not_implemented.dstest` (it shows that DS9001) with a real `run` case. Plans are trees now: walk `Plan::inputs()`, not just `first_input()`.
 - [ ] (from M1-06) A reference to a projection-only column (no DataScript type) has `Type::Error` in the IR; take its type from the input schema, which keeps the Arrow type (D-042).
+- [ ] (from M1-08) Errors from reading rows (a malformed CSV row, an invalid JSON line, a value that does not parse as the inferred type) surface as DS4002 on the query. Report them as DS3008 naming the file, at the scan's span (LANGUAGE.md §3.1, DIAGNOSTICS.md).
+- [ ] (from M1-08) The scan is `Lowering::scan` over `sources::Resolved` (D-044): one table when every file has the same schema, else one per file under `UNION ALL`. Keep that shape when lowering the other nodes; `scan_column` does the casts, `nullif` for `null_value`, and the checked `UInt64` conversion.
 
 ## Follow-ups

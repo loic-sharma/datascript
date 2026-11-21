@@ -56,3 +56,26 @@ jobs:
       - run: >-
           cargo check --target wasm32-unknown-unknown
           -p datascript-diagnostics -p datascript-syntax -p datascript-compiler
+
+  wasm-datafusion:
+    name: wasm32 check (datascript-datafusion)
+    runs-on: ubuntu-latest
+    env:
+      # zstd-sys compiles C; Apple's clang has no wasm32 backend, but the runner's clang does
+      # (docs/spikes/datafusion-wasm.md).
+      CC_wasm32_unknown_unknown: clang
+      AR_wasm32_unknown_unknown: llvm-ar
+      # RUSTFLAGS replaces the target rustflags in .cargo/config.toml, so repeat the getrandom
+      # backend here.
+      RUSTFLAGS: -D warnings --cfg getrandom_backend="wasm_js"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      # The `llvm` package provides the unversioned `llvm-ar`.
+      - run: sudo apt-get update && sudo apt-get install -y clang llvm
+      - run: >-
+          cargo check -p datascript-datafusion --no-default-features --features wasm
+          --target wasm32-unknown-unknown

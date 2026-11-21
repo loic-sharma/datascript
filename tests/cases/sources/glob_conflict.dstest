@@ -1,0 +1,15 @@
+# DS3005: `when` is a `datetime` in one file and a `string` in the other, and there is no
+# common type. The error names both files and the column.
+mode: check
+---- query
+from '../../data/conflict/*.csv' | take 1
+---- expected
+error[DS3005]: the files matched by `../../data/conflict/*.csv` disagree on the type of `when`
+  --> query:1:6
+  |
+1 | from '../../data/conflict/*.csv' | take 1
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^ column `when` cannot be merged
+  |
+  = help: read the files separately, convert the column to one type, and combine them with `union`
+  = note: `when` is `datetime` in `../../data/conflict/a.csv`
+  = note: `when` is `string` in `../../data/conflict/b.csv`

@@ -18,7 +18,7 @@ update this README. Existing golden tests depend on the current rows, so prefer 
 changing one.
 
 All files use LF line endings and UTF-8 (`.gitattributes` keeps Git from converting them).
-Timestamps are UTC. Total size is about 12 KB.
+Timestamps are UTC. Total size is about 16 KB.
 
 ## `orders.csv` / `orders.parquet`
 
@@ -132,3 +132,22 @@ wrong columns, which the tests catch.
 | `dict` | Dictionary(Int32, Utf8) | `red`, `green`, `red` | Reads as `string` |
 | `dec` | Decimal128(10, 2) | 12345.67, -0.01, 0.00 | `real` in M1 |
 | `bin` | Binary | `00 01`, empty, `ff` | No DataScript type: projectable only, `DS2008` in expressions |
+
+## Source test files (M1-08)
+
+Small files for reading sources: glob merging, compression, JSON layouts, reader options and
+errors.
+
+| File | Contents | Used for |
+|---|---|---|
+| `widen/a.csv`, `widen/b.csv` | `id,score`; `score` is an integer in `a.csv` (10, 20) and a real in `b.csv` (30.5, 40.25) | `'widen/*.csv'` widens `score` to `real` |
+| `conflict/a.csv`, `conflict/b.csv` | `id,when`; `when` is a timestamp in `a.csv` and text (`soon`, `later`) in `b.csv` | `DS3005`: no common type |
+| `compressed/orders.csv.gz` | `orders.csv` in a gzip file (one stored block, so the bytes never depend on the compression library; no file name, zero mtime) | Compression from the suffix |
+| `compressed/orders.tsv.zst` | `orders.csv` with tabs for commas, zstd level 3 | TSV and zstd |
+| `compressed/orders.dat` | Same bytes as `orders.csv.gz` | `read_csv(..., compression = 'gzip')` on a name with no known extension |
+| `json/array.json` | A JSON array of 3 objects `{id, name, score}`; `score` is null in the second | `.json` holding an array (detected) |
+| `json/lines.json` | 2 lines of NDJSON `{id, name}` in a `.json` file | `.json` holding NDJSON (detected) |
+| `options/semicolon.txt` | 3 rows, no header, `;` as delimiter, `'` as quote, `NA` for null: `1;'a;b';1.5`, `2;NA;2.5`, `3;plain;NA` | `read_csv` options |
+| `bad/broken.json` | One good line, then a truncated object | `DS3008`: malformed JSON |
+| `bad/not_parquet.parquet` | Plain text | `DS3008`: not a Parquet file |
+| `uint64.parquet` | `id` Int64 (1–3); `big` UInt64: 1, `i64::MAX`, `u64::MAX` | `DS4003`: `UInt64` above `i64::MAX` |

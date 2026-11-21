@@ -252,16 +252,54 @@ pub fn reader(name: &str) -> Option<&'static ReaderDef> {
 /// Why a source's schema could not be found. It carries no span: the binder builds the DS3xxx
 /// diagnostic at every place the source appears (D-023).
 ///
-/// M1-08 adds the other cases (`NoMatches`, `Conflict`, …).
+/// File names in it are as the engine shows them to the user: relative to the base directory
+/// when they are inside it (DIAGNOSTICS.md rule 12).
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SourceError {
     /// No file at the path, or no host table with the name. `nearby` lists file names in the
-    /// same directory (or the host's table names), sorted, for a did-you-mean.
+    /// same directory (or the host's table names), sorted, for a did-you-mean (`DS3001`,
+    /// `DS1002`).
     NotFound { nearby: Vec<String> },
-    /// The file exists but its schema could not be read. `reason` is the engine's message.
-    /// M1-08 replaces this with specific cases and DS3008.
-    Unreadable { reason: String },
+    /// A glob that matched no file (`DS3004`).
+    NoMatches,
+    /// A glob that is not a valid pattern, such as an unclosed `[` (`DS3009`). `reason` is
+    /// the pattern parser's message; `position` is the byte offset in the pattern it points at.
+    BadPattern { reason: String, position: usize },
+    /// Two files of a glob have a column whose types cannot be widened to one (`DS3005`,
+    /// LANGUAGE.md §3.1).
+    Conflict {
+        column: String,
+        /// The first file with the column, and its type there.
+        first: FileType,
+        /// The first file whose type cannot be merged with the types before it.
+        second: FileType,
+    },
+    /// The path resolves outside the directory the host allows (`DS3007`, D-016).
+    OutsideSandbox { root: String },
+    /// The file exists but cannot be read (`DS3008`).
+    Unreadable { file: String, problem: ReadProblem },
+}
+
+/// A file of a glob and a column's type in it, for [`SourceError::Conflict`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileType {
+    pub file: String,
+    /// The DataScript type name, or the Arrow type for a column with no DataScript type.
+    pub ty: String,
+}
+
+/// Why a file cannot be read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ReadProblem {
+    PermissionDenied,
+    /// The path is a directory.
+    IsDirectory,
+    /// The contents are not valid for the format. The text is the engine's message.
+    Malformed(String),
+    /// Any other I/O error. The text is the system's message.
+    Io(String),
 }
 
 /// The answer of a [`SchemaProvider`].

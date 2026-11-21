@@ -15,8 +15,28 @@ datascript-compiler = { path = "../datascript-compiler" }
 datascript-diagnostics = { path = "../datascript-diagnostics" }
 datascript-engine = { path = "../datascript-engine" }
 futures.workspace = true
+glob = "0.3"
+regex = "1"
+
+# Packages that DataFusion pulls in and that need a feature on wasm32
+# (docs/spikes/datafusion-wasm.md).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "wasmbind"] }
+
+[features]
+default = ["compression"]
+# Compressed CSV, TSV and JSON (.gz, .bz2, .xz, .zst). Native only for now: it builds for
+# wasm32, but decoding there is untested (M0-05).
+compression = ["datafusion/compression"]
+# The feature set for wasm32-unknown-unknown; use with `--no-default-features`. It adds
+# nothing yet: the wasm-only packages above are target-gated, and leaving out `compression`
+# is what makes the set wasm-safe.
+wasm = []
 
 [dev-dependencies]
+arrow-array.workspace = true
+parquet.workspace = true
 tokio.workspace = true
 
 [lints]

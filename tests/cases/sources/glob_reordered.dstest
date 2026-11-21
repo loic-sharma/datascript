@@ -1,0 +1,17 @@
+# Files whose headers list the columns in another order are merged by name, not position
+# (LANGUAGE.md §3.1). `extra` is only in c.csv, so it is null for ids 1–6.
+mode: run
+---- query
+from '../../data/reordered/*.csv' | take 10
+---- expected
+id   | name   | score | extra
+long | string | long  | string
+-----+--------+-------+-------
+   1 | ant    |    10 | null
+   2 | bee    |    20 | null
+   3 | cat    |    30 | null
+   4 | dog    |    40 | null
+   5 | eel    |    50 | null
+   6 | fox    |    60 | null
+   7 | gnu    |    70 | x
+   8 | hen    |    80 | y

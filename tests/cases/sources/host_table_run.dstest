@@ -1,0 +1,10 @@
+# A host table runs like the file it names.
+mode: run
+tables: orders=../../data/orders.parquet
+---- query
+from orders | where orderId == 'o-0029' | project orderId, amount
+---- expected
+orderId | amount
+string  | real
+--------+-------
+o-0029  |  205.5

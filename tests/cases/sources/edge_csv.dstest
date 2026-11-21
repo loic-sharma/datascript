@@ -1,0 +1,29 @@
+# CSV edge cases: an empty file has no columns, a header-only file has columns and no rows, and a
+# column that is empty in every row is a string of nulls.
+mode: check
+show: schema
+---- query
+from '../../data/edge/empty.csv' | take 1;
+from '../../data/edge/header_only.csv' | take 1;
+from '../../data/edge/nulls.csv' | take 1;
+from '../../data/edge/unicode.csv' | take 1
+---- expected
+query 1 columns:
+
+query 2 columns:
+  id: string
+  name: string
+  value: string
+
+query 3 columns:
+  id: long
+  name: string
+  value: real
+  when: datetime
+  always_null: string
+
+query 4 columns:
+  id: long
+  name: string
+  città: string
+  unit price: real

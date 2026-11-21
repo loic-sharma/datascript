@@ -2,7 +2,8 @@
 
 use std::sync::Arc;
 
-use datascript_compiler::Capabilities;
+use datascript_compiler::source::format_of_path;
+use datascript_compiler::{Capabilities, SourceRef};
 use datascript_datafusion::{DataFusionConfig, DataFusionEngine};
 use datascript_diagnostics::{
     Diagnostic, DiagnosticSink, Diagnostics, FileId, Renderer, SourceFile, SourceMap,
@@ -61,12 +62,25 @@ impl Query {
     }
 }
 
-fn session(input: &CaseInput<'_>) -> Session {
-    let engine = DataFusionEngine::new(DataFusionConfig {
+/// A session over the DataFusion engine, with the case's `tables:` registered as host tables.
+/// Their paths resolve against the test file's directory, like paths in the query.
+fn session(input: &CaseInput<'_>) -> Result<Session, DriverError> {
+    let mut engine = DataFusionEngine::new(DataFusionConfig {
         target_partitions: input.config.target_partitions,
         batch_size: input.config.batch_size,
     });
-    Session::new(Arc::new(engine), Arc::new(FixedClock(input.now_micros)))
+    for (name, path) in input.tables {
+        if format_of_path(path).is_none() {
+            return Err(DriverError::Failed(format!(
+                "`tables`: cannot tell the format of `{path}` from its extension"
+            )));
+        }
+        engine = engine.with_table(name, SourceRef::for_path(path.as_str()));
+    }
+    Ok(Session::new(
+        Arc::new(engine),
+        Arc::new(FixedClock(input.now_micros)),
+    ))
 }
 
 fn block_on<F: std::future::Future>(future: F) -> Result<F::Output, DriverError> {
@@ -130,7 +144,7 @@ impl Driver for PipelineDriver {
         let analysis = match input.schema {
             Some(mock) => datascript_compiler::check(&query.src, query.file, mock, &caps),
             None => {
-                let session = session(input);
+                let session = session(input)?;
                 let ctx = session.exec_context(input.base_dir());
                 block_on(session.check(&query.src, query.file, &ctx))?
             }
@@ -154,7 +168,7 @@ impl Driver for PipelineDriver {
         let program = match input.schema {
             Some(mock) => datascript_compiler::compile(&query.src, query.file, mock, &caps),
             None => {
-                let session = session(input);
+                let session = session(input)?;
                 let ctx = session.exec_context(input.base_dir());
                 block_on(session.compile(&query.src, query.file, &ctx))?
             }
@@ -172,7 +186,7 @@ impl Driver for PipelineDriver {
             ));
         }
         let query = Query::new(input);
-        let session = session(input);
+        let session = session(input)?;
         let ctx = session.exec_context(input.base_dir());
         let output = block_on(session.run(&query.src, query.file, &ctx))?;
         let mut out = query.render(&output.diagnostics);

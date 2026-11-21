@@ -1,0 +1,4 @@
+# getrandom 0.3 (pulled in by arrow through ahash) needs its JS backend selected on wasm32
+# (docs/spikes/datafusion-wasm.md). Rustflags for one target do not affect native builds.
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

@@ -1,0 +1,33 @@
+# Host tables (`--table name=path`) read files and globs; their paths resolve like the query's.
+mode: check
+show: schema
+tables: orders=../../data/orders.csv, events=../../data/events/*.ndjson
+---- query
+from orders | take 1;
+from events | take 1;
+from ordrs | take 1
+---- expected
+error[DS1002]: unknown table `ordrs`
+  --> query:3:6
+  |
+3 | from ordrs | take 1
+  |      ^^^^^ no table with this name
+  |
+  = help: a table with a similar name exists: `orders`
+  = note: a table name is a tabular `let` or a table registered by the host; to read a file, write its path as a string: `from 'orders.csv'`
+
+query 1 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  timestamp: datetime
+
+query 2 columns:
+  ts: string
+  user: string
+  event: string
+  duration_ms: long
+  props: (error)
+  country: string
+
+query 3 columns: unknown

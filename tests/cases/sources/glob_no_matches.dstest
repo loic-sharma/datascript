@@ -1,0 +1,30 @@
+# DS3004: a glob that matches nothing. The note explains `*` and `**`.
+mode: check
+---- query
+from '../../data/logs/*.csv' | take 1;
+from '../../data/*.ndjson' | take 1;
+from '../../data/**/*.tsv' | take 1
+---- expected
+error[DS3004]: no files match `../../data/logs/*.csv`
+  --> query:1:6
+  |
+1 | from '../../data/logs/*.csv' | take 1;
+  |      ^^^^^^^^^^^^^^^^^^^^^^^ this pattern matched nothing
+  |
+  = note: `*` and `?` match within one directory; to match files in subdirectories too, use `**`, such as `'logs/**/*.csv'`
+
+error[DS3004]: no files match `../../data/*.ndjson`
+  --> query:2:6
+  |
+2 | from '../../data/*.ndjson' | take 1;
+  |      ^^^^^^^^^^^^^^^^^^^^^ this pattern matched nothing
+  |
+  = note: `*` and `?` match within one directory; to match files in subdirectories too, use `**`, such as `'logs/**/*.csv'`
+
+error[DS3004]: no files match `../../data/**/*.tsv`
+  --> query:3:6
+  |
+3 | from '../../data/**/*.tsv' | take 1
+  |      ^^^^^^^^^^^^^^^^^^^^^ this pattern matched nothing
+  |
+  = note: `*` matches within one directory and `**` matches any number of directories
