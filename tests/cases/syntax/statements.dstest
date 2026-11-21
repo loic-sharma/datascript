@@ -1,0 +1,57 @@
+# Scalar and tabular lets produce the same LET_STMT node; a query statement is a PIPELINE.
+mode: syntax
+---- query
+let threshold = 100;
+let big = 'orders.csv' | where amount > threshold;
+big | count;
+---- expected
+PROGRAM@0..85
+  LET_STMT@0..19
+    LET_KW@0..3 "let"
+    WHITESPACE@3..4 " "
+    NAME@4..13
+      IDENT@4..13 "threshold"
+    WHITESPACE@13..14 " "
+    EQ@14..15 "="
+    WHITESPACE@15..16 " "
+    LITERAL@16..19
+      LONG@16..19 "100"
+  SEMICOLON@19..20 ";"
+  WHITESPACE@20..21 "\n"
+  LET_STMT@21..70
+    LET_KW@21..24 "let"
+    WHITESPACE@24..25 " "
+    NAME@25..28
+      IDENT@25..28 "big"
+    WHITESPACE@28..29 " "
+    EQ@29..30 "="
+    WHITESPACE@30..31 " "
+    PIPELINE@31..70
+      LITERAL@31..43
+        STRING@31..43 "'orders.csv'"
+      WHITESPACE@43..44 " "
+      PIPE@44..45 "|"
+      WHITESPACE@45..46 " "
+      WHERE_OP@46..70
+        IDENT@46..51 "where"
+        WHITESPACE@51..52 " "
+        BIN_EXPR@52..70
+          NAME_REF@52..58
+            IDENT@52..58 "amount"
+          WHITESPACE@58..59 " "
+          GT@59..60 ">"
+          WHITESPACE@60..61 " "
+          NAME_REF@61..70
+            IDENT@61..70 "threshold"
+  SEMICOLON@70..71 ";"
+  WHITESPACE@71..72 "\n"
+  PIPELINE@72..83
+    NAME_REF@72..75
+      IDENT@72..75 "big"
+    WHITESPACE@75..76 " "
+    PIPE@76..77 "|"
+    WHITESPACE@77..78 " "
+    COUNT_OP@78..83
+      IDENT@78..83 "count"
+  SEMICOLON@83..84 ";"
+  WHITESPACE@84..85 "\n"

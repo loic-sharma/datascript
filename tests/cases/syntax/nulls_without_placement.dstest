@@ -1,0 +1,37 @@
+# nulls must be followed by first or last.
+mode: syntax
+---- query
+t | sort by a nulls | take 1
+---- expected
+PROGRAM@0..29
+  PIPELINE@0..28
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    SORT_OP@4..19
+      IDENT@4..8 "sort"
+      WHITESPACE@8..9 " "
+      IDENT@9..11 "by"
+      WHITESPACE@11..12 " "
+      SORT_KEY@12..19
+        NAME_REF@12..13
+          IDENT@12..13 "a"
+        WHITESPACE@13..14 " "
+        IDENT@14..19 "nulls"
+    WHITESPACE@19..20 " "
+    PIPE@20..21 "|"
+    WHITESPACE@21..22 " "
+    TAKE_OP@22..28
+      IDENT@22..26 "take"
+      WHITESPACE@26..27 " "
+      LITERAL@27..28
+        LONG@27..28 "1"
+  WHITESPACE@28..29 "\n"
+
+error[DS0101]: expected `first` or `last` after `nulls`, found `|`
+  --> query:1:21
+  |
+1 | t | sort by a nulls | take 1
+  |                     ^

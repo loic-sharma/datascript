@@ -1,0 +1,44 @@
+# A reader call with named arguments as a source.
+mode: syntax
+---- query
+read_csv('x.txt', delimiter = ';', header = false) | take 5
+---- expected
+PROGRAM@0..60
+  PIPELINE@0..59
+    CALL_EXPR@0..50
+      NAME_REF@0..8
+        IDENT@0..8 "read_csv"
+      ARG_LIST@8..50
+        L_PAREN@8..9 "("
+        LITERAL@9..16
+          STRING@9..16 "'x.txt'"
+        COMMA@16..17 ","
+        WHITESPACE@17..18 " "
+        NAMED_EXPR@18..33
+          NAME@18..27
+            IDENT@18..27 "delimiter"
+          WHITESPACE@27..28 " "
+          EQ@28..29 "="
+          WHITESPACE@29..30 " "
+          LITERAL@30..33
+            STRING@30..33 "';'"
+        COMMA@33..34 ","
+        WHITESPACE@34..35 " "
+        NAMED_EXPR@35..49
+          NAME@35..41
+            IDENT@35..41 "header"
+          WHITESPACE@41..42 " "
+          EQ@42..43 "="
+          WHITESPACE@43..44 " "
+          LITERAL@44..49
+            FALSE_KW@44..49 "false"
+        R_PAREN@49..50 ")"
+    WHITESPACE@50..51 " "
+    PIPE@51..52 "|"
+    WHITESPACE@52..53 " "
+    TAKE_OP@53..59
+      IDENT@53..57 "take"
+      WHITESPACE@57..58 " "
+      LITERAL@58..59
+        LONG@58..59 "5"
+  WHITESPACE@59..60 "\n"

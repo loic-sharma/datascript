@@ -4,31 +4,49 @@ mode: syntax
 let true false null and or not
 where count order by kind in Let
 ---- expected
-LET_KW@0..3 "let"
-WHITESPACE@3..4 " "
-TRUE_KW@4..8 "true"
-WHITESPACE@8..9 " "
-FALSE_KW@9..14 "false"
-WHITESPACE@14..15 " "
-NULL_KW@15..19 "null"
-WHITESPACE@19..20 " "
-AND_KW@20..23 "and"
-WHITESPACE@23..24 " "
-OR_KW@24..26 "or"
-WHITESPACE@26..27 " "
-NOT_KW@27..30 "not"
-WHITESPACE@30..31 "\n"
-IDENT@31..36 "where"
-WHITESPACE@36..37 " "
-IDENT@37..42 "count"
-WHITESPACE@42..43 " "
-IDENT@43..48 "order"
-WHITESPACE@48..49 " "
-IDENT@49..51 "by"
-WHITESPACE@51..52 " "
-IDENT@52..56 "kind"
-WHITESPACE@56..57 " "
-IDENT@57..59 "in"
-WHITESPACE@59..60 " "
-IDENT@60..63 "Let"
-WHITESPACE@63..64 "\n"
+PROGRAM@0..64
+  LET_STMT@0..8
+    LET_KW@0..3 "let"
+    WHITESPACE@3..4 " "
+    LITERAL@4..8
+      TRUE_KW@4..8 "true"
+  WHITESPACE@8..9 " "
+  ERROR@9..63
+    FALSE_KW@9..14 "false"
+    WHITESPACE@14..15 " "
+    NULL_KW@15..19 "null"
+    WHITESPACE@19..20 " "
+    AND_KW@20..23 "and"
+    WHITESPACE@23..24 " "
+    OR_KW@24..26 "or"
+    WHITESPACE@26..27 " "
+    NOT_KW@27..30 "not"
+    WHITESPACE@30..31 "\n"
+    IDENT@31..36 "where"
+    WHITESPACE@36..37 " "
+    IDENT@37..42 "count"
+    WHITESPACE@42..43 " "
+    IDENT@43..48 "order"
+    WHITESPACE@48..49 " "
+    IDENT@49..51 "by"
+    WHITESPACE@51..52 " "
+    IDENT@52..56 "kind"
+    WHITESPACE@56..57 " "
+    IDENT@57..59 "in"
+    WHITESPACE@59..60 " "
+    IDENT@60..63 "Let"
+  WHITESPACE@63..64 "\n"
+
+error[DS0101]: expected a name after `let`, found `true`
+  --> query:1:5
+  |
+1 | let true false null and or not
+  |     ^^^^
+  |
+  = help: `true` is a reserved word; to use it as a name, quote it: `['true']`
+
+error[DS0101]: expected `;` between statements, found `false`
+  --> query:1:10
+  |
+1 | let true false null and or not
+  |          ^^^^^

@@ -10,7 +10,7 @@ are behaviour, and they are reviewed in diffs like any other output.
 |---|---|---|
 | Golden tests | `tests/cases/**/*.dstest`, run by the `datascript-tests` crate | End-to-end: parse → bind → plan → execute, or the diagnostics |
 | Unit tests | `#[cfg(test)]` in each crate | Lexer edge cases, type rules, small algorithms |
-| Parser snapshots | `tests/cases/syntax/*.dstest` with `mode: syntax` | CST dumps for tricky parses and recovery (until M1-02 lands, `syntax` mode prints the token list: `KIND@start..end "text"`, then the lexical diagnostics) |
+| Parser snapshots | `tests/cases/syntax/*.dstest` with `mode: syntax` | CST dumps for tricky parses and recovery: one line per node (`KIND@start..end`) or token (`KIND@start..end "text"`), children indented two spaces, trivia included; then the lexical and syntax diagnostics |
 | LSP tests | `crates/datascript-lsp/tests` (M3) | Request/response scripts against an in-process server |
 | Web/WASM tests | `web/` (Vitest + Playwright, M4/M5) | UI flows and runtime parity with the CLI |
 
@@ -71,8 +71,10 @@ Harness details (M0-03):
   `expected[<engine>]`). Table separators such as `-----+---` contain no space, so they are never
   mistaken for one. Unknown keys, sections, modes and engines fail the case with the file, the
   line and a did-you-mean.
-- Until the parser exists, a case without `order:` uses `any`. Drivers take over the default
-  through `Driver::output_order_defined` once they can tell.
+- A case without `order:` asks the driver through `Driver::output_order_defined`. The pipeline
+  driver parses the query and answers per §3.4; it does not look through `let`s, so
+  `s | take 5` with a sorted `let s` counts as undefined (`any`). A driver that cannot tell
+  returns `None`, which means `any`.
 - The query is passed with trailing blank lines removed and exactly one final newline. Expected
   sections compare with `\r\n` normalized and trailing blank lines ignored; trailing spaces inside
   lines are significant (`.editorconfig` keeps them in `.dstest` files).

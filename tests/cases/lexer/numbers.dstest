@@ -3,23 +3,33 @@ mode: syntax
 ---- query
 42 1_000_000 3.14 1e-3 .5 1..10 1. -7
 ---- expected
-LONG@0..2 "42"
-WHITESPACE@2..3 " "
-LONG@3..12 "1_000_000"
-WHITESPACE@12..13 " "
-REAL@13..17 "3.14"
-WHITESPACE@17..18 " "
-REAL@18..22 "1e-3"
-WHITESPACE@22..23 " "
-REAL@23..25 ".5"
-WHITESPACE@25..26 " "
-LONG@26..27 "1"
-DOT2@27..29 ".."
-LONG@29..31 "10"
-WHITESPACE@31..32 " "
-LONG@32..33 "1"
-DOT@33..34 "."
-WHITESPACE@34..35 " "
-MINUS@35..36 "-"
-LONG@36..37 "7"
-WHITESPACE@37..38 "\n"
+PROGRAM@0..38
+  PIPELINE@0..37
+    LITERAL@0..2
+      LONG@0..2 "42"
+    WHITESPACE@2..3 " "
+    ERROR@3..37
+      LONG@3..12 "1_000_000"
+      WHITESPACE@12..13 " "
+      REAL@13..17 "3.14"
+      WHITESPACE@17..18 " "
+      REAL@18..22 "1e-3"
+      WHITESPACE@22..23 " "
+      REAL@23..25 ".5"
+      WHITESPACE@25..26 " "
+      LONG@26..27 "1"
+      DOT2@27..29 ".."
+      LONG@29..31 "10"
+      WHITESPACE@31..32 " "
+      LONG@32..33 "1"
+      DOT@33..34 "."
+      WHITESPACE@34..35 " "
+      MINUS@35..36 "-"
+      LONG@36..37 "7"
+  WHITESPACE@37..38 "\n"
+
+error[DS0101]: expected `|` or `;`, found `1_000_000`
+  --> query:1:4
+  |
+1 | 42 1_000_000 3.14 1e-3 .5 1..10 1. -7
+  |    ^^^^^^^^^

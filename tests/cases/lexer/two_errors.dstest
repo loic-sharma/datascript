@@ -3,26 +3,37 @@ mode: syntax
 ---- query
 t | where a == 'x\q' and b > 3y
 ---- expected
-IDENT@0..1 "t"
-WHITESPACE@1..2 " "
-PIPE@2..3 "|"
-WHITESPACE@3..4 " "
-IDENT@4..9 "where"
-WHITESPACE@9..10 " "
-IDENT@10..11 "a"
-WHITESPACE@11..12 " "
-EQ2@12..14 "=="
-WHITESPACE@14..15 " "
-STRING@15..20 "'x\\q'"
-WHITESPACE@20..21 " "
-AND_KW@21..24 "and"
-WHITESPACE@24..25 " "
-IDENT@25..26 "b"
-WHITESPACE@26..27 " "
-GT@27..28 ">"
-WHITESPACE@28..29 " "
-TIMESPAN@29..31 "3y"
-WHITESPACE@31..32 "\n"
+PROGRAM@0..32
+  PIPELINE@0..31
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..31
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..31
+        BIN_EXPR@10..20
+          NAME_REF@10..11
+            IDENT@10..11 "a"
+          WHITESPACE@11..12 " "
+          EQ2@12..14 "=="
+          WHITESPACE@14..15 " "
+          LITERAL@15..20
+            STRING@15..20 "'x\\q'"
+        WHITESPACE@20..21 " "
+        AND_KW@21..24 "and"
+        WHITESPACE@24..25 " "
+        BIN_EXPR@25..31
+          NAME_REF@25..26
+            IDENT@25..26 "b"
+          WHITESPACE@26..27 " "
+          GT@27..28 ">"
+          WHITESPACE@28..29 " "
+          LITERAL@29..31
+            TIMESPAN@29..31 "3y"
+  WHITESPACE@31..32 "\n"
 
 error[DS0005]: unknown escape sequence `\q`
   --> query:1:18

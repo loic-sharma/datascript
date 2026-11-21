@@ -3,25 +3,35 @@ mode: syntax
 ---- query
 1d 2h 30m 10s 250ms 5us 5µs 3tick 1.5h timespan(1.02:03:04) timespan(null)
 ---- expected
-TIMESPAN@0..2 "1d"
-WHITESPACE@2..3 " "
-TIMESPAN@3..5 "2h"
-WHITESPACE@5..6 " "
-TIMESPAN@6..9 "30m"
-WHITESPACE@9..10 " "
-TIMESPAN@10..13 "10s"
-WHITESPACE@13..14 " "
-TIMESPAN@14..19 "250ms"
-WHITESPACE@19..20 " "
-TIMESPAN@20..23 "5us"
-WHITESPACE@23..24 " "
-TIMESPAN@24..28 "5µs"
-WHITESPACE@28..29 " "
-TIMESPAN@29..34 "3tick"
-WHITESPACE@34..35 " "
-TIMESPAN@35..39 "1.5h"
-WHITESPACE@39..40 " "
-TIMESPAN@40..60 "timespan(1.02:03:04)"
-WHITESPACE@60..61 " "
-TIMESPAN@61..75 "timespan(null)"
-WHITESPACE@75..76 "\n"
+PROGRAM@0..76
+  PIPELINE@0..75
+    LITERAL@0..2
+      TIMESPAN@0..2 "1d"
+    WHITESPACE@2..3 " "
+    ERROR@3..75
+      TIMESPAN@3..5 "2h"
+      WHITESPACE@5..6 " "
+      TIMESPAN@6..9 "30m"
+      WHITESPACE@9..10 " "
+      TIMESPAN@10..13 "10s"
+      WHITESPACE@13..14 " "
+      TIMESPAN@14..19 "250ms"
+      WHITESPACE@19..20 " "
+      TIMESPAN@20..23 "5us"
+      WHITESPACE@23..24 " "
+      TIMESPAN@24..28 "5µs"
+      WHITESPACE@28..29 " "
+      TIMESPAN@29..34 "3tick"
+      WHITESPACE@34..35 " "
+      TIMESPAN@35..39 "1.5h"
+      WHITESPACE@39..40 " "
+      TIMESPAN@40..60 "timespan(1.02:03:04)"
+      WHITESPACE@60..61 " "
+      TIMESPAN@61..75 "timespan(null)"
+  WHITESPACE@75..76 "\n"
+
+error[DS0101]: expected `|` or `;`, found `2h`
+  --> query:1:4
+  |
+1 | 1d 2h 30m 10s 250ms 5us 5µs 3tick 1.5h timespan(1.02:03:04) timespan(null)
+  |    ^^

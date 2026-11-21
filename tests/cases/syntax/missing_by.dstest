@@ -1,0 +1,45 @@
+# sort without by; M1-03 makes this DS0121. The keys still parse.
+mode: syntax
+---- query
+t | sort x desc | top 3 x
+---- expected
+PROGRAM@0..26
+  PIPELINE@0..25
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    SORT_OP@4..15
+      IDENT@4..8 "sort"
+      WHITESPACE@8..9 " "
+      SORT_KEY@9..15
+        NAME_REF@9..10
+          IDENT@9..10 "x"
+        WHITESPACE@10..11 " "
+        IDENT@11..15 "desc"
+    WHITESPACE@15..16 " "
+    PIPE@16..17 "|"
+    WHITESPACE@17..18 " "
+    TOP_OP@18..25
+      IDENT@18..21 "top"
+      WHITESPACE@21..22 " "
+      LITERAL@22..23
+        LONG@22..23 "3"
+      WHITESPACE@23..24 " "
+      SORT_KEY@24..25
+        NAME_REF@24..25
+          IDENT@24..25 "x"
+  WHITESPACE@25..26 "\n"
+
+error[DS0101]: expected `by` after `sort`, found `x`
+  --> query:1:10
+  |
+1 | t | sort x desc | top 3 x
+  |          ^
+
+error[DS0101]: expected `by` after `3`, found `x`
+  --> query:1:25
+  |
+1 | t | sort x desc | top 3 x
+  |                         ^

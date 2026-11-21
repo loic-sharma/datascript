@@ -1,19 +1,37 @@
-//! The kinds of tokens (and, from M1-02, nodes) in the syntax tree.
+//! The kinds of tokens and nodes in the syntax tree.
 
-/// The kind of a token or node. The lexer produces the token kinds; the parser (M1-02) adds node
-/// kinds and uses this enum as the rowan `SyntaxKind`.
-///
-/// Keywords are contextual (LANGUAGE.md §1.1): only the seven reserved words have their own kind.
-/// Every other word, including operator names like `where` and `project`, is an [`IDENT`].
-///
-/// [`IDENT`]: SyntaxKind::IDENT
-#[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(u16)]
-pub enum SyntaxKind {
+macro_rules! syntax_kinds {
+    ($($(#[$meta:meta])* $name:ident,)*) => {
+        /// The kind of a token or node, used as the rowan `SyntaxKind`.
+        ///
+        /// The lexer produces the token kinds (everything up to [`ERROR`]); the parser adds the
+        /// node kinds after it. `ERROR` is both: a token the lexer rejected, or a node wrapping
+        /// tokens the parser skipped.
+        ///
+        /// Keywords are contextual (LANGUAGE.md §1.1): only the seven reserved words have their
+        /// own kind. Every other word, including operator names like `where` and `project`, is an
+        /// [`IDENT`], also inside the tree.
+        ///
+        /// [`ERROR`]: SyntaxKind::ERROR
+        /// [`IDENT`]: SyntaxKind::IDENT
+        #[allow(non_camel_case_types)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[repr(u16)]
+        pub enum SyntaxKind {
+            $($(#[$meta])* $name,)*
+        }
+
+        impl SyntaxKind {
+            /// Every kind, in declaration order, so `ALL[k as usize] == k`.
+            pub const ALL: &'static [SyntaxKind] = &[$(SyntaxKind::$name,)*];
+        }
+    };
+}
+
+syntax_kinds! {
     // Trivia
     /// Spaces, tabs, newlines and other Unicode white space.
-    WHITESPACE = 0,
+    WHITESPACE,
     /// `// ...` to the end of the line (the newline is not included).
     LINE_COMMENT,
     /// `/* ... */`, which does not nest. Unterminated ones run to the end of the input.
@@ -127,8 +145,95 @@ pub enum SyntaxKind {
     /// `datetime(2024-01-31)` as one token. See [`literal::datetime`](crate::literal::datetime).
     DATETIME,
 
-    /// Input the lexer could not make sense of. It always comes with a diagnostic.
+    /// The end of the input. Never in a tree: the parser uses it when it looks past the last
+    /// token.
+    EOF,
+    /// As a token: input the lexer could not make sense of; it always comes with a diagnostic.
+    /// As a node: tokens the parser could not fit into the grammar, after reporting an error.
     ERROR,
+
+    // Nodes
+    /// The whole file: statements separated by `;`.
+    PROGRAM,
+    /// `let name = value`, scalar or tabular (the binder decides, D-020).
+    LET_STMT,
+    /// `source | op | op`. A query statement is always a pipeline, even with no operators.
+    PIPELINE,
+
+    /// `where predicate`
+    WHERE_OP,
+    /// `project a, b = expr`
+    PROJECT_OP,
+    /// `project-away a, b*`
+    PROJECT_AWAY_OP,
+    /// `project-rename new = old`
+    PROJECT_RENAME_OP,
+    /// `extend c = expr`
+    EXTEND_OP,
+    /// `summarize aggs by keys`
+    SUMMARIZE_OP,
+    /// `sort by keys` or `order by keys`
+    SORT_OP,
+    /// `top n by key`
+    TOP_OP,
+    /// `take n` or `limit n`
+    TAKE_OP,
+    /// `count`
+    COUNT_OP,
+    /// `distinct a, b` or `distinct *`
+    DISTINCT_OP,
+    /// `join kind = k right on conditions`
+    JOIN_OP,
+    /// `union t1, t2`
+    UNION_OP,
+    /// `render kind with (props)`
+    RENDER_OP,
+    /// `getschema`
+    GETSCHEMA_OP,
+
+    /// `[name =] expr`: a projection, aggregate, `by` key, or named argument.
+    NAMED_EXPR,
+    /// A column name with optional `*` wildcards, written without spaces: `a`, `col*`, `*_id`.
+    COLUMN_PATTERN,
+    /// `new = old` in `project-rename`.
+    RENAME_ITEM,
+    /// `by keys` in `summarize`.
+    BY_CLAUSE,
+    /// `expr [asc | desc] [nulls first | nulls last]` in `sort` and `top`.
+    SORT_KEY,
+    /// `kind = inner` in `join`.
+    JOIN_KIND,
+    /// `with (prop = value, ...)` in `render`.
+    RENDER_PROPS,
+    /// `prop = value [, value ...]` inside `with (...)`.
+    RENDER_PROP,
+    /// `(arg, name = arg, ...)`: call arguments, or the list of `in`.
+    ARG_LIST,
+    /// A name being defined: a `let` name, an output column name, a property name.
+    NAME,
+
+    /// A literal token: number, string, timespan, datetime, `true`, `false`, `null`.
+    LITERAL,
+    /// `long(null)`, `string(null)`, …: a typed null literal, not a call.
+    TYPED_NULL,
+    /// A reference to a name: a column, `let`, table, `$left` or `$right`.
+    NAME_REF,
+    /// `( inner )`. The inner part may be a pipeline.
+    PAREN_EXPR,
+    /// `f(args)`
+    CALL_EXPR,
+    /// `base.field`
+    FIELD_EXPR,
+    /// `base[index]`
+    INDEX_EXPR,
+    /// `-x` or `not x`
+    PREFIX_EXPR,
+    /// `lhs op rhs`, including string operators such as `has` and `matches regex`.
+    BIN_EXPR,
+    /// `x in (a, b)`, `x !in (...)`, `x in~ (...)`, `x !in~ (...)`
+    IN_EXPR,
+    /// `x between (lo .. hi)` or `x !between (lo .. hi)`
+    BETWEEN_EXPR,
 }
 
 impl SyntaxKind {
@@ -181,8 +286,34 @@ impl SyntaxKind {
     }
 }
 
+impl SyntaxKind {
+    /// The kind with this raw value, or `None` if there is none.
+    pub fn from_raw(raw: u16) -> Option<SyntaxKind> {
+        SyntaxKind::ALL.get(usize::from(raw)).copied()
+    }
+
+    /// Whether this is a node kind (or `ERROR`, which is both a token and a node kind).
+    pub fn is_node(self) -> bool {
+        self >= SyntaxKind::ERROR
+    }
+}
+
 impl From<SyntaxKind> for u16 {
     fn from(kind: SyntaxKind) -> u16 {
         kind as u16
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_is_indexed_by_raw_value() {
+        for (i, kind) in SyntaxKind::ALL.iter().enumerate() {
+            assert_eq!(*kind as usize, i);
+            assert_eq!(SyntaxKind::from_raw(i as u16), Some(*kind));
+        }
+        assert_eq!(SyntaxKind::from_raw(SyntaxKind::ALL.len() as u16), None);
     }
 }

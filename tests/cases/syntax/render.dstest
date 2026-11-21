@@ -1,0 +1,55 @@
+# render with properties; ycolumns takes a list.
+mode: syntax
+---- query
+t | render timechart with (title = "Revenue", ycolumns = a, b, legend = hidden)
+---- expected
+PROGRAM@0..80
+  PIPELINE@0..79
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    RENDER_OP@4..79
+      IDENT@4..10 "render"
+      WHITESPACE@10..11 " "
+      IDENT@11..20 "timechart"
+      WHITESPACE@20..21 " "
+      RENDER_PROPS@21..79
+        IDENT@21..25 "with"
+        WHITESPACE@25..26 " "
+        L_PAREN@26..27 "("
+        RENDER_PROP@27..44
+          NAME@27..32
+            IDENT@27..32 "title"
+          WHITESPACE@32..33 " "
+          EQ@33..34 "="
+          WHITESPACE@34..35 " "
+          LITERAL@35..44
+            STRING@35..44 "\"Revenue\""
+        COMMA@44..45 ","
+        WHITESPACE@45..46 " "
+        RENDER_PROP@46..61
+          NAME@46..54
+            IDENT@46..54 "ycolumns"
+          WHITESPACE@54..55 " "
+          EQ@55..56 "="
+          WHITESPACE@56..57 " "
+          NAME_REF@57..58
+            IDENT@57..58 "a"
+          COMMA@58..59 ","
+          WHITESPACE@59..60 " "
+          NAME_REF@60..61
+            IDENT@60..61 "b"
+        COMMA@61..62 ","
+        WHITESPACE@62..63 " "
+        RENDER_PROP@63..78
+          NAME@63..69
+            IDENT@63..69 "legend"
+          WHITESPACE@69..70 " "
+          EQ@70..71 "="
+          WHITESPACE@71..72 " "
+          NAME_REF@72..78
+            IDENT@72..78 "hidden"
+        R_PAREN@78..79 ")"
+  WHITESPACE@79..80 "\n"

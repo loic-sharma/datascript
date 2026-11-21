@@ -1,0 +1,48 @@
+# join with a kind, a parenthesized right side and a column key.
+mode: syntax
+---- query
+t | join kind = leftouter (u | where x > 1) on customerId
+---- expected
+PROGRAM@0..58
+  PIPELINE@0..57
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    JOIN_OP@4..57
+      IDENT@4..8 "join"
+      WHITESPACE@8..9 " "
+      JOIN_KIND@9..25
+        IDENT@9..13 "kind"
+        WHITESPACE@13..14 " "
+        EQ@14..15 "="
+        WHITESPACE@15..16 " "
+        IDENT@16..25 "leftouter"
+      WHITESPACE@25..26 " "
+      PAREN_EXPR@26..43
+        L_PAREN@26..27 "("
+        PIPELINE@27..42
+          NAME_REF@27..28
+            IDENT@27..28 "u"
+          WHITESPACE@28..29 " "
+          PIPE@29..30 "|"
+          WHITESPACE@30..31 " "
+          WHERE_OP@31..42
+            IDENT@31..36 "where"
+            WHITESPACE@36..37 " "
+            BIN_EXPR@37..42
+              NAME_REF@37..38
+                IDENT@37..38 "x"
+              WHITESPACE@38..39 " "
+              GT@39..40 ">"
+              WHITESPACE@40..41 " "
+              LITERAL@41..42
+                LONG@41..42 "1"
+        R_PAREN@42..43 ")"
+      WHITESPACE@43..44 " "
+      IDENT@44..46 "on"
+      WHITESPACE@46..47 " "
+      NAME_REF@47..57
+        IDENT@47..57 "customerId"
+  WHITESPACE@57..58 "\n"

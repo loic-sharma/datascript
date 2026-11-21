@@ -1,0 +1,40 @@
+# Comparisons do not chain; the help rewrites the chain with and.
+mode: syntax
+---- query
+t | where a < b < c
+---- expected
+PROGRAM@0..20
+  PIPELINE@0..19
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..19
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..19
+        BIN_EXPR@10..15
+          NAME_REF@10..11
+            IDENT@10..11 "a"
+          WHITESPACE@11..12 " "
+          LT@12..13 "<"
+          WHITESPACE@13..14 " "
+          NAME_REF@14..15
+            IDENT@14..15 "b"
+        WHITESPACE@15..16 " "
+        LT@16..17 "<"
+        WHITESPACE@17..18 " "
+        NAME_REF@18..19
+          IDENT@18..19 "c"
+  WHITESPACE@19..20 "\n"
+
+error[DS0101]: comparison operators cannot be chained
+  --> query:1:17
+  |
+1 | t | where a < b < c
+  |           ----- ^ a second comparison
+  |           |
+  |           the result of this comparison is not a value to compare again
+  |
+  = help: compare each pair separately: `a < b and b < c`

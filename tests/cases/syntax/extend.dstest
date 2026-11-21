@@ -1,0 +1,41 @@
+# extend with named and unnamed expressions.
+mode: syntax
+---- query
+t | extend doubled = amount * 2, amount / 3
+---- expected
+PROGRAM@0..44
+  PIPELINE@0..43
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    EXTEND_OP@4..43
+      IDENT@4..10 "extend"
+      WHITESPACE@10..11 " "
+      NAMED_EXPR@11..31
+        NAME@11..18
+          IDENT@11..18 "doubled"
+        WHITESPACE@18..19 " "
+        EQ@19..20 "="
+        WHITESPACE@20..21 " "
+        BIN_EXPR@21..31
+          NAME_REF@21..27
+            IDENT@21..27 "amount"
+          WHITESPACE@27..28 " "
+          STAR@28..29 "*"
+          WHITESPACE@29..30 " "
+          LITERAL@30..31
+            LONG@30..31 "2"
+      COMMA@31..32 ","
+      WHITESPACE@32..33 " "
+      NAMED_EXPR@33..43
+        BIN_EXPR@33..43
+          NAME_REF@33..39
+            IDENT@33..39 "amount"
+          WHITESPACE@39..40 " "
+          SLASH@40..41 "/"
+          WHITESPACE@41..42 " "
+          LITERAL@42..43
+            LONG@42..43 "3"
+  WHITESPACE@43..44 "\n"

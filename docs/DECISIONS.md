@@ -192,6 +192,24 @@ rather than a run of errors. Unicode white space (no-break space, BOM) is white 
 zero-width characters are DS0001, since they are invisible and almost always pasted by accident.
 *(M1-01, 2026-11-20.)*
 
+### D-029 — Parser shape: permissive table positions, `not(` binds like a call
+M1-02 settled what LANGUAGE.md §8 leaves to the parser. **Table positions are any expression.** A
+source, the right side of `join`/`union`, and a `let` value parse as a scalar expression; a
+following `|` wraps it in a `PIPELINE` node. The binder, which knows names and types, rejects an
+expression that is not a table (D-020 already makes it decide what a `let` is), so the parser does
+not need a second, narrower grammar, and the binder's errors can say *why* (`x + 1` is a `long`,
+not a table). A query statement is always a `PIPELINE` node, even with no operators. `join ... on`
+conditions are expressions too (`$left.a == $right.b` is a `BIN_EXPR` of `FIELD_EXPR`s), so M1-03
+can point at `=` in them. **`not` followed by `(` reads as a call**, as in KQL: `not(x) == y` is
+`(not x) == y`, while `not x == y` is `not (x == y)` (§4 level 3). **Contextual keywords stay
+`IDENT` tokens** in the tree; nodes say what they are. **Trivia** belongs to the innermost node
+open before the next significant token, so every node starts and ends at a significant token.
+**Recovery** resynchronizes at `|`, `;`, `let`, `)` inside brackets, an operator name at the
+start of a line (a forgotten `|`), and an expression at the start of a line outside brackets (a
+forgotten `;`). One token gets at most one error, and the parser never reports at a token the
+lexer already rejected. **Nesting** is limited to 256 levels of expressions (`DS0100`), so the
+recursive parser cannot overflow the stack on hostile input. *(M1-02, 2026-11-20.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

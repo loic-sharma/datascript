@@ -1,0 +1,26 @@
+# top takes a count and one sort key.
+mode: syntax
+---- query
+t | top 10 by revenue desc
+---- expected
+PROGRAM@0..27
+  PIPELINE@0..26
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    TOP_OP@4..26
+      IDENT@4..7 "top"
+      WHITESPACE@7..8 " "
+      LITERAL@8..10
+        LONG@8..10 "10"
+      WHITESPACE@10..11 " "
+      IDENT@11..13 "by"
+      WHITESPACE@13..14 " "
+      SORT_KEY@14..26
+        NAME_REF@14..21
+          IDENT@14..21 "revenue"
+        WHITESPACE@21..22 " "
+        IDENT@22..26 "desc"
+  WHITESPACE@26..27 "\n"

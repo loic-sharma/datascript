@@ -3,27 +3,39 @@ mode: syntax
 ---- query
 a !has b !has_error !in~ c in~ d !contains_cs e !x
 ---- expected
-IDENT@0..1 "a"
-WHITESPACE@1..2 " "
-NEGATED_OP@2..6 "!has"
-WHITESPACE@6..7 " "
-IDENT@7..8 "b"
-WHITESPACE@8..9 " "
-BANG@9..10 "!"
-IDENT@10..19 "has_error"
-WHITESPACE@19..20 " "
-NEGATED_OP@20..24 "!in~"
-WHITESPACE@24..25 " "
-IDENT@25..26 "c"
-WHITESPACE@26..27 " "
-IN_TILDE@27..30 "in~"
-WHITESPACE@30..31 " "
-IDENT@31..32 "d"
-WHITESPACE@32..33 " "
-NEGATED_OP@33..45 "!contains_cs"
-WHITESPACE@45..46 " "
-IDENT@46..47 "e"
-WHITESPACE@47..48 " "
-BANG@48..49 "!"
-IDENT@49..50 "x"
-WHITESPACE@50..51 "\n"
+PROGRAM@0..51
+  PIPELINE@0..50
+    BIN_EXPR@0..8
+      NAME_REF@0..1
+        IDENT@0..1 "a"
+      WHITESPACE@1..2 " "
+      NEGATED_OP@2..6 "!has"
+      WHITESPACE@6..7 " "
+      NAME_REF@7..8
+        IDENT@7..8 "b"
+    WHITESPACE@8..9 " "
+    ERROR@9..50
+      BANG@9..10 "!"
+      IDENT@10..19 "has_error"
+      WHITESPACE@19..20 " "
+      NEGATED_OP@20..24 "!in~"
+      WHITESPACE@24..25 " "
+      IDENT@25..26 "c"
+      WHITESPACE@26..27 " "
+      IN_TILDE@27..30 "in~"
+      WHITESPACE@30..31 " "
+      IDENT@31..32 "d"
+      WHITESPACE@32..33 " "
+      NEGATED_OP@33..45 "!contains_cs"
+      WHITESPACE@45..46 " "
+      IDENT@46..47 "e"
+      WHITESPACE@47..48 " "
+      BANG@48..49 "!"
+      IDENT@49..50 "x"
+  WHITESPACE@50..51 "\n"
+
+error[DS0101]: expected `|` or `;`, found `!`
+  --> query:1:10
+  |
+1 | a !has b !has_error !in~ c in~ d !contains_cs e !x
+  |          ^

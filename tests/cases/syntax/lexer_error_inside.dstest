@@ -1,0 +1,39 @@
+# A lexer error inside an expression is reported once, by the lexer.
+mode: syntax
+---- query
+t | where a # b | take 5
+---- expected
+PROGRAM@0..25
+  PIPELINE@0..24
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..11
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      NAME_REF@10..11
+        IDENT@10..11 "a"
+    WHITESPACE@11..12 " "
+    ERROR@12..15
+      ERROR@12..13 "#"
+      WHITESPACE@13..14 " "
+      IDENT@14..15 "b"
+    WHITESPACE@15..16 " "
+    PIPE@16..17 "|"
+    WHITESPACE@17..18 " "
+    TAKE_OP@18..24
+      IDENT@18..22 "take"
+      WHITESPACE@22..23 " "
+      LITERAL@23..24
+        LONG@23..24 "5"
+  WHITESPACE@24..25 "\n"
+
+error[DS0001]: unexpected character `#`
+  --> query:1:13
+  |
+1 | t | where a # b | take 5
+  |             ^ not valid here
+  |
+  = help: comments start with `//`

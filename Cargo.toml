@@ -24,6 +24,7 @@ parquet = { version = "59", default-features = false, features = ["arrow"] }
 libtest-mimic = "0.8"
 similar = "3"
 proptest = "1"
+rowan = "0.16"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

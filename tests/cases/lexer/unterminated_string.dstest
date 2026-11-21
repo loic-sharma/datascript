@@ -4,24 +4,33 @@ mode: syntax
 t | where name == 'abc
 | take 1
 ---- expected
-IDENT@0..1 "t"
-WHITESPACE@1..2 " "
-PIPE@2..3 "|"
-WHITESPACE@3..4 " "
-IDENT@4..9 "where"
-WHITESPACE@9..10 " "
-IDENT@10..14 "name"
-WHITESPACE@14..15 " "
-EQ2@15..17 "=="
-WHITESPACE@17..18 " "
-STRING@18..22 "'abc"
-WHITESPACE@22..23 "\n"
-PIPE@23..24 "|"
-WHITESPACE@24..25 " "
-IDENT@25..29 "take"
-WHITESPACE@29..30 " "
-LONG@30..31 "1"
-WHITESPACE@31..32 "\n"
+PROGRAM@0..32
+  PIPELINE@0..31
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..22
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..22
+        NAME_REF@10..14
+          IDENT@10..14 "name"
+        WHITESPACE@14..15 " "
+        EQ2@15..17 "=="
+        WHITESPACE@17..18 " "
+        LITERAL@18..22
+          STRING@18..22 "'abc"
+    WHITESPACE@22..23 "\n"
+    PIPE@23..24 "|"
+    WHITESPACE@24..25 " "
+    TAKE_OP@25..31
+      IDENT@25..29 "take"
+      WHITESPACE@29..30 " "
+      LITERAL@30..31
+        LONG@30..31 "1"
+  WHITESPACE@31..32 "\n"
 
 error[DS0002]: unterminated string
   --> query:1:19

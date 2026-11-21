@@ -1,0 +1,26 @@
+# A pipe with nothing after it; M1-03 makes this DS0103.
+mode: syntax
+---- query
+t | take 5 |
+---- expected
+PROGRAM@0..13
+  PIPELINE@0..12
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    TAKE_OP@4..10
+      IDENT@4..8 "take"
+      WHITESPACE@8..9 " "
+      LITERAL@9..10
+        LONG@9..10 "5"
+    WHITESPACE@10..11 " "
+    PIPE@11..12 "|"
+  WHITESPACE@12..13 "\n"
+
+error[DS0101]: expected an operator after `|`, found the end of the input
+  --> query:1:13
+  |
+1 | t | take 5 |
+  |             ^ the input ends here

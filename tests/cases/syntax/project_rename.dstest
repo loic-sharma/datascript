@@ -1,0 +1,36 @@
+# project-rename takes new = old pairs.
+mode: syntax
+---- query
+t | project-rename id = orderId, ['the name'] = name
+---- expected
+PROGRAM@0..53
+  PIPELINE@0..52
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    PROJECT_RENAME_OP@4..52
+      IDENT@4..11 "project"
+      MINUS@11..12 "-"
+      IDENT@12..18 "rename"
+      WHITESPACE@18..19 " "
+      RENAME_ITEM@19..31
+        NAME@19..21
+          IDENT@19..21 "id"
+        WHITESPACE@21..22 " "
+        EQ@22..23 "="
+        WHITESPACE@23..24 " "
+        NAME_REF@24..31
+          IDENT@24..31 "orderId"
+      COMMA@31..32 ","
+      WHITESPACE@32..33 " "
+      RENAME_ITEM@33..52
+        NAME@33..45
+          QUOTED_IDENT@33..45 "['the name']"
+        WHITESPACE@45..46 " "
+        EQ@46..47 "="
+        WHITESPACE@47..48 " "
+        NAME_REF@48..52
+          IDENT@48..52 "name"
+  WHITESPACE@52..53 "\n"

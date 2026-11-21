@@ -1,0 +1,43 @@
+# A chain through in gets a general help.
+mode: syntax
+---- query
+t | where a in (1) == true
+---- expected
+PROGRAM@0..27
+  PIPELINE@0..26
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..26
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..26
+        IN_EXPR@10..18
+          NAME_REF@10..11
+            IDENT@10..11 "a"
+          WHITESPACE@11..12 " "
+          IDENT@12..14 "in"
+          WHITESPACE@14..15 " "
+          ARG_LIST@15..18
+            L_PAREN@15..16 "("
+            LITERAL@16..17
+              LONG@16..17 "1"
+            R_PAREN@17..18 ")"
+        WHITESPACE@18..19 " "
+        EQ2@19..21 "=="
+        WHITESPACE@21..22 " "
+        LITERAL@22..26
+          TRUE_KW@22..26 "true"
+  WHITESPACE@26..27 "\n"
+
+error[DS0101]: comparison operators cannot be chained
+  --> query:1:20
+  |
+1 | t | where a in (1) == true
+  |           -------- ^^ a second comparison
+  |           |
+  |           the result of this comparison is not a value to compare again
+  |
+  = help: combine separate comparisons with `and`

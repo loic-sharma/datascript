@@ -1,0 +1,38 @@
+# An operator at the start of a line without a pipe: one error, then it parses as an operator.
+mode: syntax
+---- query
+t | where x > 1
+project a
+---- expected
+PROGRAM@0..26
+  PIPELINE@0..25
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..15
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..15
+        NAME_REF@10..11
+          IDENT@10..11 "x"
+        WHITESPACE@11..12 " "
+        GT@12..13 ">"
+        WHITESPACE@13..14 " "
+        LITERAL@14..15
+          LONG@14..15 "1"
+    WHITESPACE@15..16 "\n"
+    PROJECT_OP@16..25
+      IDENT@16..23 "project"
+      WHITESPACE@23..24 " "
+      NAMED_EXPR@24..25
+        NAME_REF@24..25
+          IDENT@24..25 "a"
+  WHITESPACE@25..26 "\n"
+
+error[DS0101]: expected `|` before the next operator, found `project`
+  --> query:2:1
+  |
+2 | project a
+  | ^^^^^^^

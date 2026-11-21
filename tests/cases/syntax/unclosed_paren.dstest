@@ -1,0 +1,46 @@
+# An unclosed parenthesis points back at the opening one.
+mode: syntax
+---- query
+(t | where (a > 1) | take 5
+---- expected
+PROGRAM@0..28
+  PIPELINE@0..27
+    PAREN_EXPR@0..27
+      L_PAREN@0..1 "("
+      PIPELINE@1..27
+        NAME_REF@1..2
+          IDENT@1..2 "t"
+        WHITESPACE@2..3 " "
+        PIPE@3..4 "|"
+        WHITESPACE@4..5 " "
+        WHERE_OP@5..18
+          IDENT@5..10 "where"
+          WHITESPACE@10..11 " "
+          PAREN_EXPR@11..18
+            L_PAREN@11..12 "("
+            BIN_EXPR@12..17
+              NAME_REF@12..13
+                IDENT@12..13 "a"
+              WHITESPACE@13..14 " "
+              GT@14..15 ">"
+              WHITESPACE@15..16 " "
+              LITERAL@16..17
+                LONG@16..17 "1"
+            R_PAREN@17..18 ")"
+        WHITESPACE@18..19 " "
+        PIPE@19..20 "|"
+        WHITESPACE@20..21 " "
+        TAKE_OP@21..27
+          IDENT@21..25 "take"
+          WHITESPACE@25..26 " "
+          LITERAL@26..27
+            LONG@26..27 "5"
+  WHITESPACE@27..28 "\n"
+
+error[DS0101]: expected `)`, found the end of the input
+  --> query:1:28
+  |
+1 | (t | where (a > 1) | take 5
+  | -                          ^ the input ends here
+  | |
+  | to close this `(`

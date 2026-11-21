@@ -1,0 +1,41 @@
+# join on $left.a == $right.b, with a path string on the right.
+mode: syntax
+---- query
+t | join 'customers.csv' on $left.id == $right.customerId, k
+---- expected
+PROGRAM@0..61
+  PIPELINE@0..60
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    JOIN_OP@4..60
+      IDENT@4..8 "join"
+      WHITESPACE@8..9 " "
+      LITERAL@9..24
+        STRING@9..24 "'customers.csv'"
+      WHITESPACE@24..25 " "
+      IDENT@25..27 "on"
+      WHITESPACE@27..28 " "
+      BIN_EXPR@28..57
+        FIELD_EXPR@28..36
+          NAME_REF@28..33
+            DOLLAR_LEFT@28..33 "$left"
+          DOT@33..34 "."
+          NAME_REF@34..36
+            IDENT@34..36 "id"
+        WHITESPACE@36..37 " "
+        EQ2@37..39 "=="
+        WHITESPACE@39..40 " "
+        FIELD_EXPR@40..57
+          NAME_REF@40..46
+            DOLLAR_RIGHT@40..46 "$right"
+          DOT@46..47 "."
+          NAME_REF@47..57
+            IDENT@47..57 "customerId"
+      COMMA@57..58 ","
+      WHITESPACE@58..59 " "
+      NAME_REF@59..60
+        IDENT@59..60 "k"
+  WHITESPACE@60..61 "\n"

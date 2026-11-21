@@ -1,0 +1,55 @@
+# Two broken operators in one pipeline give two errors; the rest of the tree is usable.
+mode: syntax
+---- query
+t | where a = 1 | project b c | take 5
+---- expected
+PROGRAM@0..39
+  PIPELINE@0..38
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..11
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      NAME_REF@10..11
+        IDENT@10..11 "a"
+    WHITESPACE@11..12 " "
+    ERROR@12..15
+      EQ@12..13 "="
+      WHITESPACE@13..14 " "
+      LONG@14..15 "1"
+    WHITESPACE@15..16 " "
+    PIPE@16..17 "|"
+    WHITESPACE@17..18 " "
+    PROJECT_OP@18..27
+      IDENT@18..25 "project"
+      WHITESPACE@25..26 " "
+      NAMED_EXPR@26..27
+        NAME_REF@26..27
+          IDENT@26..27 "b"
+    WHITESPACE@27..28 " "
+    ERROR@28..29
+      IDENT@28..29 "c"
+    WHITESPACE@29..30 " "
+    PIPE@30..31 "|"
+    WHITESPACE@31..32 " "
+    TAKE_OP@32..38
+      IDENT@32..36 "take"
+      WHITESPACE@36..37 " "
+      LITERAL@37..38
+        LONG@37..38 "5"
+  WHITESPACE@38..39 "\n"
+
+error[DS0101]: expected `|` or `;`, found `=`
+  --> query:1:13
+  |
+1 | t | where a = 1 | project b c | take 5
+  |             ^
+
+error[DS0101]: expected `|` or `;`, found `c`
+  --> query:1:29
+  |
+1 | t | where a = 1 | project b c | take 5
+  |                             ^

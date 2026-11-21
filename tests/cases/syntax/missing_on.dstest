@@ -1,0 +1,32 @@
+# join without on; M1-03 makes this DS0122.
+mode: syntax
+---- query
+t | join u | take 1
+---- expected
+PROGRAM@0..20
+  PIPELINE@0..19
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    JOIN_OP@4..10
+      IDENT@4..8 "join"
+      WHITESPACE@8..9 " "
+      NAME_REF@9..10
+        IDENT@9..10 "u"
+    WHITESPACE@10..11 " "
+    PIPE@11..12 "|"
+    WHITESPACE@12..13 " "
+    TAKE_OP@13..19
+      IDENT@13..17 "take"
+      WHITESPACE@17..18 " "
+      LITERAL@18..19
+        LONG@18..19 "1"
+  WHITESPACE@19..20 "\n"
+
+error[DS0101]: expected `on` and the columns to join on, found `|`
+  --> query:1:12
+  |
+1 | t | join u | take 1
+  |            ^

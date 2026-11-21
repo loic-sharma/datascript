@@ -1,0 +1,46 @@
+# A missing expression is reported once, and parsing continues at the next pipe.
+mode: syntax
+---- query
+t | where a > | project | take 5
+---- expected
+PROGRAM@0..33
+  PIPELINE@0..32
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..13
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..13
+        NAME_REF@10..11
+          IDENT@10..11 "a"
+        WHITESPACE@11..12 " "
+        GT@12..13 ">"
+    WHITESPACE@13..14 " "
+    PIPE@14..15 "|"
+    WHITESPACE@15..16 " "
+    PROJECT_OP@16..23
+      IDENT@16..23 "project"
+    WHITESPACE@23..24 " "
+    PIPE@24..25 "|"
+    WHITESPACE@25..26 " "
+    TAKE_OP@26..32
+      IDENT@26..30 "take"
+      WHITESPACE@30..31 " "
+      LITERAL@31..32
+        LONG@31..32 "5"
+  WHITESPACE@32..33 "\n"
+
+error[DS0101]: expected an expression after `>`, found `|`
+  --> query:1:15
+  |
+1 | t | where a > | project | take 5
+  |               ^
+
+error[DS0101]: expected an expression after `project`, found `|`
+  --> query:1:25
+  |
+1 | t | where a > | project | take 5
+  |                         ^

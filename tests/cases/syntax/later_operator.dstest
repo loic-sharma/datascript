@@ -1,0 +1,35 @@
+# Operators planned for later parse as errors with a note.
+mode: syntax
+---- query
+t | mv-expand tags | take 5
+---- expected
+PROGRAM@0..28
+  PIPELINE@0..27
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    ERROR@4..18
+      IDENT@4..6 "mv"
+      MINUS@6..7 "-"
+      IDENT@7..13 "expand"
+      WHITESPACE@13..14 " "
+      IDENT@14..18 "tags"
+    WHITESPACE@18..19 " "
+    PIPE@19..20 "|"
+    WHITESPACE@20..21 " "
+    TAKE_OP@21..27
+      IDENT@21..25 "take"
+      WHITESPACE@25..26 " "
+      LITERAL@26..27
+        LONG@26..27 "5"
+  WHITESPACE@27..28 "\n"
+
+error[DS0101]: expected an operator after `|`, found `mv-expand`
+  --> query:1:5
+  |
+1 | t | mv-expand tags | take 5
+  |     ^^^^^^^^^
+  |
+  = note: `mv-expand` is planned but not available yet

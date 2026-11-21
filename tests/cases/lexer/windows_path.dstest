@@ -3,14 +3,19 @@ mode: syntax
 ---- query
 'C:\data\x.csv' | take 5
 ---- expected
-STRING@0..15 "'C:\\data\\x.csv'"
-WHITESPACE@15..16 " "
-PIPE@16..17 "|"
-WHITESPACE@17..18 " "
-IDENT@18..22 "take"
-WHITESPACE@22..23 " "
-LONG@23..24 "5"
-WHITESPACE@24..25 "\n"
+PROGRAM@0..25
+  PIPELINE@0..24
+    LITERAL@0..15
+      STRING@0..15 "'C:\\data\\x.csv'"
+    WHITESPACE@15..16 " "
+    PIPE@16..17 "|"
+    WHITESPACE@17..18 " "
+    TAKE_OP@18..24
+      IDENT@18..22 "take"
+      WHITESPACE@22..23 " "
+      LITERAL@23..24
+        LONG@23..24 "5"
+  WHITESPACE@24..25 "\n"
 
 error[DS0005]: unknown escape sequence `\d`
   --> query:1:4

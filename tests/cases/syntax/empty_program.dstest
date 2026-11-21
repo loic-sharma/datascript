@@ -1,0 +1,12 @@
+# A program with only comments and semicolons.
+mode: syntax
+---- query
+// nothing here
+;;
+---- expected
+PROGRAM@0..19
+  LINE_COMMENT@0..15 "// nothing here"
+  WHITESPACE@15..16 "\n"
+  SEMICOLON@16..17 ";"
+  SEMICOLON@17..18 ";"
+  WHITESPACE@18..19 "\n"

@@ -264,6 +264,10 @@ Precedence, from lowest to highest:
 Comparison operators do not chain: `a < b < c` is a syntax error (`DS0101`) suggesting
 `a < b and b < c`.
 
+`not` followed by `(` reads like a call and binds like one (as in KQL): `not(x) == y` is
+`(not x) == y`. Without parentheses, `not` is the level-3 prefix: `not x == y` is `not (x == y)`
+(D-029). Expressions may nest at most 256 levels deep (`DS0100`).
+
 - `x in (1, 2, 3)`: the list is scalar literals or expressions of one type (after widening).
   `in~` compares strings case-insensitively. Tabular `in (T | project a)` is M2.
 - `x between (lo .. hi)`: inclusive on both ends.
@@ -445,6 +449,10 @@ hyph_op_name   = ident "-" ident ;            (* adjacent tokens, no trivia; onl
 
 Keywords are contextual (§1.1): the parser checks an identifier's text where the grammar expects a
 keyword.
+
+The parser accepts more than this sketch in table positions: a source, a `right_table` and a
+`let` value may be any scalar expression, and the binder rejects the ones that are not tables
+(D-029). A `join_cond` is parsed as an expression and checked by the binder.
 
 ## 9. Not planned (for now)
 

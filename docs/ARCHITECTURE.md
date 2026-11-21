@@ -145,7 +145,7 @@ statement do not stop other statements from being checked.
 Public facade (sketch):
 
 ```rust
-pub fn parse(text: &str) -> Parse;                          // syntax only (LSP fast path)
+pub fn parse(text: &str, file: FileId) -> Parse;           // datascript_syntax::parse: syntax only (LSP fast path)
 pub fn check(src: &SourceFile, schemas: &dyn SchemaProvider, caps: &Capabilities) -> Analysis;
     // Analysis { hir, diagnostics, stage_schemas, pending_sources }
 pub fn compile(src: &SourceFile, schemas: &dyn SchemaProvider, caps: &Capabilities)

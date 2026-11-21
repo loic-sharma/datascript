@@ -130,6 +130,7 @@ design decision and implemented by the task named in the allocation table.
 | DS0004 | warning | program has no query to run (no span) |
 | DS0005 | error | unknown escape sequence in string (help: `@"..."` or `/` for paths) |
 | DS0006 | error | unterminated block comment |
+| DS0100 | error | expression nested too deeply for the parser |
 | DS0101 | error | expected X, found Y (generic parse error, used as a last resort) |
 | DS0102 | error | missing `|` between operators |
 | DS0103 | error | pipe with no operator after it |

@@ -1,0 +1,23 @@
+# A query that starts with a pipe.
+mode: syntax
+---- query
+| take 5
+---- expected
+PROGRAM@0..9
+  PIPELINE@0..8
+    PIPE@0..1 "|"
+    WHITESPACE@1..2 " "
+    TAKE_OP@2..8
+      IDENT@2..6 "take"
+      WHITESPACE@6..7 " "
+      LITERAL@7..8
+        LONG@7..8 "5"
+  WHITESPACE@8..9 "\n"
+
+error[DS0101]: expected a table before `|`
+  --> query:1:1
+  |
+1 | | take 5
+  | ^ this pipe has nothing to read from
+  |
+  = help: start the query with a file path such as `'data.csv'`, or a table name

@@ -1,0 +1,86 @@
+# String operators, negated forms, _cs variants and matches regex.
+mode: syntax
+---- query
+t | where a has 'x' and b !has 'y' and c contains_cs 'z' and d !startswith 'w' and e endswith_cs 'v' and f matches regex '[0-9]+'
+---- expected
+PROGRAM@0..130
+  PIPELINE@0..129
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..129
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..129
+        BIN_EXPR@10..100
+          BIN_EXPR@10..78
+            BIN_EXPR@10..56
+              BIN_EXPR@10..34
+                BIN_EXPR@10..19
+                  NAME_REF@10..11
+                    IDENT@10..11 "a"
+                  WHITESPACE@11..12 " "
+                  IDENT@12..15 "has"
+                  WHITESPACE@15..16 " "
+                  LITERAL@16..19
+                    STRING@16..19 "'x'"
+                WHITESPACE@19..20 " "
+                AND_KW@20..23 "and"
+                WHITESPACE@23..24 " "
+                BIN_EXPR@24..34
+                  NAME_REF@24..25
+                    IDENT@24..25 "b"
+                  WHITESPACE@25..26 " "
+                  NEGATED_OP@26..30 "!has"
+                  WHITESPACE@30..31 " "
+                  LITERAL@31..34
+                    STRING@31..34 "'y'"
+              WHITESPACE@34..35 " "
+              AND_KW@35..38 "and"
+              WHITESPACE@38..39 " "
+              BIN_EXPR@39..56
+                NAME_REF@39..40
+                  IDENT@39..40 "c"
+                WHITESPACE@40..41 " "
+                IDENT@41..52 "contains_cs"
+                WHITESPACE@52..53 " "
+                LITERAL@53..56
+                  STRING@53..56 "'z'"
+            WHITESPACE@56..57 " "
+            AND_KW@57..60 "and"
+            WHITESPACE@60..61 " "
+            BIN_EXPR@61..78
+              NAME_REF@61..62
+                IDENT@61..62 "d"
+              WHITESPACE@62..63 " "
+              NEGATED_OP@63..74 "!startswith"
+              WHITESPACE@74..75 " "
+              LITERAL@75..78
+                STRING@75..78 "'w'"
+          WHITESPACE@78..79 " "
+          AND_KW@79..82 "and"
+          WHITESPACE@82..83 " "
+          BIN_EXPR@83..100
+            NAME_REF@83..84
+              IDENT@83..84 "e"
+            WHITESPACE@84..85 " "
+            IDENT@85..96 "endswith_cs"
+            WHITESPACE@96..97 " "
+            LITERAL@97..100
+              STRING@97..100 "'v'"
+        WHITESPACE@100..101 " "
+        AND_KW@101..104 "and"
+        WHITESPACE@104..105 " "
+        BIN_EXPR@105..129
+          NAME_REF@105..106
+            IDENT@105..106 "f"
+          WHITESPACE@106..107 " "
+          IDENT@107..114 "matches"
+          WHITESPACE@114..115 " "
+          IDENT@115..120 "regex"
+          WHITESPACE@120..121 " "
+          LITERAL@121..129
+            STRING@121..129 "'[0-9]+'"
+  WHITESPACE@129..130 "\n"

@@ -1,0 +1,57 @@
+# A reserved word as a let name gets help on quoting it.
+mode: syntax
+---- query
+let and = 1;
+let = 2;
+let x 3
+---- expected
+PROGRAM@0..30
+  LET_STMT@0..3
+    LET_KW@0..3 "let"
+  WHITESPACE@3..4 " "
+  ERROR@4..11
+    AND_KW@4..7 "and"
+    WHITESPACE@7..8 " "
+    EQ@8..9 "="
+    WHITESPACE@9..10 " "
+    LONG@10..11 "1"
+  SEMICOLON@11..12 ";"
+  WHITESPACE@12..13 "\n"
+  LET_STMT@13..20
+    LET_KW@13..16 "let"
+    WHITESPACE@16..17 " "
+    EQ@17..18 "="
+    WHITESPACE@18..19 " "
+    LITERAL@19..20
+      LONG@19..20 "2"
+  SEMICOLON@20..21 ";"
+  WHITESPACE@21..22 "\n"
+  LET_STMT@22..29
+    LET_KW@22..25 "let"
+    WHITESPACE@25..26 " "
+    NAME@26..27
+      IDENT@26..27 "x"
+    WHITESPACE@27..28 " "
+    LITERAL@28..29
+      LONG@28..29 "3"
+  WHITESPACE@29..30 "\n"
+
+error[DS0101]: expected a name after `let`, found `and`
+  --> query:1:5
+  |
+1 | let and = 1;
+  |     ^^^
+  |
+  = help: `and` is a reserved word; to use it as a name, quote it: `['and']`
+
+error[DS0101]: expected a name after `let`, found `=`
+  --> query:2:5
+  |
+2 | let = 2;
+  |     ^
+
+error[DS0101]: expected `=` after `x`, found `3`
+  --> query:3:7
+  |
+3 | let x 3
+  |       ^

@@ -4,33 +4,45 @@ mode: syntax
 t | where x > 1 # comment?
 | extend y = `z`
 ---- expected
-IDENT@0..1 "t"
-WHITESPACE@1..2 " "
-PIPE@2..3 "|"
-WHITESPACE@3..4 " "
-IDENT@4..9 "where"
-WHITESPACE@9..10 " "
-IDENT@10..11 "x"
-WHITESPACE@11..12 " "
-GT@12..13 ">"
-WHITESPACE@13..14 " "
-LONG@14..15 "1"
-WHITESPACE@15..16 " "
-ERROR@16..17 "#"
-WHITESPACE@17..18 " "
-IDENT@18..25 "comment"
-ERROR@25..26 "?"
-WHITESPACE@26..27 "\n"
-PIPE@27..28 "|"
-WHITESPACE@28..29 " "
-IDENT@29..35 "extend"
-WHITESPACE@35..36 " "
-IDENT@36..37 "y"
-WHITESPACE@37..38 " "
-EQ@38..39 "="
-WHITESPACE@39..40 " "
-ERROR@40..43 "`z`"
-WHITESPACE@43..44 "\n"
+PROGRAM@0..44
+  PIPELINE@0..43
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..15
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..15
+        NAME_REF@10..11
+          IDENT@10..11 "x"
+        WHITESPACE@11..12 " "
+        GT@12..13 ">"
+        WHITESPACE@13..14 " "
+        LITERAL@14..15
+          LONG@14..15 "1"
+    WHITESPACE@15..16 " "
+    ERROR@16..26
+      ERROR@16..17 "#"
+      WHITESPACE@17..18 " "
+      IDENT@18..25 "comment"
+      ERROR@25..26 "?"
+    WHITESPACE@26..27 "\n"
+    PIPE@27..28 "|"
+    WHITESPACE@28..29 " "
+    EXTEND_OP@29..39
+      IDENT@29..35 "extend"
+      WHITESPACE@35..36 " "
+      NAMED_EXPR@36..39
+        NAME@36..37
+          IDENT@36..37 "y"
+        WHITESPACE@37..38 " "
+        EQ@38..39 "="
+    WHITESPACE@39..40 " "
+    ERROR@40..43
+      ERROR@40..43 "`z`"
+  WHITESPACE@43..44 "\n"
 
 error[DS0001]: unexpected character `#`
   --> query:1:17

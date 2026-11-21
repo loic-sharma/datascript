@@ -3,10 +3,14 @@ mode: syntax
 ---- query
 9223372036854775808 9223372036854775809
 ---- expected
-LONG@0..19 "9223372036854775808"
-WHITESPACE@19..20 " "
-LONG@20..39 "9223372036854775809"
-WHITESPACE@39..40 "\n"
+PROGRAM@0..40
+  PIPELINE@0..39
+    LITERAL@0..19
+      LONG@0..19 "9223372036854775808"
+    WHITESPACE@19..20 " "
+    ERROR@20..39
+      LONG@20..39 "9223372036854775809"
+  WHITESPACE@39..40 "\n"
 
 error[DS0003]: number is too large for a `long`
   --> query:1:21
@@ -15,3 +19,9 @@ error[DS0003]: number is too large for a `long`
   |                     ^^^^^^^^^^^^^^^^^^^ the largest `long` is 9223372036854775807
   |
   = help: for numbers this large, use a `real` by adding a fraction: `9223372036854775809.0`
+
+error[DS0101]: expected `|` or `;`, found `9223372036854775809`
+  --> query:1:21
+  |
+1 | 9223372036854775808 9223372036854775809
+  |                     ^^^^^^^^^^^^^^^^^^^

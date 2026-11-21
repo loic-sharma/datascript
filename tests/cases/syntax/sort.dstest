@@ -1,0 +1,54 @@
+# sort keys with directions and null placement; order is an alias.
+mode: syntax
+---- query
+t | sort by a desc nulls last, b asc, c | order by d nulls first
+---- expected
+PROGRAM@0..65
+  PIPELINE@0..64
+    NAME_REF@0..1
+      IDENT@0..1 "t"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    SORT_OP@4..39
+      IDENT@4..8 "sort"
+      WHITESPACE@8..9 " "
+      IDENT@9..11 "by"
+      WHITESPACE@11..12 " "
+      SORT_KEY@12..29
+        NAME_REF@12..13
+          IDENT@12..13 "a"
+        WHITESPACE@13..14 " "
+        IDENT@14..18 "desc"
+        WHITESPACE@18..19 " "
+        IDENT@19..24 "nulls"
+        WHITESPACE@24..25 " "
+        IDENT@25..29 "last"
+      COMMA@29..30 ","
+      WHITESPACE@30..31 " "
+      SORT_KEY@31..36
+        NAME_REF@31..32
+          IDENT@31..32 "b"
+        WHITESPACE@32..33 " "
+        IDENT@33..36 "asc"
+      COMMA@36..37 ","
+      WHITESPACE@37..38 " "
+      SORT_KEY@38..39
+        NAME_REF@38..39
+          IDENT@38..39 "c"
+    WHITESPACE@39..40 " "
+    PIPE@40..41 "|"
+    WHITESPACE@41..42 " "
+    SORT_OP@42..64
+      IDENT@42..47 "order"
+      WHITESPACE@47..48 " "
+      IDENT@48..50 "by"
+      WHITESPACE@50..51 " "
+      SORT_KEY@51..64
+        NAME_REF@51..52
+          IDENT@51..52 "d"
+        WHITESPACE@52..53 " "
+        IDENT@53..58 "nulls"
+        WHITESPACE@58..59 " "
+        IDENT@59..64 "first"
+  WHITESPACE@64..65 "\n"

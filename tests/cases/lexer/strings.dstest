@@ -3,24 +3,34 @@ mode: syntax
 ---- query
 "text" "it's" '\t\u{1F600}' @"C:\raw" @'x' ['order id'] ["a"] ['a', 'b']
 ---- expected
-STRING@0..6 "\"text\""
-WHITESPACE@6..7 " "
-STRING@7..13 "\"it's\""
-WHITESPACE@13..14 " "
-STRING@14..27 "'\\t\\u{1F600}'"
-WHITESPACE@27..28 " "
-STRING@28..37 "@\"C:\\raw\""
-WHITESPACE@37..38 " "
-STRING@38..42 "@'x'"
-WHITESPACE@42..43 " "
-QUOTED_IDENT@43..55 "['order id']"
-WHITESPACE@55..56 " "
-QUOTED_IDENT@56..61 "[\"a\"]"
-WHITESPACE@61..62 " "
-L_BRACK@62..63 "["
-STRING@63..66 "'a'"
-COMMA@66..67 ","
-WHITESPACE@67..68 " "
-STRING@68..71 "'b'"
-R_BRACK@71..72 "]"
-WHITESPACE@72..73 "\n"
+PROGRAM@0..73
+  PIPELINE@0..72
+    LITERAL@0..6
+      STRING@0..6 "\"text\""
+    WHITESPACE@6..7 " "
+    ERROR@7..72
+      STRING@7..13 "\"it's\""
+      WHITESPACE@13..14 " "
+      STRING@14..27 "'\\t\\u{1F600}'"
+      WHITESPACE@27..28 " "
+      STRING@28..37 "@\"C:\\raw\""
+      WHITESPACE@37..38 " "
+      STRING@38..42 "@'x'"
+      WHITESPACE@42..43 " "
+      QUOTED_IDENT@43..55 "['order id']"
+      WHITESPACE@55..56 " "
+      QUOTED_IDENT@56..61 "[\"a\"]"
+      WHITESPACE@61..62 " "
+      L_BRACK@62..63 "["
+      STRING@63..66 "'a'"
+      COMMA@66..67 ","
+      WHITESPACE@67..68 " "
+      STRING@68..71 "'b'"
+      R_BRACK@71..72 "]"
+  WHITESPACE@72..73 "\n"
+
+error[DS0101]: expected `|` or `;`, found `"it's"`
+  --> query:1:8
+  |
+1 | "text" "it's" '\t\u{1F600}' @"C:\raw" @'x' ['order id'] ["a"] ['a', 'b']
+  |        ^^^^^^
