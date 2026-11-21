@@ -71,8 +71,8 @@ fn every_entry_has_docs_and_examples() {
                 f.name
             );
             let program = match f.kind {
-                FunctionKind::Scalar => format!("t | extend x = {example}"),
-                FunctionKind::Aggregate => format!("t | summarize x = {example}"),
+                FunctionKind::Scalar => format!("from t | extend x = {example}"),
+                FunctionKind::Aggregate => format!("from t | summarize x = {example}"),
             };
             let parse = datascript_syntax::parse(&program, FileId(0));
             assert!(
@@ -556,4 +556,28 @@ fn arg_type_error_for_class_constraint() {
     let e = arg_error("countif", &[Long]);
     assert_eq!(e.expected, Expected::OneOf(vec![TypeClass::Exact(Bool)]));
     arg_error("min", &[Dynamic]);
+}
+
+/// The parser's list of reader functions (`datascript_syntax::READERS`, for DS0150) must agree
+/// with the readers the compiler knows. Readers return tables, so they are not in the scalar
+/// catalog; until M1-17 adds the reader definitions, each name must read a known format.
+#[test]
+fn syntax_readers_match_the_compiler() {
+    use crate::capabilities::SourceFormat;
+    let mut readers = datascript_syntax::READERS.to_vec();
+    readers.sort_unstable();
+    assert_eq!(readers, datascript_syntax::READERS, "keep READERS sorted");
+    for reader in datascript_syntax::READERS {
+        let format = reader
+            .strip_prefix("read_")
+            .unwrap_or_else(|| panic!("`{reader}` is not named `read_<format>`"));
+        assert!(
+            SourceFormat::ALL.iter().any(|f| f.name() == format),
+            "`{reader}` reads no known format"
+        );
+        assert!(
+            catalog().lookup(reader).is_err(),
+            "`{reader}` is also a scalar function"
+        );
+    }
 }

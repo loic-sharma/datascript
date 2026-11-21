@@ -22,7 +22,7 @@ A single file with header lines, then sections introduced by `----` lines:
 # Summarize revenue per customer, sorted.
 mode: run
 ---- query
-'../../data/orders.csv'
+from '../../data/orders.csv'
 | summarize revenue = sum(amount) by customerId
 | sort by revenue desc
 | take 3
@@ -39,13 +39,13 @@ c-113      |  402.25
 # Typo in a column name gets a did-you-mean.
 mode: check
 ---- query
-'../../data/orders.csv' | summarize sum(amout)
+from '../../data/orders.csv' | summarize sum(amout)
 ---- expected
 error[DS1001]: unknown column `amout`
-  --> query:1:41
+  --> query:1:46
   |
-1 | '../../data/orders.csv' | summarize sum(amout)
-  |                                         ^^^^^ no column named `amout` here
+1 | from '../../data/orders.csv' | summarize sum(amout)
+  |                                              ^^^^^ no column named `amout` here
   |
   = help: a column with a similar name exists: `amount`
   = note: columns available at this point: orderId, customerId, amount, timestamp
@@ -74,7 +74,7 @@ Harness details (M0-03):
   line and a did-you-mean.
 - A case without `order:` asks the driver through `Driver::output_order_defined`. The pipeline
   driver parses the query and answers per §3.4; it does not look through `let`s, so
-  `s | take 5` with a sorted `let s` counts as undefined (`any`). A driver that cannot tell
+  `from s | take 5` with a sorted `let s` counts as undefined (`any`). A driver that cannot tell
   returns `None`, which means `any`.
 - The query is passed with trailing blank lines removed and exactly one final newline. Expected
   sections compare with `\r\n` normalized and trailing blank lines ignored; trailing spaces inside

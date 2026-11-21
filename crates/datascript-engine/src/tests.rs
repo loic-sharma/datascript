@@ -89,7 +89,7 @@ fn native_session_is_send_and_sync() {
     assert_send::<ExecContext>();
     let (session, _) = session();
     let ctx = session.exec_context(Path::new("."));
-    let src = source("'orders.csv'");
+    let src = source("from 'orders.csv'");
     assert_send_future(session.check(&src, FileId(0), &ctx));
     assert_send_future(session.run(&src, FileId(0), &ctx));
 }
@@ -104,7 +104,7 @@ fn exec_context_reads_the_injected_clock() {
 fn sources_are_fetched_then_bound_again() {
     let (session, engine) = session();
     let ctx = session.exec_context(Path::new("."));
-    let src = source("'orders.csv' | where amount > 100 | take 1");
+    let src = source("from 'orders.csv' | where amount > 100 | take 1");
     let analysis = block_on(session.check(&src, FileId(0), &ctx));
     assert!(
         analysis.diagnostics.is_empty(),
@@ -124,7 +124,7 @@ fn sources_are_fetched_then_bound_again() {
 fn source_errors_become_diagnostics() {
     let (session, _) = session();
     let ctx = session.exec_context(Path::new("."));
-    let src = source("'order.csv' | where amount > 100");
+    let src = source("from 'order.csv' | where amount > 100");
     let analysis = block_on(session.check(&src, FileId(0), &ctx));
     let codes: Vec<_> = analysis.diagnostics.iter().map(|d| d.code).collect();
     assert_eq!(codes, [DS3001]);
@@ -134,7 +134,7 @@ fn source_errors_become_diagnostics() {
 fn run_executes_each_query() {
     let (session, _) = session();
     let ctx = session.exec_context(Path::new("."));
-    let src = source("'orders.csv' | project amount; 'orders.csv' | take 1");
+    let src = source("from 'orders.csv' | project amount; from 'orders.csv' | take 1");
     let output = block_on(session.run(&src, FileId(0), &ctx));
     assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
     assert_eq!(output.results.len(), 2);
@@ -144,7 +144,7 @@ fn run_executes_each_query() {
 fn not_implemented_is_a_diagnostic() {
     let (session, _) = session();
     let ctx = session.exec_context(Path::new("."));
-    let output = block_on(session.run(&source("'orders.csv' | count"), FileId(0), &ctx));
+    let output = block_on(session.run(&source("from 'orders.csv' | count"), FileId(0), &ctx));
     let codes: Vec<_> = output.diagnostics.iter().map(|d| d.code).collect();
     assert_eq!(codes, [DS9001]);
 }

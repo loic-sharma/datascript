@@ -37,4 +37,4 @@ error[DS0105]: `SELECT ... FROM` is SQL, not DataScript
 2 | FROM orders
   | ---- in DataScript the table comes first
   |
-  = help: start with the table and pipe it into operators: `orders | summarize count() by customerId`
+  = help: start with the table and pipe it into operators: `from orders | summarize count() by customerId`

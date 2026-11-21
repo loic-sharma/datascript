@@ -300,7 +300,7 @@ impl Session {
             output.diagnostics.push(
                 Diagnostic::warning(DS0004, "program has no query to run")
                     .in_file(file)
-                    .help("add a query, such as `'data.csv' | take 10`"),
+                    .help("add a query, such as `from 'data.csv' | take 10`"),
             );
         }
         for query in &program.queries {

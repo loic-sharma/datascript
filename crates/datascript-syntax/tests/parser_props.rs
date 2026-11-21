@@ -293,7 +293,7 @@ proptest! {
 
 #[test]
 fn realistic_nesting_parses() {
-    let text = format!("t | where {}x{}", "(".repeat(200), ")".repeat(200));
+    let text = format!("from t | where {}x{}", "(".repeat(200), ")".repeat(200));
     let parse = parse(&text, FileId(0));
     assert!(parse.errors.is_empty(), "{:?}", parse.errors);
     assert_eq!(parse.syntax().text().to_string(), text);
@@ -303,15 +303,24 @@ fn realistic_nesting_parses() {
 fn pathological_nesting_gives_one_error() {
     for text in [
         format!(
-            "t | where {}x{} | take 1; u | count",
+            "from t | where {}x{} | take 1; from u | count",
             "(".repeat(100_000),
             ")".repeat(100_000)
         ),
-        format!("t | where {}x | take 1; u | count", "(".repeat(100_000)),
-        format!("t | where {}x | take 1; u | count", "- ".repeat(100_000)),
-        format!("t | where {}x | take 1; u | count", "not ".repeat(100_000)),
         format!(
-            "t | where {}x{} | take 1; u | count",
+            "from t | where {}x | take 1; from u | count",
+            "(".repeat(100_000)
+        ),
+        format!(
+            "from t | where {}x | take 1; from u | count",
+            "- ".repeat(100_000)
+        ),
+        format!(
+            "from t | where {}x | take 1; from u | count",
+            "not ".repeat(100_000)
+        ),
+        format!(
+            "from t | where {}x{} | take 1; from u | count",
             "f(".repeat(100_000),
             ")".repeat(100_000)
         ),
@@ -331,12 +340,12 @@ fn pathological_nesting_gives_one_error() {
 /// Long flat chains: `a + a + …` and `a.b.b…` are built by folding, one tree level per operator.
 fn chains(terms: usize) -> Vec<String> {
     vec![
-        format!("t | where a{}", "+a".repeat(terms - 1)),
-        format!("t | where a{}", " + a".repeat(terms - 1)),
-        format!("t | where a{}", ".b".repeat(terms - 1)),
-        format!("t | where a{}", "[0]".repeat(terms - 1)),
-        format!("t | where a{}", " or a".repeat(terms - 1)),
-        format!("t | where a{}", ".b + a".repeat(terms - 1)),
+        format!("from t | where a{}", "+a".repeat(terms - 1)),
+        format!("from t | where a{}", " + a".repeat(terms - 1)),
+        format!("from t | where a{}", ".b".repeat(terms - 1)),
+        format!("from t | where a{}", "[0]".repeat(terms - 1)),
+        format!("from t | where a{}", " or a".repeat(terms - 1)),
+        format!("from t | where a{}", ".b + a".repeat(terms - 1)),
     ]
 }
 
@@ -352,7 +361,7 @@ fn realistic_chains_parse() {
 #[test]
 fn pathological_chains_give_one_error() {
     for chain in chains(100_000) {
-        let text = format!("{chain} | take 1; u | count");
+        let text = format!("{chain} | take 1; from u | count");
         // `check` walks the typed AST recursively and drops the tree.
         check(&text).unwrap();
         let parse = parse(&text, FileId(0));
@@ -375,7 +384,7 @@ fn pathological_chains_give_one_error() {
 #[test]
 fn chains_inside_nesting_give_one_error() {
     let text = format!(
-        "t | where {}a{}{}; u | count",
+        "from t | where {}a{}{}; from u | count",
         "(".repeat(200),
         " + a".repeat(100),
         ")".repeat(200)
@@ -387,7 +396,7 @@ fn chains_inside_nesting_give_one_error() {
 }
 
 fn foreign_operator_lines(lines: usize) -> String {
-    "T | where a && b;\n".repeat(lines)
+    "from T | where a && b;\n".repeat(lines)
 }
 
 #[test]
@@ -422,15 +431,15 @@ fn long_input_parses_in_linear_time() {
     let cases: Vec<(&str, Make)> = vec![
         (
             "a+a+…",
-            Box::new(|n| format!("t | where a{}", "+a".repeat(n - 1))),
+            Box::new(|n| format!("from t | where a{}", "+a".repeat(n - 1))),
         ),
         (
             "a + a + …",
-            Box::new(|n| format!("t | where a{}", " + a".repeat(n - 1))),
+            Box::new(|n| format!("from t | where a{}", " + a".repeat(n - 1))),
         ),
         (
             "a.b.b…",
-            Box::new(|n| format!("t | where a{}", ".b".repeat(n - 1))),
+            Box::new(|n| format!("from t | where a{}", ".b".repeat(n - 1))),
         ),
         ("&& lines", Box::new(|n| foreign_operator_lines(n * 2 / 5))),
     ];
@@ -447,7 +456,7 @@ fn long_input_parses_in_linear_time() {
 /// A long comparison chain is one error, not one per link.
 #[test]
 fn long_comparison_chain_gives_one_error() {
-    let text = format!("t | where a{}", " < a".repeat(200));
+    let text = format!("from t | where a{}", " < a".repeat(200));
     check(&text).unwrap();
     let parse = parse(&text, FileId(0));
     let codes: Vec<String> = parse.errors.iter().map(|d| d.code.to_string()).collect();

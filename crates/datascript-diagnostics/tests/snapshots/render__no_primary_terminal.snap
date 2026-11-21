@@ -5,4 +5,4 @@ expression: "terminal(&d, &sources)"
 warning[DS0004]: program has no query to run
   ┌─ query.ds
   │
-  = help: add a query after the `let` statements, e.g. `'orders.csv' | take 10`
+  = help: add a query after the `let` statements, e.g. `from 'orders.csv' | take 10`

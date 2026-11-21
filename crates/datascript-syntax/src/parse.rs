@@ -43,7 +43,7 @@ impl Parse {
 /// use datascript_syntax::ast::{Operator, Stmt};
 /// use datascript_syntax::parse;
 ///
-/// let parse = parse("'orders.csv' | where amount > 10 | take 5", FileId(0));
+/// let parse = parse("from 'orders.csv' | where amount > 10 | take 5", FileId(0));
 /// assert!(parse.errors.is_empty());
 /// let Some(Stmt::Query(query)) = parse.program().statements().next() else { panic!() };
 /// let ops: Vec<Operator> = query.operators().collect();

@@ -238,6 +238,37 @@ impl Parser<'_> {
             && !matches!(self.nth(1), MINUS | NOT_KW)
     }
 
+    /// Whether the current token is `from` with no table after it (DS0151): followed by `|`, or,
+    /// where only a query can be (`statement`), also by `;`, `let` or the end. Elsewhere `from;`
+    /// or `f(from)` reads a name `from`.
+    fn at_empty_from(&self, statement: bool) -> bool {
+        self.at_kw("from")
+            && match self.nth(1) {
+                PIPE => true,
+                SEMICOLON | LET_KW | EOF => statement,
+                _ => false,
+            }
+    }
+
+    /// Whether the current token starts a row generator (`range x from 1 to 10 step 1`,
+    /// `datatable(...) [...]`, `print x = 1`), which starts a query without `from` (D-036).
+    /// `range(1, 10)` with no space is a call, and `range - 1` an expression.
+    fn at_generator(&self) -> bool {
+        if !self.at(IDENT) || self.nth_line_start(1) {
+            return false;
+        }
+        let next = self.nth(1);
+        match self.nth_text(0) {
+            "datatable" => next == L_PAREN,
+            "range" | "print" => {
+                EXPR_START.contains(next)
+                    && !matches!(next, MINUS | NOT_KW)
+                    && !(next == L_PAREN && self.nth_joined(1))
+            }
+            _ => false,
+        }
+    }
+
     /// `by` as a keyword (not `by = ...`, which names an output column `by`).
     fn at_by(&self) -> bool {
         self.at_kw("by") && self.nth(1) != EQ
@@ -347,14 +378,18 @@ fn let_stmt(p: &mut Parser<'_>) {
         let what = format!("`=`{}", p.after_prev());
         p.error_expected(&what);
     }
-    pipeline_or_expr(p);
+    pipeline_or_expr(p, true);
     m.complete(p, LET_STMT);
 }
 
 /// A query statement: always a `PIPELINE`, even without operators.
 fn query_stmt(p: &mut Parser<'_>) {
-    if p.at_from_kw() {
+    if p.at_from_kw() || p.at_empty_from(true) {
         from_pipeline(p);
+        return;
+    }
+    if p.at_generator() {
+        generator(p);
         return;
     }
     let m = p.start();
@@ -362,7 +397,10 @@ fn query_stmt(p: &mut Parser<'_>) {
     if p.at(PIPE) {
         let d = Diagnostic::error(codes::DS0125, "a query starts with a table, not with `|`")
             .primary(p.current_span(), "this pipe has nothing to read from")
-            .help("start the query with a file path such as `'data.csv'`, or a table name");
+            .help(
+                "start the query with `from` and a file path such as `from 'data.csv'`, or \
+                 `from` and a table name",
+            );
         p.report(d);
     } else if p.at_operator_without_source() {
         // `where a > 1`: parse the operator, so errors inside it show up too.
@@ -374,8 +412,67 @@ fn query_stmt(p: &mut Parser<'_>) {
         m.complete(p, PIPELINE);
         return;
     } else {
-        expr(p);
+        // A bare source (`orders | take 5`): DS0150, unless it is a pipeline in parentheses.
+        let reported = p.errors_at_token(start);
+        if let Some(source) = expr(p)
+            && !reported
+            && !is_paren_pipeline(p, source, start)
+        {
+            let head = head_kind(p, source, start);
+            p.missing_from(start, head, p.at(PIPE) || p.at_double_pipe(), true);
+        }
     }
+    pipeline_tail(p, start);
+    m.complete(p, PIPELINE);
+}
+
+/// What a pipeline written without `from` starts with, for how certain the DS0150 fix is.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Head {
+    /// A string literal: a path.
+    String,
+    /// A name.
+    Name,
+    /// A call to a reader function (`read_csv(...)`, [`crate::READERS`]).
+    Reader,
+    /// A call to any other function.
+    Call,
+    /// Anything else.
+    Other,
+}
+
+/// The kind of the expression `source`, which starts at token index `start`.
+fn head_kind(p: &Parser<'_>, source: CompletedMarker, start: usize) -> Head {
+    let first = p.tokens[start];
+    match source.kind(p) {
+        LITERAL if first.kind == STRING => Head::String,
+        NAME_REF => Head::Name,
+        CALL_EXPR
+            if first.kind == IDENT
+                && crate::READERS.contains(&first.text(p.text))
+                && p.tokens.get(start + 1).is_some_and(|t| t.kind == L_PAREN) =>
+        {
+            Head::Reader
+        }
+        CALL_EXPR => Head::Call,
+        _ => Head::Other,
+    }
+}
+
+/// Whether `source`, which starts at token index `start`, is a pipeline in parentheses
+/// (`(from t | where a)`): a table that needs no `from` of its own.
+fn is_paren_pipeline(p: &Parser<'_>, source: CompletedMarker, start: usize) -> bool {
+    source.kind(p) == PAREN_EXPR && p.paren_pipeline == Some(start)
+}
+
+/// A row generator at a pipeline head. None is available yet (M2-01 adds their grammar): the
+/// generator is reported and skipped, and the operators after it parsed. The current token is
+/// the generator's name.
+fn generator(p: &mut Parser<'_>) {
+    let m = p.start();
+    let start = p.pos;
+    p.generator_not_available();
+    p.recover(|p| p.at(PIPE) || p.at_pipeline_end() || p.at_new_statement());
     pipeline_tail(p, start);
     m.complete(p, PIPELINE);
 }
@@ -413,28 +510,47 @@ fn from_pipeline(p: &mut Parser<'_>) {
     let m = p.start();
     let start = p.pos;
     p.bump(); // from
-    expr(p);
+    if p.at_set(EXPR_START) {
+        expr(p);
+    } else {
+        p.empty_from();
+    }
     pipeline_tail(p, start);
     m.complete(p, PIPELINE);
 }
 
-/// A pipeline or a scalar expression, where either may appear: the right side of `let`, inside
-/// parentheses, and call arguments. `from` makes a pipeline (D-036); otherwise the expression
-/// is wrapped in a `PIPELINE` only if a `|` follows. Returns whether anything was parsed.
-fn pipeline_or_expr(p: &mut Parser<'_>) -> bool {
-    if p.at_from_kw() {
+/// A pipeline or a scalar expression, where either may appear: the right side of `let`
+/// (`in_let`), inside parentheses, and call arguments. `from` or a generator makes a pipeline
+/// (D-036). Without them, an expression followed by `|` is a pipeline that forgot its `from`
+/// (DS0150), and so is a reader call alone as a `let` value; anything else is a scalar.
+/// Returns whether the result is a table: a `PIPELINE`, or one in parentheses.
+fn pipeline_or_expr(p: &mut Parser<'_>, in_let: bool) -> bool {
+    if p.at_from_kw() || p.at_empty_from(false) {
         from_pipeline(p);
         return true;
     }
+    if p.at_generator() {
+        generator(p);
+        return true;
+    }
     let start = p.pos;
+    let reported = p.errors_at_token(start);
     let Some(source) = expr(p) else {
         return false;
     };
-    if p.at(PIPE) {
-        let m = source.precede(p);
-        pipeline_tail(p, start);
-        m.complete(p, PIPELINE);
+    let paren_pipeline = is_paren_pipeline(p, source, start);
+    let piped = p.at(PIPE);
+    let head = head_kind(p, source, start);
+    if !(piped || (in_let && head == Head::Reader)) {
+        return paren_pipeline;
     }
+    // Inside a bracket that is never closed, DS0112 explains what went wrong.
+    if !reported && !paren_pipeline && (p.depth == 0 || closing_ahead(p, R_PAREN)) {
+        p.missing_from(start, head, piped, false);
+    }
+    let m = source.precede(p);
+    pipeline_tail(p, start);
+    m.complete(p, PIPELINE);
     true
 }
 
@@ -1518,11 +1634,13 @@ fn paren_expr(p: &mut Parser<'_>) -> CompletedMarker {
     p.bump(); // (
     p.depth += 1;
     let saved = std::mem::replace(&mut p.in_arg_list, false);
-    pipeline_or_expr(p);
+    let tabular = pipeline_or_expr(p, false);
     p.in_arg_list = saved;
     expect_closing(p, open);
     p.depth -= 1;
-    m.complete(p, PAREN_EXPR)
+    let paren = m.complete(p, PAREN_EXPR);
+    p.paren_pipeline = tabular.then_some(open);
+    paren
 }
 
 /// `'(' [arg { ',' arg }] ')'`, where an argument is `[name '='] value`. The list after `in`
@@ -1549,10 +1667,10 @@ fn arg_list(p: &mut Parser<'_>, in_list: bool) {
                 let m = p.start();
                 p.name_before_eq();
                 p.bump(); // =
-                pipeline_or_expr(p);
+                pipeline_or_expr(p, false);
                 m.complete(p, NAMED_EXPR);
             } else {
-                pipeline_or_expr(p);
+                pipeline_or_expr(p, false);
             }
         });
     }

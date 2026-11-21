@@ -20,4 +20,4 @@ error[DS0125]: a query starts with a table, not with `|`
 1 | | take 5
   | ^ this pipe has nothing to read from
   |
-  = help: start the query with a file path such as `'data.csv'`, or a table name
+  = help: start the query with `from` and a file path such as `from 'data.csv'`, or `from` and a table name

@@ -87,6 +87,12 @@ Every other keyword (`by`, `on`, `kind`, `with`, `asc`, `desc`, `nulls`, `first`
 `order`) is an ordinary identifier except where the grammar expects it. So a column named `count`
 or `order` can be used directly: `| where order > 3`, `| summarize sum(count) by kind`.
 
+`from` is a keyword at the head of a pipeline when something that can start an expression follows
+it, other than `-` and `not`; everywhere else it is a name (D-036). So `| where from > 3` and
+`let y = from - 1` use a column or `let` named `from`. `from(` is the keyword followed by a
+parenthesized source, never a call. A table named `from` is read with `from ['from']`, or with
+`from from` (the second `from` is a name). The match is case-sensitive: `FROM` is not the keyword.
+
 Operator names are recognized only when the previous non-trivia token is `|`. The lexer is
 context-free (D-026): `project-away` lexes as `project`, `-`, `away`. Right after `|`, the parser
 joins a hyphenated operator name (`project-away`, `project-rename`, `project-reorder`, `mv-expand`,
@@ -100,32 +106,34 @@ whitespace or comments between `|` and the operator. `| project - away` is not a
 A program is a sequence of **statements** separated by `;`. A trailing `;` is optional.
 
 ```ds
-let threshold = 100;                         // scalar let
-let big = 'orders.csv' | where amount > threshold;   // tabular let
-big | summarize count() by customerId        // query statement (produces a result)
+let threshold = 100;                                      // scalar let
+let big = from 'orders.csv' | where amount > threshold;   // tabular let
+from big | summarize count() by customerId                // query statement (produces a result)
 ```
 
 - `let name = <expr>` binds a scalar or tabular expression. Lets are immutable and lexically
   scoped to the rest of the program. Re-binding a name is an error (`DS1003`) (≠ KQL, which allows
   shadowing).
-- **Scalar or tabular?** The parser does not decide; the binder does, from the right side alone. A
-  `let` whose right side has a pipe, a reader call, or a tabular name is tabular. Everything else,
-  including a `let` bound to a string, is scalar (D-020). A **constant string** in a table position
-  (pipe head, right side of `join`/`union`/`lookup`) is a file source, whether it is written as a
-  literal or as the name of a scalar `let` bound to one. So one name can serve as a path and as a
-  string:
+- **Scalar or tabular?** The syntax decides (D-036). A `let` whose value *is* a pipeline (it
+  starts with `from` or a generator, or is a pipeline in parentheses) is tabular. Everything else,
+  including a `let` bound to a string or to a bare name, is scalar: `let alias = orders;` does not
+  make `alias` a table even if `orders` is one; write `let alias = from orders;`. "Is", not "starts
+  with": `let x = (from t | count) + 1` is a scalar expression, which the binder rejects.
+  A **constant string** in a table position (after `from`, right side of `join`/`union`/`lookup`)
+  is a file source, whether it is written as a literal or as the name of a scalar `let` bound to
+  one (D-020). So one name can serve as a path and as a string:
 
   ```ds
   let path = 'data/orders.csv';
-  path | take 5;                              // source
-  read_csv(path, delimiter = ';') | count     // reader argument
+  from path | take 5;                              // source
+  from read_csv(path, delimiter = ';') | count     // reader argument
   ```
 - Each **query statement** (a statement that is not a `let`) produces one result. A program may
   contain several. They are shown in order (≠ KQL's multi-result behaviour is engine-specific).
   Each statement runs as its own query. A tabular `let` used by two statements is evaluated in
   each (no materialization).
 - A missing `;` between statements is the most common mistake for KQL users. When a pipeline is
-  followed by something that can only start a new statement (`let`, or a source on a new line),
+  followed by something that can only start a new statement (`let`, or `from` on a new line),
   the parser reports `DS0106` with a machine-applicable fix inserting `;`. When the pipeline
   ends in an operator that takes a list (`project a⏎  b`), a forgotten `,` is as likely, so both
   fixes are offered and neither is machine-applicable.
@@ -136,23 +144,51 @@ big | summarize count() by customerId        // query statement (produces a resu
 ## 3. Tabular expressions
 
 ```
-tabular_expr := source ( '|' operator )*
+tabular_expr := 'from' source ( '|' operator )*
+              | generator ( '|' operator )*
+              | '(' tabular_expr ')' ( '|' operator )*
 ```
+
+Every pipeline starts with `from` (D-036): a query statement, the value of a tabular `let`, a
+pipeline in parentheses and a pipeline passed as a call argument.
+
+```ds
+let big = from 'orders.csv' | where amount > 100;
+from big | summarize count() by customerId;
+from read_csv('x.txt', delimiter = ';') | take 5;
+(from big | take 5) | union (from 'more.csv' | take 5)
+```
+
+Three forms start a pipeline without `from`:
+
+- A **row generator** reads nothing, so it starts a query on its own: `range`, `datatable` and
+  `print` (M2).
+- A **parenthesized pipeline** already starts with `from`: `(from t | where a > 1) | take 5`.
+  `from (from t | where a > 1)` is also valid.
+- The **right side of `join`, `union` and `lookup`** is already a table position, so it takes a
+  table directly: `join customers on id`, `union 'b.csv'`. A pipeline there is parenthesized:
+  `join (from 'c.csv' | where active) on id`.
+
+A pipeline without `from` (`orders | take 5`) is `DS0150`, with a fix that inserts `from` (≠ KQL).
+`from` with nothing after it is `DS0151`.
 
 ### 3.1 Sources
 
 | Source | Example | Notes |
 |---|---|---|
-| File path | `'data/orders.csv'`, or a scalar `let` bound to one | Format from extension (see below) |
-| Glob | `'logs/2024-*/*.parquet'` | `*`, `?`, `[abc]`, and `**` (any depth). Matches are sorted by path. All matches must share a format. Schemas are merged by name |
-| Reader function | `read_csv('x.txt', delimiter = ';', header = false)` | Explicit format and options. Also `read_parquet`, `read_json` |
-| Name | `orders` | A tabular `let`, or a table registered by the host (web UI drag-drop, `--table orders=path` on the CLI) |
-| Inline data | `datatable(a: long, b: string) [1, "x", 2, "y"]` | M2 |
-| Range | `range x from 1 to 10 step 1` | M2 |
+| File path | `from 'data/orders.csv'`, or a scalar `let` bound to one | Format from extension (see below) |
+| Glob | `from 'logs/2024-*/*.parquet'` | `*`, `?`, `[abc]`, and `**` (any depth). Matches are sorted by path. All matches must share a format. Schemas are merged by name |
+| Reader function | `from read_csv('x.txt', delimiter = ';', header = false)` | Explicit format and options. Also `read_parquet`, `read_json` |
+| Name | `from orders` | A tabular `let`, or a table registered by the host (web UI drag-drop, `--table orders=path` on the CLI) |
+| Parenthesized pipeline | `from (from orders \| take 5)` | |
+| Inline data | `datatable(a: long, b: string) [1, "x", 2, "y"]` | M2. A generator: no `from` |
+| Range | `range x from 1 to 10 step 1` | M2. A generator: no `from` |
 
-DuckDB-style path sources are the main way to read files. A constant string at the start of a pipe
-(a literal, or the name of a scalar `let` bound to one) is always a source, never a scalar (D-020).
-A string that is not constant there (`strcat(dir, '/x.csv') | take 1`) is `DS3006`.
+DuckDB-style path sources are the main way to read files. A constant string after `from` (a
+literal, or the name of a scalar `let` bound to one) is always a source, never a scalar (D-020).
+A string that is not constant there (`from strcat(dir, '/x.csv') | take 1`) is `DS3006`. As
+everywhere in a table position, the parser accepts any expression after `from` and the binder
+rejects the ones that are not tables (D-029).
 
 **Formats by extension**: `.csv`, `.tsv`, `.parquet`, `.json` (array or NDJSON, detected),
 `.ndjson`/`.jsonl`. CSV, TSV and JSON files may also be compressed, with the compression taken from
@@ -222,7 +258,8 @@ M1 operators are marked ●, M2 operators ○.
 | ○ `print` | `print x = 1, y = now()` | A source producing one row |
 
 A right-hand table in `join`/`union`/`lookup` is a name, a path string, or a parenthesized tabular
-expression: `join 'customers.csv' on customerId` works.
+expression, written without `from` (D-036): `join 'customers.csv' on customerId` works, and so
+does `join (from 'customers.csv' | where active) on customerId`.
 
 ### 3.3 Column naming
 
@@ -434,9 +471,10 @@ WASM and for deterministic tests).
 ```ebnf
 program        = { statement ";" } [ statement ] ;
 statement      = let_stmt | tabular_expr ;
-let_stmt       = "let" ident "=" ( tabular_expr | scalar_expr ) ;   (* kind decided by the binder, §2 *)
-tabular_expr   = source { "|" operator } ;
+let_stmt       = "let" ident "=" ( tabular_expr | scalar_expr ) ;   (* tabular iff a tabular_expr, §2 *)
+tabular_expr   = ( "from" source | generator | "(" tabular_expr ")" ) { "|" operator } ;
 source         = string_lit | ident | reader_call | "(" tabular_expr ")" ;
+generator      = range_gen | datatable_gen | print_gen ;                (* M2 *)
 right_table    = string_lit | ident | "(" tabular_expr ")" ;
 operator       = where_op | project_op | extend_op | summarize_op | sort_op | top_op
                | take_op | count_op | distinct_op | join_op | union_op | render_op | ... ;
@@ -460,9 +498,10 @@ hyph_op_name   = ident "-" ident ;            (* adjacent tokens, no trivia; onl
 Keywords are contextual (§1.1): the parser checks an identifier's text where the grammar expects a
 keyword.
 
-The parser accepts more than this sketch in table positions: a source, a `right_table` and a
-`let` value may be any scalar expression, and the binder rejects the ones that are not tables
-(D-029). A `join_cond` is parsed as an expression and checked by the binder.
+The parser accepts more than this sketch in table positions: a source after `from` and a
+`right_table` may be any scalar expression, and the binder rejects the ones that are not tables
+(D-029). In the tree, `from source` is always a `PIPELINE` node, even with no operators, with the
+`from` token as its first child (D-036). A `join_cond` is parsed as an expression and checked by the binder.
 
 ## 9. Not planned (for now)
 

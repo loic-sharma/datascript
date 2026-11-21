@@ -59,4 +59,4 @@ error[DS0105]: `SELECT ... FROM` is SQL, not DataScript
   | |
   | this is SQL
   |
-  = help: start with the table and pipe it into operators: `t | where amount > 0 | summarize total = sum(amount) by customerId | sort by total desc | take 3`
+  = help: start with the table and pipe it into operators: `from t | where amount > 0 | summarize total = sum(amount) by customerId | sort by total desc | take 3`

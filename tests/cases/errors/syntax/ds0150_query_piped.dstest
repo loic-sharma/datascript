@@ -1,0 +1,124 @@
+# A query that starts with a name, a string or a call followed by `|`: DS0150 with a machine-applicable fix.
+mode: syntax
+---- query
+orders | take 5;
+'data/orders.csv' | where amount > 100;
+read_csv('x.txt', delimiter = ';') | take 5;
+my_reader('x') | count
+---- expected
+PROGRAM@0..125
+  PIPELINE@0..15
+    NAME_REF@0..6
+      IDENT@0..6 "orders"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    TAKE_OP@9..15
+      IDENT@9..13 "take"
+      WHITESPACE@13..14 " "
+      LITERAL@14..15
+        LONG@14..15 "5"
+  SEMICOLON@15..16 ";"
+  WHITESPACE@16..17 "\n"
+  PIPELINE@17..55
+    LITERAL@17..34
+      STRING@17..34 "'data/orders.csv'"
+    WHITESPACE@34..35 " "
+    PIPE@35..36 "|"
+    WHITESPACE@36..37 " "
+    WHERE_OP@37..55
+      IDENT@37..42 "where"
+      WHITESPACE@42..43 " "
+      BIN_EXPR@43..55
+        NAME_REF@43..49
+          IDENT@43..49 "amount"
+        WHITESPACE@49..50 " "
+        GT@50..51 ">"
+        WHITESPACE@51..52 " "
+        LITERAL@52..55
+          LONG@52..55 "100"
+  SEMICOLON@55..56 ";"
+  WHITESPACE@56..57 "\n"
+  PIPELINE@57..100
+    CALL_EXPR@57..91
+      NAME_REF@57..65
+        IDENT@57..65 "read_csv"
+      ARG_LIST@65..91
+        L_PAREN@65..66 "("
+        LITERAL@66..73
+          STRING@66..73 "'x.txt'"
+        COMMA@73..74 ","
+        WHITESPACE@74..75 " "
+        NAMED_EXPR@75..90
+          NAME@75..84
+            IDENT@75..84 "delimiter"
+          WHITESPACE@84..85 " "
+          EQ@85..86 "="
+          WHITESPACE@86..87 " "
+          LITERAL@87..90
+            STRING@87..90 "';'"
+        R_PAREN@90..91 ")"
+    WHITESPACE@91..92 " "
+    PIPE@92..93 "|"
+    WHITESPACE@93..94 " "
+    TAKE_OP@94..100
+      IDENT@94..98 "take"
+      WHITESPACE@98..99 " "
+      LITERAL@99..100
+        LONG@99..100 "5"
+  SEMICOLON@100..101 ";"
+  WHITESPACE@101..102 "\n"
+  PIPELINE@102..124
+    CALL_EXPR@102..116
+      NAME_REF@102..111
+        IDENT@102..111 "my_reader"
+      ARG_LIST@111..116
+        L_PAREN@111..112 "("
+        LITERAL@112..115
+          STRING@112..115 "'x'"
+        R_PAREN@115..116 ")"
+    WHITESPACE@116..117 " "
+    PIPE@117..118 "|"
+    WHITESPACE@118..119 " "
+    COUNT_OP@119..124
+      IDENT@119..124 "count"
+  WHITESPACE@124..125 "\n"
+
+error[DS0150]: a query starts with `from`
+  --> query:1:1
+  |
+1 | orders | take 5;
+  | ^^^^^^ this table needs `from` before it
+  |
+  = help: insert `from`: `from orders`
+
+error[DS0150]: a query starts with `from`
+  --> query:2:1
+  |
+2 | 'data/orders.csv' | where amount > 100;
+  | ^^^^^^^^^^^^^^^^^ this table needs `from` before it
+  |
+  = help: insert `from`: `from 'data/orders.csv'`
+
+error[DS0150]: a query starts with `from`
+  --> query:3:1
+  |
+3 | read_csv('x.txt', delimiter = ';') | take 5;
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this table needs `from` before it
+  |
+  = help: insert `from`: `from read_csv('x.txt', delimiter = ';')`
+
+error[DS0150]: a query starts with `from`
+  --> query:4:1
+  |
+4 | my_reader('x') | count
+  | ^^^^^^^^^^^^^^ this table needs `from` before it
+  |
+  = help: insert `from`: `from my_reader('x')`
+
+with the machine-applicable fixes applied:
+    from orders | take 5;
+    from 'data/orders.csv' | where amount > 100;
+    from read_csv('x.txt', delimiter = ';') | take 5;
+    from my_reader('x') | count
+which parses without errors

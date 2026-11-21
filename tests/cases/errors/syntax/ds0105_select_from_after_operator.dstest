@@ -44,4 +44,4 @@ error[DS0105]: `SELECT ... FROM` is SQL, not DataScript
   |                        |
   |                        this is SQL
   |
-  = help: start with the table and pipe it into operators: `'orders.csv' | where amount > 10 | project customerId, amount`
+  = help: start with the table and pipe it into operators: `from 'orders.csv' | where amount > 10 | project customerId, amount`

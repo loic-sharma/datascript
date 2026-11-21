@@ -7,11 +7,11 @@ on [Apache DataFusion](https://datafusion.apache.org/) by default. It works on t
 ```ds
 let orders = 'data/orders/*.parquet';
 
-let topCustomers = orders
+let topCustomers = from orders
 | summarize revenue = sum(amount) by customerId
 | top 10 by revenue desc;
 
-orders
+from orders
 | join kind = inner topCustomers on customerId
 | summarize revenue = sum(amount) by customerId, month = startofmonth(timestamp)
 | render timechart
@@ -22,7 +22,8 @@ orders
 
 ## Core principles
 
-- **Pipes.** A query is a source followed by operators chained with `|`, read top to bottom.
+- **Pipes.** A query reads a table with `from` and passes it through operators chained with `|`,
+  read top to bottom.
 - **Readable errors are a feature.** Every error says what went wrong, points at the exact span,
   and suggests a fix when one is likely. The CLI, the editor, and the web UI share one
   diagnostics core, so an error looks the same everywhere.
@@ -31,7 +32,7 @@ orders
 - **Pluggable engines.** The compiler emits an engine-neutral logical plan. DataFusion is the first
   backend. Others can be added, so DataScript can also serve as a front end for other query engines.
 - **Local files first.** Query CSV, Parquet, and JSON straight from disk, DuckDB-style:
-  `'logs/*.csv' | where level == "error"`.
+  `from 'logs/*.csv' | where level == "error"`.
 
 ## Ways to run it (planned)
 

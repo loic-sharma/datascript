@@ -61,9 +61,9 @@ pub const DS0101: Code = Code::new(101);
 pub const DS0102: Code = Code::new(102);
 /// pipe with no operator after it
 pub const DS0103: Code = Code::new(103);
-/// unknown operator (with did-you-mean; also `project - away` with spaces, D-026)
+/// unknown operator (with did-you-mean; also `project - away` with spaces, D-026, and a row generator such as `range` before M2-01)
 pub const DS0104: Code = Code::new(104);
-/// SQL keyword used (`SELECT ... FROM`, `GROUP BY`, `WHERE` and `AND`/`OR`/`NOT` in caps, `DESC`, `IS NULL`, `LIKE`, `AS`, …), with the DataScript equivalent
+/// SQL keyword used (`SELECT ... FROM`, rewritten as a `from` pipeline; `GROUP BY`, `WHERE` and `AND`/`OR`/`NOT` in caps, `DESC`, `IS NULL`, `LIKE`, `AS`, …), with the DataScript equivalent
 pub const DS0105: Code = Code::new(105);
 /// missing `;` between statements (machine-applicable fix, except after an operator that takes a list, where `,` is offered too and neither is certain)
 pub const DS0106: Code = Code::new(106);
@@ -95,7 +95,7 @@ pub const DS0122: Code = Code::new(122);
 pub const DS0123: Code = Code::new(123);
 /// `innerunique` is not supported (explains D-004)
 pub const DS0124: Code = Code::new(124);
-/// query does not start with a table (`where a > 1`, or a pipe with nothing before it)
+/// query starts with an operator or a pipe instead of `from` and a table (`where a > 1`, `| take 5`)
 pub const DS0125: Code = Code::new(125);
 /// reserved word used as a name (help: quote it, `['null']`)
 pub const DS0126: Code = Code::new(126);
@@ -105,6 +105,10 @@ pub const DS0127: Code = Code::new(127);
 pub const DS0128: Code = Code::new(128);
 /// `in ~` / `!in ~` written with a space (machine-applicable fix to `in~`)
 pub const DS0129: Code = Code::new(129);
+/// query or pipeline does not start with `from` (machine-applicable fix inserts it when the head is clearly a table, D-036)
+pub const DS0150: Code = Code::new(150);
+/// `from` with no table after it
+pub const DS0151: Code = Code::new(151);
 /// unknown column
 pub const DS1001: Code = Code::new(1001);
 /// unknown name (let/table)
@@ -243,13 +247,13 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS0104,
         severity: Some(Severity::Error),
-        summary: "unknown operator (with did-you-mean; also `project - away` with spaces, D-026)",
+        summary: "unknown operator (with did-you-mean; also `project - away` with spaces, D-026, and a row generator such as `range` before M2-01)",
         status: CodeStatus::Active,
     },
     CodeInfo {
         code: DS0105,
         severity: Some(Severity::Error),
-        summary: "SQL keyword used (`SELECT ... FROM`, `GROUP BY`, `WHERE` and `AND`/`OR`/`NOT` in caps, `DESC`, `IS NULL`, `LIKE`, `AS`, …), with the DataScript equivalent",
+        summary: "SQL keyword used (`SELECT ... FROM`, rewritten as a `from` pipeline; `GROUP BY`, `WHERE` and `AND`/`OR`/`NOT` in caps, `DESC`, `IS NULL`, `LIKE`, `AS`, …), with the DataScript equivalent",
         status: CodeStatus::Active,
     },
     CodeInfo {
@@ -345,7 +349,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS0125,
         severity: Some(Severity::Error),
-        summary: "query does not start with a table (`where a > 1`, or a pipe with nothing before it)",
+        summary: "query starts with an operator or a pipe instead of `from` and a table (`where a > 1`, `| take 5`)",
         status: CodeStatus::Active,
     },
     CodeInfo {
@@ -370,6 +374,18 @@ pub const REGISTRY: &[CodeInfo] = &[
         code: DS0129,
         severity: Some(Severity::Error),
         summary: "`in ~` / `!in ~` written with a space (machine-applicable fix to `in~`)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0150,
+        severity: Some(Severity::Error),
+        summary: "query or pipeline does not start with `from` (machine-applicable fix inserts it when the head is clearly a table, D-036)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0151,
+        severity: Some(Severity::Error),
+        summary: "`from` with no table after it",
         status: CodeStatus::Active,
     },
     CodeInfo {

@@ -134,7 +134,8 @@ impl Program {
 }
 
 ast_node!(
-    /// `let name = value`. The value is a scalar or a table; the binder decides (D-020).
+    /// `let name = value`. The value is a table if it is a [`Pipeline`] (see
+    /// [`LetStmt::is_tabular`]), a scalar otherwise (D-036).
     LetStmt,
     LET_STMT
 );

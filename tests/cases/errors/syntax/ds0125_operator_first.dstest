@@ -32,4 +32,4 @@ error[DS0125]: a query starts with a table, not with `where`
 1 | where amount > 1 | take 5
   | ^^^^^ `where` is an operator
   |
-  = help: start with the table and pipe it into `where`: `'data.csv' | where amount > 1 | take 5`
+  = help: start the query with `from` and a table, and pipe it into `where`: `from 'data.csv' | where amount > 1 | take 5`

@@ -23,7 +23,10 @@ fn ops(text: &str) -> Vec<Operator> {
 
 #[test]
 fn statements_and_lets() {
-    let parse = parse("let n = 1; let t = 'a.csv' | take n; t", FileId(0));
+    let parse = parse(
+        "let n = 1; let t = from 'a.csv' | take n; from t",
+        FileId(0),
+    );
     assert!(parse.errors.is_empty());
     let stmts: Vec<Stmt> = parse.program().statements().collect();
     let [Stmt::Let(scalar), Stmt::Let(tabular), Stmt::Query(q)] = &stmts[..] else {
@@ -38,7 +41,7 @@ fn statements_and_lets() {
 
 #[test]
 fn operator_names() {
-    let names: Vec<String> = ops("t | project-away a | project b | order by c asc | limit 1")
+    let names: Vec<String> = ops("from t | project-away a | project b | order by c asc | limit 1")
         .iter()
         .map(Operator::name)
         .collect();
@@ -47,7 +50,7 @@ fn operator_names() {
 
 #[test]
 fn project_and_extend_items() {
-    let [Operator::Project(p)] = &ops("t | project a, total = a + b, ['x y'] = c")[..] else {
+    let [Operator::Project(p)] = &ops("from t | project a, total = a + b, ['x y'] = c")[..] else {
         panic!()
     };
     let items: Vec<NamedExpr> = p.items().collect();
@@ -60,7 +63,7 @@ fn project_and_extend_items() {
 
 #[test]
 fn project_away_and_rename() {
-    let ops = ops("t | project-away x, tmp* | project-rename id = orderId");
+    let ops = ops("from t | project-away x, tmp* | project-rename id = orderId");
     let Operator::ProjectAway(away) = &ops[0] else {
         panic!()
     };
@@ -79,7 +82,8 @@ fn project_away_and_rename() {
 
 #[test]
 fn summarize_parts() {
-    let [Operator::Summarize(s)] = &ops("t | summarize n = count(), sum(x) by k, bin(ts, 1h)")[..]
+    let [Operator::Summarize(s)] =
+        &ops("from t | summarize n = count(), sum(x) by k, bin(ts, 1h)")[..]
     else {
         panic!()
     };
@@ -87,7 +91,7 @@ fn summarize_parts() {
     let keys: Vec<String> = s.by().unwrap().keys().map(|k| text(&k)).collect();
     assert_eq!(keys, ["k", "bin(ts, 1h)"]);
 
-    let [Operator::Summarize(s)] = &ops("t | summarize by k")[..] else {
+    let [Operator::Summarize(s)] = &ops("from t | summarize by k")[..] else {
         panic!()
     };
     assert_eq!(s.aggregates().count(), 0);
@@ -96,7 +100,7 @@ fn summarize_parts() {
 
 #[test]
 fn sort_and_top_keys() {
-    let ops = ops("t | sort by a desc nulls last, b | top 10 by c asc");
+    let ops = ops("from t | sort by a desc nulls last, b | top 10 by c asc");
     let Operator::Sort(sort) = &ops[0] else {
         panic!()
     };
@@ -120,7 +124,7 @@ fn sort_and_top_keys() {
 /// `DESC` in caps is reported (DS0105) but still sorts descending.
 #[test]
 fn sort_direction_in_caps() {
-    let parse = parse("t | sort by a DESC, b Asc", FileId(0));
+    let parse = parse("from t | sort by a DESC, b Asc", FileId(0));
     assert!(parse.errors.iter().all(|d| d.code.to_string() == "DS0105"));
     let Some(Stmt::Query(q)) = parse.program().statements().next() else {
         panic!()
@@ -138,7 +142,7 @@ fn sort_direction_in_caps() {
 /// A method-style call is a call with no name, so its arguments can still be walked.
 #[test]
 fn method_call_is_a_call_without_callee() {
-    let parse = parse("t | extend x = a.b(1, 2)", FileId(0));
+    let parse = parse("from t | extend x = a.b(1, 2)", FileId(0));
     let codes: Vec<String> = parse.errors.iter().map(|d| d.code.to_string()).collect();
     assert_eq!(codes, ["DS0113"]);
     let Some(Stmt::Query(q)) = parse.program().statements().next() else {
@@ -156,7 +160,7 @@ fn method_call_is_a_call_without_callee() {
 
 #[test]
 fn take_count_distinct() {
-    let ops = ops("t | take 5 | count | distinct * | distinct a, b | getschema");
+    let ops = ops("from t | take 5 | count | distinct * | distinct a, b | getschema");
     let Operator::Take(take) = &ops[0] else {
         panic!()
     };
@@ -176,7 +180,7 @@ fn take_count_distinct() {
 #[test]
 fn join_parts() {
     let [Operator::Join(j)] =
-        &ops("t | join kind = leftouter (u | take 1) on k, $left.a == $right.b")[..]
+        &ops("from t | join kind = leftouter (from u | take 1) on k, $left.a == $right.b")[..]
     else {
         panic!()
     };
@@ -188,7 +192,7 @@ fn join_parts() {
     let conds: Vec<String> = j.conditions().map(|c| text(&c)).collect();
     assert_eq!(conds, ["k", "$left.a == $right.b"]);
 
-    let [Operator::Join(j)] = &ops("t | join 'c.csv' on id")[..] else {
+    let [Operator::Join(j)] = &ops("from t | join 'c.csv' on id")[..] else {
         panic!()
     };
     assert!(j.kind().is_none());
@@ -197,7 +201,8 @@ fn join_parts() {
 
 #[test]
 fn union_and_render() {
-    let ops = ops("t | union u, 'v.csv' | render timechart with (title = 'x', ycolumns = a, b)");
+    let ops =
+        ops("from t | union u, 'v.csv' | render timechart with (title = 'x', ycolumns = a, b)");
     let Operator::Union(u) = &ops[0] else {
         panic!()
     };
@@ -214,7 +219,7 @@ fn union_and_render() {
 }
 
 fn where_expr(text: &str) -> Expr {
-    let [Operator::Where(w)] = &ops(&format!("t | where {text}"))[..] else {
+    let [Operator::Where(w)] = &ops(&format!("from t | where {text}"))[..] else {
         panic!()
     };
     w.predicate().unwrap()
@@ -291,7 +296,7 @@ fn in_and_between() {
 #[test]
 fn literals_calls_fields() {
     let [Operator::Extend(e)] = &ops(
-        "t | extend a = 1.5h, b = long(null), c = round(x, digits = 2), d = e.f, g = h[0], i = datetime(null)",
+        "from t | extend a = 1.5h, b = long(null), c = round(x, digits = 2), d = e.f, g = h[0], i = datetime(null)",
     )[..] else {
         panic!()
     };
@@ -327,10 +332,10 @@ fn literals_calls_fields() {
 
 #[test]
 fn spans_exclude_trivia() {
-    let q = query("  t | where  x > 1  // done\n");
+    let q = query("  from t | where  x > 1  // done\n");
     let where_op = q.operators().next().unwrap();
     let span = where_op.span(FileId(3));
-    assert_eq!((span.start, span.end), (6, 18));
+    assert_eq!((span.start, span.end), (11, 23));
     assert_eq!(span.file, FileId(3));
 }
 

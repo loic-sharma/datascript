@@ -27,7 +27,8 @@ left first).
 ### D-006 — DuckDB-style file sources
 A string literal at the head of a pipe is a file path or glob (`'data/*.parquet' | ...`), with
 `read_csv`/`read_parquet`/`read_json` for explicit options. Relative paths resolve against the
-script's directory. Chosen by the maintainer.
+script's directory. Chosen by the maintainer. *(D-036: the path now follows `from`:
+`from 'data/*.parquet' | ...`.)*
 
 ### D-007 — `=` is never comparison; `let` cannot shadow
 Both choices exist to make errors clearer: `=` in a predicate is always a mistake we can fix
@@ -127,6 +128,10 @@ binder decides a `let`'s kind from its right side alone; a string `let` is a sca
 table is expected, a constant string (literal or a scalar `let` bound to one) is read as a file
 source. The README style keeps working, hover can show a `let`'s type before any use, and there
 is no inference to replicate. `DS2007` is retired before it was ever implemented. *(Design review 2, 2026-11-20.)*
+*(D-036 changes how a `let`'s kind is decided: by the syntax, not the binder. A `let` is tabular
+when its value is a `PIPELINE`; "a tabular name on the right side makes the `let` tabular" no
+longer holds, so `let alias = orders;` is a scalar `let`. The rule for constant strings in table
+positions stands, with "pipe head" now meaning the operand of `from`.)*
 
 ### D-021 — All integers are read as `long`, and integer arithmetic yields `long`
 With `Int8`–`Int32` columns read as `int` and `int * int` staying `int`, everyday Parquet data
@@ -209,6 +214,9 @@ start of a line (a forgotten `|`), and an expression at the start of a line outs
 forgotten `;`). One token gets at most one error, and the parser never reports at a token the
 lexer already rejected. **Nesting** is limited to 256 levels of expressions (`DS0100`), so the
 recursive parser cannot overflow the stack on hostile input. *(M1-02, 2026-11-20.)*
+*(D-036 changes the shape: `from source` is always a `PIPELINE` node, with or without a `|`, and a
+`let`'s kind is read from that node rather than decided by the binder. The operand of `from` and
+the right side of `join`/`union` are still any expression.)*
 
 ### D-030 — Syntax habits parse as what the user meant
 M1-03 settled how targeted syntax diagnostics (DS0102–DS0124) shape the tree. **Habit tokens
@@ -290,6 +298,43 @@ and `;` second, neither certain: `;` would turn a forgotten comma into a second 
 harness applies all certain fixes in one pass, a replacement before an insertion at the same
 offset. *(M1-21, 2026-11-21.)*
 
+### D-036 — Every pipeline starts with `from`
+Decided by the maintainer as Q-009, landed by M1-24. A query statement, the value of a tabular
+`let`, a pipeline in parentheses and a pipeline passed as a call argument start with `from`:
+`from 'orders.csv' | take 5` (≠ KQL). The parser then knows where a table starts, a `let`'s kind
+is syntactic, completion after `from` can offer only tables and paths, and the SQL habit `from` is
+right. The cost is a habit KQL users must change, softened by a machine-applicable fix.
+- **No bare-source fallback.** `orders | take 5` is `DS0150`, an error, not a warning; keeping both
+  forms would keep the ambiguity. The fix inserting `from` is `MachineApplicable` when the head is
+  clearly a table (a string, name or call followed by `|`; a string or reader call alone); a bare
+  name alone gets a `MaybeIncorrect` fix, since it may be a scalar typed by mistake; a `let` bound
+  to a bare string or name is a scalar and gets no error. `from` with nothing after it is `DS0151`.
+  The parser tells a reader call from other calls with `datascript_syntax::READERS`, which a test
+  in `datascript-compiler` checks.
+- **Where `from` is not written.** The right side of `join`, `union` and `lookup` is already a
+  table position (`join customers on id`); a pipeline there is parenthesized and starts with
+  `from`. Row generators (`range`, `datatable`, `print`, M2-01) start a query on their own; until
+  M2-01 they are `DS0104` "not available yet" at a pipeline head. A parenthesized pipeline starts a
+  query without another `from` (`(from t | where a) | take 5`).
+- **`from` stays contextual** (D-013) and an `IDENT` token (D-029). It is the keyword at a pipeline
+  head when an expression start follows it, other than `-` and `not`, so `let y = from - 1` is a
+  scalar and `| where from > 3` a column. `from(` is the keyword and a parenthesized source. A table
+  named `from` is `from ['from']` or `from from`. The match is case-sensitive. At the head of a
+  query statement, `from` followed by `|`, `;`, `let` or the end is `DS0151`; in a `let` value, in
+  parentheses and in call arguments only `from |` is, because `let y = from;` and `f(from)` read
+  a name.
+- **Tree shape.** `from x` is always a `PIPELINE` node, with zero operators if none follow, in every
+  position. The `from` token is a **direct child** of the `PIPELINE`, before the source expression
+  (no separate `FROM_CLAUSE` node), so `Pipeline::source()` still finds the source as the first
+  expression child; `Pipeline::from_token()` returns the token.
+- **A `let`'s kind is syntactic.** A `let` whose value *is* a `PIPELINE`, or a `PIPELINE` in
+  parentheses, is tabular (`LetStmt::is_tabular`); anything else is scalar. `let alias = orders;`
+  is a scalar `let` even if `orders` is a table; the binder reports it with a hint to write
+  `let alias = from orders;` (M1-05). A reader call alone as a `let` value
+  (`let r = read_csv('x');`) is a `PIPELINE` with `DS0150`, so it stays a table after the fix.
+
+Supersedes the parts of D-006, D-020 and D-029 noted there. *(M1-24, 2026-11-21.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack
@@ -322,13 +367,3 @@ option to export the full result. Decide in M4-01.
 D-014 says these are runtime errors and calls that "following KQL". Check real KQL behaviour in
 M1-09. If KQL wraps or returns null, either keep the rule and mark it ≠ KQL in LANGUAGE.md §4.1,
 or follow KQL. Either way, record the answer here.
-
-### Q-009 — Require `from` at the start of a query *(decided, lands with M1-24)*
-The maintainer chose to require `from` at every pipeline head (`from 'orders.csv' | take 5`), with
-the right side of `join`/`union`/`lookup` left bare, generators (`range`, `datatable`, `print`)
-starting a query on their own, `from` kept contextual, and no bare-source fallback. It lets the
-parser know where a table starts, makes a `let`'s kind syntactic, makes the missing-`;` fix certain
-before a `from` that follows a complete statement, and helps completion; the cost is a habit KQL users must change, softened by a
-machine-applicable fix. Until [M1-24](tasks/M1-24-from-keyword.md) lands, LANGUAGE.md still
-describes bare sources. M1-24 turns this into D-036 and updates D-006, D-020 and D-029;
-[M1-25](tasks/M1-25-from-diagnostics.md) updates D-033 and D-035.

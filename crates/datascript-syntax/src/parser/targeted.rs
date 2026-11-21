@@ -1,4 +1,4 @@
-//! Targeted syntax diagnostics (DS0102–DS0149): habits from SQL, KQL and C-like languages, and
+//! Targeted syntax diagnostics (DS0102–DS0151): habits from SQL, KQL and C-like languages, and
 //! the mistakes people make most, each with a concrete fix where we can give one.
 //!
 //! The grammar decides *where* a mistake is; the functions here decide what to say about it.
@@ -7,7 +7,7 @@ use datascript_diagnostics::{
     Applicability, Diagnostic, Suggestion, TextEdit, codes, did_you_mean,
 };
 
-use super::grammar::{LATER_OPERATORS, OPERATORS, word_list};
+use super::grammar::{Head, LATER_OPERATORS, OPERATORS, word_list};
 use super::{Parser, TokenSet};
 use crate::SyntaxKind::{self, *};
 
@@ -47,7 +47,6 @@ const OPERATOR_ALIASES: &[(&str, Option<&str>, &str, bool)] = &[
         "to keep the rows that match a condition, use `where`",
         true,
     ),
-    ("from", None, FROM_HELP, false),
     ("group", None, GROUP_HELP, false),
     ("group_by", None, GROUP_HELP, false),
     ("groupby", None, GROUP_HELP, false),
@@ -123,7 +122,6 @@ const OPERATOR_ALIASES: &[(&str, Option<&str>, &str, bool)] = &[
 const SQL_AGGREGATES: &[&str] = &["avg", "count", "max", "min", "sum"];
 
 const GROUP_HELP: &str = "to group rows, use `summarize ... by`: `summarize count() by customerId`";
-const FROM_HELP: &str = "a query starts with its table, without `from`: `'orders.csv' | take 10`";
 
 /// The join kinds (LANGUAGE.md §3.2), in the order the docs list them.
 pub(super) const JOIN_KINDS: &[&str] = &[
@@ -418,7 +416,8 @@ impl Parser<'_> {
                         Applicability::MaybeIncorrect,
                     ),
                 ),
-                "from" => d.help(FROM_HELP),
+                // `| FROM x`: M1-25 gives it a targeted fix.
+                "from" => d,
                 _ => d.help_with(
                     format!("operator names are lowercase: write `{lower}`"),
                     Suggestion::replace(span, lower.clone()),
@@ -518,7 +517,7 @@ impl Parser<'_> {
             _ => {
                 d = d.help(
                     "start with the table and pipe it into operators: \
-                     `'orders.csv' | where amount > 10 | project customerId, amount`",
+                     `from 'orders.csv' | where amount > 10 | project customerId, amount`",
                 );
             }
         }
@@ -604,7 +603,7 @@ impl Parser<'_> {
             items.push(self.sql_item(start, cols.end)?);
         }
 
-        let mut rewrite = table.text(self.text).to_string();
+        let mut rewrite = format!("from {}", table.text(self.text));
         if let Some((start, end)) = clause("where") {
             rewrite = format!("{rewrite} | where {}", self.sql_expr(start, end)?);
         }
@@ -663,7 +662,8 @@ impl Parser<'_> {
                 }
             }
         }
-        (rewrite.chars().count() <= 2 * MAX_SNIPPET && !rewrite.contains(['\n', '\r']))
+        // The leading `from ` does not count against the limit.
+        (rewrite.chars().count() <= 2 * MAX_SNIPPET + 5 && !rewrite.contains(['\n', '\r']))
             .then_some(rewrite)
     }
 
@@ -1726,11 +1726,13 @@ impl Parser<'_> {
             .map_or(span.end, |t| t.end());
         let help = match self.snippet(span.start, end) {
             Some(query) => format!(
-                "start with the table and pipe it into `{0}`: `'data.csv' | {query}`",
+                "start the query with `from` and a table, and pipe it into `{0}`: \
+                 `from 'data.csv' | {query}`",
                 name.0
             ),
             None => format!(
-                "start with the table and pipe it into `{0}`: `'data.csv' | {0} ...`",
+                "start the query with `from` and a table, and pipe it into `{0}`: \
+                 `from 'data.csv' | {0} ...`",
                 name.0
             ),
         };
@@ -1741,6 +1743,82 @@ impl Parser<'_> {
         .primary(span, format!("`{}` is an operator", name.0))
         .help(help);
         self.report(d);
+    }
+
+    /// DS0150: a pipeline that starts with its source and no `from`. The source starts at token
+    /// index `start` and has been parsed; `head` says what it is, `piped` whether a `|` follows
+    /// it, and `statement` whether it is a query statement (else a `let` value, or a pipeline
+    /// in parentheses or a call argument).
+    pub(super) fn missing_from(&mut self, start: usize, head: Head, piped: bool, statement: bool) {
+        let first = self.tokens[start];
+        let end = self.prev_end();
+        let applicability = match (head, piped) {
+            (Head::String | Head::Name | Head::Reader | Head::Call, true)
+            | (Head::String | Head::Reader, false) => Some(Applicability::MachineApplicable),
+            (Head::Other, true) | (Head::Name | Head::Call, false) => {
+                Some(Applicability::MaybeIncorrect)
+            }
+            (Head::Other, false) => None,
+        };
+        let message = if statement {
+            "a query starts with `from`"
+        } else {
+            "a pipeline starts with `from`"
+        };
+        let source = self.snippet(first.start, end);
+        let span = match source {
+            Some(_) => self.span(first.start, end),
+            None => self.token_span(start),
+        };
+        let label = match head {
+            Head::Other => "a query reads a table, not a value",
+            _ if piped => "this table needs `from` before it",
+            _ => "read this table with `from`",
+        };
+        let mut d = Diagnostic::error(codes::DS0150, message).primary(span, label);
+        let insert = Suggestion::new(
+            vec![TextEdit::new(self.span(first.start, first.start), "from ")],
+            applicability.unwrap_or(Applicability::MaybeIncorrect),
+        );
+        d = match (applicability, head, source) {
+            (None, ..) => d.help(
+                "a query reads a table: `from 'data.csv' | take 10`; to compute a value, \
+                 define it with `let`",
+            ),
+            (Some(_), Head::Name | Head::Call, Some(source)) if !piped => d.help_with(
+                format!("if `{source}` is a table, read it with `from`: `from {source}`"),
+                insert,
+            ),
+            (Some(_), _, Some(source)) => {
+                d.help_with(format!("insert `from`: `from {source}`"), insert)
+            }
+            (Some(_), ..) => d.help_with("insert `from` before the table", insert),
+        };
+        self.errors.push(d);
+    }
+
+    /// DS0151: `from` with no table after it. The current token is what follows `from`.
+    pub(super) fn empty_from(&mut self) {
+        let from = self.token_span(self.pos - 1);
+        let d = Diagnostic::error(codes::DS0151, "`from` needs a table after it")
+            .primary(from, "expected a table after `from`")
+            .help("name the table to read: `from 'data.csv'`, or `from` and a table name");
+        self.report(d);
+    }
+
+    /// DS0104 for a row generator at a pipeline head, which is not available yet (M2-01). The
+    /// current token is its name.
+    pub(super) fn generator_not_available(&mut self) {
+        let name = self.nth_text(0).to_string();
+        let d = Diagnostic::error(codes::DS0104, format!("`{name}` is not available yet"))
+            .primary(self.current_span(), "planned for a later version");
+        self.report(d);
+    }
+
+    /// Whether the token at index `i` already has an error: it is a lexer `ERROR` token, or the
+    /// last error was reported at it (DS0106 at the start of a statement).
+    pub(super) fn errors_at_token(&self, i: usize) -> bool {
+        self.last_error_at == Some(i) || self.tokens.get(i).is_some_and(|t| t.kind == ERROR)
     }
 
     /// The operator name at the current token, as written (hyphenated names joined), and how

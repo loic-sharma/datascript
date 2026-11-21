@@ -110,7 +110,10 @@ fn plain_output_matches_testing_md() {
         .expect("the example has an expected section");
 
     let mut sources = SourceMap::new();
-    let f = sources.add("query", "'../../data/orders.csv' | summarize sum(amout)\n");
+    let f = sources.add(
+        "query",
+        "from '../../data/orders.csv' | summarize sum(amout)\n",
+    );
     let d = Diagnostic::error(codes::DS1001, "unknown column `amout`")
         .primary(
             find(&sources, f, "amout", 0),
@@ -169,7 +172,7 @@ fn no_primary_span() {
     let f = sources.add("query.ds", "let x = 1;\n");
     let d = Diagnostic::warning(codes::DS0004, "program has no query to run")
         .in_file(f)
-        .help("add a query after the `let` statements, e.g. `'orders.csv' | take 10`");
+        .help("add a query after the `let` statements, e.g. `from 'orders.csv' | take 10`");
     insta::assert_snapshot!("no_primary_plain", plain(&d, &sources));
     insta::assert_snapshot!("no_primary_terminal", terminal(&d, &sources));
 

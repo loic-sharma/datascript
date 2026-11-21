@@ -1,0 +1,166 @@
+# A `let` value that is a pipeline without `from`, or a reader call alone: DS0150 with a machine-applicable fix.
+mode: syntax
+---- query
+let a = orders | where amount > 1;
+let b = 'orders.csv' | take 1;
+let c = read_csv('x.txt') | take 1;
+let r = read_csv('x.txt');
+from a | union b, c, r
+---- expected
+PROGRAM@0..152
+  LET_STMT@0..33
+    LET_KW@0..3 "let"
+    WHITESPACE@3..4 " "
+    NAME@4..5
+      IDENT@4..5 "a"
+    WHITESPACE@5..6 " "
+    EQ@6..7 "="
+    WHITESPACE@7..8 " "
+    PIPELINE@8..33
+      NAME_REF@8..14
+        IDENT@8..14 "orders"
+      WHITESPACE@14..15 " "
+      PIPE@15..16 "|"
+      WHITESPACE@16..17 " "
+      WHERE_OP@17..33
+        IDENT@17..22 "where"
+        WHITESPACE@22..23 " "
+        BIN_EXPR@23..33
+          NAME_REF@23..29
+            IDENT@23..29 "amount"
+          WHITESPACE@29..30 " "
+          GT@30..31 ">"
+          WHITESPACE@31..32 " "
+          LITERAL@32..33
+            LONG@32..33 "1"
+  SEMICOLON@33..34 ";"
+  WHITESPACE@34..35 "\n"
+  LET_STMT@35..64
+    LET_KW@35..38 "let"
+    WHITESPACE@38..39 " "
+    NAME@39..40
+      IDENT@39..40 "b"
+    WHITESPACE@40..41 " "
+    EQ@41..42 "="
+    WHITESPACE@42..43 " "
+    PIPELINE@43..64
+      LITERAL@43..55
+        STRING@43..55 "'orders.csv'"
+      WHITESPACE@55..56 " "
+      PIPE@56..57 "|"
+      WHITESPACE@57..58 " "
+      TAKE_OP@58..64
+        IDENT@58..62 "take"
+        WHITESPACE@62..63 " "
+        LITERAL@63..64
+          LONG@63..64 "1"
+  SEMICOLON@64..65 ";"
+  WHITESPACE@65..66 "\n"
+  LET_STMT@66..100
+    LET_KW@66..69 "let"
+    WHITESPACE@69..70 " "
+    NAME@70..71
+      IDENT@70..71 "c"
+    WHITESPACE@71..72 " "
+    EQ@72..73 "="
+    WHITESPACE@73..74 " "
+    PIPELINE@74..100
+      CALL_EXPR@74..91
+        NAME_REF@74..82
+          IDENT@74..82 "read_csv"
+        ARG_LIST@82..91
+          L_PAREN@82..83 "("
+          LITERAL@83..90
+            STRING@83..90 "'x.txt'"
+          R_PAREN@90..91 ")"
+      WHITESPACE@91..92 " "
+      PIPE@92..93 "|"
+      WHITESPACE@93..94 " "
+      TAKE_OP@94..100
+        IDENT@94..98 "take"
+        WHITESPACE@98..99 " "
+        LITERAL@99..100
+          LONG@99..100 "1"
+  SEMICOLON@100..101 ";"
+  WHITESPACE@101..102 "\n"
+  LET_STMT@102..127
+    LET_KW@102..105 "let"
+    WHITESPACE@105..106 " "
+    NAME@106..107
+      IDENT@106..107 "r"
+    WHITESPACE@107..108 " "
+    EQ@108..109 "="
+    WHITESPACE@109..110 " "
+    PIPELINE@110..127
+      CALL_EXPR@110..127
+        NAME_REF@110..118
+          IDENT@110..118 "read_csv"
+        ARG_LIST@118..127
+          L_PAREN@118..119 "("
+          LITERAL@119..126
+            STRING@119..126 "'x.txt'"
+          R_PAREN@126..127 ")"
+  SEMICOLON@127..128 ";"
+  WHITESPACE@128..129 "\n"
+  PIPELINE@129..151
+    IDENT@129..133 "from"
+    WHITESPACE@133..134 " "
+    NAME_REF@134..135
+      IDENT@134..135 "a"
+    WHITESPACE@135..136 " "
+    PIPE@136..137 "|"
+    WHITESPACE@137..138 " "
+    UNION_OP@138..151
+      IDENT@138..143 "union"
+      WHITESPACE@143..144 " "
+      NAME_REF@144..145
+        IDENT@144..145 "b"
+      COMMA@145..146 ","
+      WHITESPACE@146..147 " "
+      NAME_REF@147..148
+        IDENT@147..148 "c"
+      COMMA@148..149 ","
+      WHITESPACE@149..150 " "
+      NAME_REF@150..151
+        IDENT@150..151 "r"
+  WHITESPACE@151..152 "\n"
+
+error[DS0150]: a pipeline starts with `from`
+  --> query:1:9
+  |
+1 | let a = orders | where amount > 1;
+  |         ^^^^^^ this table needs `from` before it
+  |
+  = help: insert `from`: `from orders`
+
+error[DS0150]: a pipeline starts with `from`
+  --> query:2:9
+  |
+2 | let b = 'orders.csv' | take 1;
+  |         ^^^^^^^^^^^^ this table needs `from` before it
+  |
+  = help: insert `from`: `from 'orders.csv'`
+
+error[DS0150]: a pipeline starts with `from`
+  --> query:3:9
+  |
+3 | let c = read_csv('x.txt') | take 1;
+  |         ^^^^^^^^^^^^^^^^^ this table needs `from` before it
+  |
+  = help: insert `from`: `from read_csv('x.txt')`
+
+error[DS0150]: a pipeline starts with `from`
+  --> query:4:9
+  |
+4 | let r = read_csv('x.txt');
+  |         ^^^^^^^^^^^^^^^^^ read this table with `from`
+  |
+  = help: insert `from`: `from read_csv('x.txt')`
+
+with the machine-applicable fixes applied:
+    let a = from orders | where amount > 1;
+    let b = from 'orders.csv' | take 1;
+    let c = from read_csv('x.txt') | take 1;
+    let r = from read_csv('x.txt');
+    from a | union b, c, r
+which parses without errors

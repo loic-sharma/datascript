@@ -1,0 +1,18 @@
+# A bare name alone may be a scalar typed by mistake: the `from` fix is not certain.
+mode: syntax
+---- query
+orders
+---- expected
+PROGRAM@0..7
+  PIPELINE@0..6
+    NAME_REF@0..6
+      IDENT@0..6 "orders"
+  WHITESPACE@6..7 "\n"
+
+error[DS0150]: a query starts with `from`
+  --> query:1:1
+  |
+1 | orders
+  | ^^^^^^ read this table with `from`
+  |
+  = help: if `orders` is a table, read it with `from`: `from orders`

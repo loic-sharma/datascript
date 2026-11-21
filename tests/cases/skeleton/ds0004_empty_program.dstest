@@ -8,4 +8,4 @@ mode: run
 warning[DS0004]: program has no query to run
   --> query
   |
-  = help: add a query, such as `'data.csv' | take 10`
+  = help: add a query, such as `from 'data.csv' | take 10`

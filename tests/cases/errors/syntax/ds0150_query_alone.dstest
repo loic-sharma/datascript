@@ -1,0 +1,43 @@
+# A string or a reader call alone as a query is a table: DS0150 with a machine-applicable fix.
+mode: syntax
+---- query
+'data/orders.csv';
+read_parquet('x.parquet')
+---- expected
+PROGRAM@0..45
+  PIPELINE@0..17
+    LITERAL@0..17
+      STRING@0..17 "'data/orders.csv'"
+  SEMICOLON@17..18 ";"
+  WHITESPACE@18..19 "\n"
+  PIPELINE@19..44
+    CALL_EXPR@19..44
+      NAME_REF@19..31
+        IDENT@19..31 "read_parquet"
+      ARG_LIST@31..44
+        L_PAREN@31..32 "("
+        LITERAL@32..43
+          STRING@32..43 "'x.parquet'"
+        R_PAREN@43..44 ")"
+  WHITESPACE@44..45 "\n"
+
+error[DS0150]: a query starts with `from`
+  --> query:1:1
+  |
+1 | 'data/orders.csv';
+  | ^^^^^^^^^^^^^^^^^ read this table with `from`
+  |
+  = help: insert `from`: `from 'data/orders.csv'`
+
+error[DS0150]: a query starts with `from`
+  --> query:2:1
+  |
+2 | read_parquet('x.parquet')
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^ read this table with `from`
+  |
+  = help: insert `from`: `from read_parquet('x.parquet')`
+
+with the machine-applicable fixes applied:
+    from 'data/orders.csv';
+    from read_parquet('x.parquet')
+which parses without errors

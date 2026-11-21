@@ -25,3 +25,8 @@ pub use syntax_tree::{DataScriptLanguage, SyntaxElement, SyntaxNode, SyntaxToken
 /// The names of the operators the parser knows, in alphabetical order (for completion and
 /// did-you-mean).
 pub const OPERATOR_NAMES: &[&str] = parser::OPERATORS;
+
+/// The reader functions (LANGUAGE.md §3.1). They return a table, so a reader call at the head
+/// of a pipeline or as a `let` value needs `from` (DS0150). The function catalog lives above
+/// this crate; a test in `datascript-compiler` checks that the two agree.
+pub const READERS: &[&str] = &["read_csv", "read_json", "read_parquet"];

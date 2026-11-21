@@ -60,6 +60,7 @@ pub(crate) fn parse_tokens(
         last_unclosed: None,
         pipeline_start: 0,
         last_op: None,
+        paren_pipeline: None,
     };
     grammar::program(&mut parser);
     let green = sink::build_tree(text, tokens, parser.events);
@@ -141,6 +142,9 @@ struct Parser<'t> {
     pipeline_start: usize,
     /// The last operator of the last pipeline parsed in this statement, for DS0106.
     last_op: Option<SyntaxKind>,
+    /// The token index of the `(` of the last parenthesized expression completed, if its
+    /// content was a pipeline: such a `(...)` is a table and needs no `from` (D-036).
+    paren_pipeline: Option<usize>,
 }
 
 impl Parser<'_> {
