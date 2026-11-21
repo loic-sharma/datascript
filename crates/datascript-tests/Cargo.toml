@@ -1,0 +1,14 @@
+[package]
+name = "datascript-tests"
+description = "Golden-file test harness for DataScript (filled in by M0-03)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+
+[lints]
+workspace = true

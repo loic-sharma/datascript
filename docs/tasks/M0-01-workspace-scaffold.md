@@ -1,6 +1,6 @@
 # M0-01 — Workspace scaffold and CI
 
-**Status:** todo
+**Status:** done — Cargo workspace with 7 stub crates, `ds --version`, toolchain/fmt/lint config, GitHub Actions CI, licenses, and `examples/top_customers.ds`.
 **Depends on:** none
 **Crates:** all (empty stubs)
 
@@ -26,13 +26,18 @@ Create the Cargo workspace and CI so every later task has a place to put code an
 Any real functionality.
 
 ## Acceptance criteria
-- [ ] `cargo build --workspace`, `cargo test --workspace`, and the wasm32 check pass locally.
-- [ ] CI workflow file exists and is valid (run `act` or push a branch if available).
-- [ ] `cargo run -p datascript-cli -- --version` prints the version.
-- [ ] README "Building" section updated with real commands.
+- [x] `cargo build --workspace`, `cargo test --workspace`, and the wasm32 check pass locally.
+- [x] CI workflow file exists and is valid (run `act` or push a branch if available).
+- [x] `cargo run -p datascript-cli -- --version` prints the version.
+- [x] README "Building" section updated with real commands.
 
 ## Notes
 - Use `clap` (derive) in the CLI from the start.
 - Keep DataFusion out of the workspace until M1-08 to keep early builds fast.
 
 ## Follow-ups
+- CI was validated by parsing the YAML only; `act` is not installed and the repo has no remote yet.
+  Confirm the workflow runs green on the first push.
+- Stub crates declare no internal dependencies yet (recent cargo warns on unused ones). Each task
+  adds the edges from ARCHITECTURE.md's crate graph when it first uses them.
+- `examples/top_customers.ds` points at `../tests/data/orders.parquet`, which M0-04 creates.

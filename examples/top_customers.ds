@@ -1,0 +1,11 @@
+// The README example. Paths are relative to this file and point at the shared test fixtures.
+let orders = '../tests/data/orders.parquet';
+
+let topCustomers = orders
+| summarize revenue = sum(amount) by customerId
+| top 10 by revenue desc;
+
+orders
+| join kind = inner topCustomers on customerId
+| summarize revenue = sum(amount) by customerId, month = startofmonth(timestamp)
+| render timechart

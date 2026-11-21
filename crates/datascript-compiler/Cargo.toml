@@ -1,0 +1,13 @@
+[package]
+name = "datascript-compiler"
+description = "Binder, type system, function catalog and logical plan IR for DataScript."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

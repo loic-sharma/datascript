@@ -79,9 +79,26 @@ docs/
 
 ## Building
 
-Requires a current stable Rust toolchain (`rustup update stable`). Build instructions land with task
-[M0-01](docs/tasks/M0-01-workspace-scaffold.md).
+Requires a current stable Rust toolchain via [rustup](https://rustup.rs). `rust-toolchain.toml`
+pins `stable` and installs `rustfmt`, `clippy`, and the `wasm32-unknown-unknown` target on first use.
+
+```bash
+cargo build --workspace
+cargo test --workspace
+cargo run -p datascript-cli -- --version
+```
+
+Before sending a change, run the same checks as CI:
+
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo check --target wasm32-unknown-unknown -p datascript-diagnostics -p datascript-syntax -p datascript-compiler
+```
+
+The last command keeps the core crates buildable for the browser (see
+[ARCHITECTURE.md](docs/ARCHITECTURE.md#wasm-constraints)).
 
 ## License
 
-Dual-licensed under MIT or Apache-2.0, at your option (license files are added in M0-01).
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.

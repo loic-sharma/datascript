@@ -30,7 +30,7 @@ Two shared files are touched by many tasks:
 
 | ID | Task | Depends on | Status | Parallel with |
 |---|---|---|---|---|
-| [M0-01](M0-01-workspace-scaffold.md) | Workspace scaffold and CI | — | todo | |
+| [M0-01](M0-01-workspace-scaffold.md) | Workspace scaffold and CI | — | done | |
 | [M0-02](M0-02-diagnostics-core.md) | Diagnostics core | M0-01 | todo | M0-04 |
 | [M0-03](M0-03-golden-test-harness.md) | Golden test harness | M0-01, M0-02 | todo | M0-04 |
 | [M0-04](M0-04-test-fixtures.md) | Test fixture datasets | M0-01 | todo | M0-02, M0-03 |
