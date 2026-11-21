@@ -1,0 +1,43 @@
+# A comma after a pipeline inside call arguments starts the next argument (M1-19).
+mode: syntax
+---- query
+T | extend x = f(U | where a, b)
+---- expected
+PROGRAM@0..33
+  PIPELINE@0..32
+    NAME_REF@0..1
+      IDENT@0..1 "T"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    EXTEND_OP@4..32
+      IDENT@4..10 "extend"
+      WHITESPACE@10..11 " "
+      NAMED_EXPR@11..32
+        NAME@11..12
+          IDENT@11..12 "x"
+        WHITESPACE@12..13 " "
+        EQ@13..14 "="
+        WHITESPACE@14..15 " "
+        CALL_EXPR@15..32
+          NAME_REF@15..16
+            IDENT@15..16 "f"
+          ARG_LIST@16..32
+            L_PAREN@16..17 "("
+            PIPELINE@17..28
+              NAME_REF@17..18
+                IDENT@17..18 "U"
+              WHITESPACE@18..19 " "
+              PIPE@19..20 "|"
+              WHITESPACE@20..21 " "
+              WHERE_OP@21..28
+                IDENT@21..26 "where"
+                WHITESPACE@26..27 " "
+                NAME_REF@27..28
+                  IDENT@27..28 "a"
+            COMMA@28..29 ","
+            WHITESPACE@29..30 " "
+            NAME_REF@30..31
+              IDENT@30..31 "b"
+            R_PAREN@31..32 ")"
+  WHITESPACE@32..33 "\n"

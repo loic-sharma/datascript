@@ -1,0 +1,42 @@
+# Prefix `not` as the operand of `+` (M1-19).
+mode: syntax
+---- query
+T | where 1 + not x == y
+---- expected
+PROGRAM@0..25
+  PIPELINE@0..24
+    NAME_REF@0..1
+      IDENT@0..1 "T"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..24
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..24
+        LITERAL@10..11
+          LONG@10..11 "1"
+        WHITESPACE@11..12 " "
+        PLUS@12..13 "+"
+        WHITESPACE@13..14 " "
+        PREFIX_EXPR@14..24
+          NOT_KW@14..17 "not"
+          WHITESPACE@17..18 " "
+          BIN_EXPR@18..24
+            NAME_REF@18..19
+              IDENT@18..19 "x"
+            WHITESPACE@19..20 " "
+            EQ2@20..22 "=="
+            WHITESPACE@22..23 " "
+            NAME_REF@23..24
+              IDENT@23..24 "y"
+  WHITESPACE@24..25 "\n"
+
+error[DS0114]: `not` needs parentheses here
+  --> query:1:15
+  |
+1 | T | where 1 + not x == y
+  |               ^^^ `not` binds more loosely than `+`
+  |
+  = help: write it as a call to say what it negates: `not(x == y)`
+  = note: without parentheses, `not` negates everything up to the next `and` or `or`

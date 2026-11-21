@@ -143,6 +143,66 @@ impl Parser<'_> {
             && !self.at_operator_on_new_line()
     }
 
+    /// Whether the current token clearly starts a new statement although a bracket is still open:
+    /// see [`Parser::statement_after_unclosed_at`].
+    fn at_statement_after_unclosed(&self) -> bool {
+        self.statement_after_unclosed_at(self.pos)
+    }
+
+    /// Whether the token at index `i` clearly starts a new statement even inside brackets, so an
+    /// unclosed bracket does not swallow it: it can start an expression, starts a line with no
+    /// indentation, and follows a complete expression (`f(a⏎U | take 1`). A continuation such
+    /// as `f(a,⏎b)` or `(a⏎- b)` does not count.
+    fn statement_after_unclosed_at(&self, i: usize) -> bool {
+        const ENDS_EXPR: TokenSet = TokenSet::new(&[
+            LONG,
+            REAL,
+            STRING,
+            TIMESPAN,
+            DATETIME,
+            TRUE_KW,
+            FALSE_KW,
+            NULL_KW,
+            IDENT,
+            QUOTED_IDENT,
+            R_PAREN,
+            R_BRACK,
+        ]);
+        const CONTINUATIONS: &[&str] = &[
+            "asc",
+            "between",
+            "by",
+            "contains",
+            "contains_cs",
+            "desc",
+            "endswith",
+            "endswith_cs",
+            "has",
+            "has_cs",
+            "in",
+            "kind",
+            "matches",
+            "nulls",
+            "on",
+            "startswith",
+            "startswith_cs",
+            "with",
+        ];
+        let (Some(token), Some(prev)) = (self.tokens.get(i), i.checked_sub(1)) else {
+            return false;
+        };
+        let unindented = token.start > 0
+            && matches!(
+                self.text.as_bytes()[token.start as usize - 1],
+                b'\n' | b'\r'
+            );
+        unindented
+            && EXPR_START.contains(token.kind)
+            && !matches!(token.kind, MINUS | NOT_KW)
+            && !(token.kind == IDENT && CONTINUATIONS.contains(&token.text(self.text)))
+            && ENDS_EXPR.contains(self.tokens[prev].kind)
+    }
+
     /// Whether the current token ends a pipeline: `;`, `let`, the end, or (inside brackets) `)`
     /// or `,`.
     fn at_pipeline_end(&self) -> bool {
@@ -349,7 +409,7 @@ fn pipeline_tail(p: &mut Parser<'_>) {
             });
             continue;
         }
-        if p.at_new_statement() {
+        if p.at_new_statement() || (p.depth > 0 && p.at_statement_after_unclosed()) {
             break;
         }
         if p.depth == 0 && is_close_bracket(p.current()) {
@@ -435,7 +495,9 @@ fn operator_named(
     let kind = match name {
         "where" => {
             p.eq_compares = true;
+            let start = p.offset();
             expr(p);
+            where_commas(p, start);
             WHERE_OP
         }
         "project" => {
@@ -482,7 +544,14 @@ fn operator_named(
         "count" => COUNT_OP,
         "getschema" => GETSCHEMA_OP,
         "distinct" => {
-            if !p.eat(STAR) {
+            let star = p.pos;
+            let starred = p.eat(STAR);
+            if !starred || p.at(COMMA) {
+                if starred {
+                    // `distinct *, a` (DS0116): parse the columns too.
+                    p.distinct_star_with_columns(star);
+                    p.bump();
+                }
                 list(p, |p| {
                     expr(p);
                 });
@@ -505,6 +574,23 @@ fn operator_named(
     };
     m.complete(p, kind);
     kind
+}
+
+/// `where a, b` (DS0115): further conditions after commas, outside a call's arguments where the
+/// comma starts the next argument. `start` is where the first condition starts.
+fn where_commas(p: &mut Parser<'_>, start: u32) {
+    if p.in_arg_list {
+        return;
+    }
+    let mut commas = Vec::new();
+    while p.at(COMMA) && EXPR_START.contains(p.nth(1)) {
+        commas.push(p.pos);
+        p.bump();
+        expr(p);
+    }
+    if !commas.is_empty() {
+        p.where_with_commas(&commas, start);
+    }
 }
 
 /// `sort` or `top` without `by` (DS0121): parses the keys anyway if they are there.
@@ -573,7 +659,8 @@ fn certain_operator(p: &Parser<'_>, d: &Diagnostic) -> Option<(&'static str, usi
         .iter()
         .take_while(|t| t.end() <= edit.span.end)
         .count();
-    Some((name, len, by_included))
+    // `operator_named` bumps `len` tokens into the node; with none it would be empty.
+    (len > 0).then_some((name, len, by_included))
 }
 
 /// `item { ',' item }`
@@ -589,12 +676,16 @@ fn list(p: &mut Parser<'_>, item: impl Fn(&mut Parser<'_>)) {
 /// `[name '='] expr`
 fn named_expr(p: &mut Parser<'_>) {
     let m = p.start();
+    let saved = p.eq_compares;
     if p.at_set(NAME_START) && p.nth(1) == EQ {
         name(p);
         p.bump(); // =
+        // After `a =`, another `=` can only be a mistyped comparison: `a = b = c` (DS0110).
+        p.eq_compares = true;
     }
     // Unlike in call arguments, a `|` here belongs to the outer pipeline.
     expr(p);
+    p.eq_compares = saved;
     m.complete_if_nonempty(p, NAMED_EXPR);
 }
 
@@ -829,13 +920,18 @@ fn infix(p: &Parser<'_>) -> Option<(u8, Infix)> {
     Some(op)
 }
 
-/// A comparison already parsed in the current chain, for the "cannot be chained" help.
-struct Comparison {
-    /// Byte range of the whole left operand and of the right operand.
-    start: u32,
+/// One comparison of a chain (`a < b < c` has two), for the "cannot be chained" error.
+struct Link {
+    /// Token index of the operator.
+    op: usize,
+    /// Byte range of the right operand.
     rhs: (u32, u32),
+    /// Whether the help may quote this link: a plain operator with its right operand present.
     simple: bool,
 }
+
+/// How many comparisons a chain may have for the help to spell out every pair.
+const MAX_CHAIN_HELP: usize = 6;
 
 /// How deeply expressions may nest. The parser is recursive; this keeps it well inside the stack
 /// (including wasm32's 1 MiB default and 2 MiB test threads) on input such as 100,000 `(`.
@@ -907,13 +1003,20 @@ fn too_deep(p: &mut Parser<'_>, at_operator: bool) -> Option<CompletedMarker> {
 
 fn expr_bp_inner(p: &mut Parser<'_>, min_bp: u8) -> Option<CompletedMarker> {
     let start = p.offset();
-    let mut lhs = prefix_or_primary(p)?;
-    let mut previous: Option<Comparison> = None;
+    let mut lhs = prefix_or_primary(p, min_bp)?;
+    // The comparisons folded one after another into `lhs`: one error for the whole chain.
+    let mut chain: Vec<Link> = Vec::new();
     while let Some((bp, op)) = infix(p) {
         if bp < min_bp || !fold_level(p) {
             break;
         }
         let op_start = p.pos;
+        if bp != BP_CMP || p.last_error_at == Some(op_start) {
+            // `a < b and c`: the comparison is over, and the next one compares the `and`. After
+            // a missing operand (`a == b and == c`), the error already reported explains it.
+            report_chained_comparison(p, start, &chain);
+            chain.clear();
+        }
         let m = lhs.precede(p);
         let (kind, rhs) = match op {
             Infix::Binary(len) => {
@@ -928,7 +1031,7 @@ fn expr_bp_inner(p: &mut Parser<'_>, min_bp: u8) -> Option<CompletedMarker> {
                 p.bump();
                 let rhs_start = p.offset();
                 if p.at(L_PAREN) {
-                    arg_list(p);
+                    arg_list(p, true);
                 } else {
                     let what = format!("`(` and a list of values{}", p.after_prev());
                     p.error_expected(&what);
@@ -947,52 +1050,69 @@ fn expr_bp_inner(p: &mut Parser<'_>, min_bp: u8) -> Option<CompletedMarker> {
         if bp == BP_CMP {
             // The help rewrites the chain only for plain operators with both operands present.
             let simple = matches!(op, Infix::Binary(_)) && rhs.0 < rhs.1;
-            if let Some(first) = &previous {
-                report_chained_comparison(p, first, op_start, rhs, simple);
-            }
-            previous = Some(Comparison { start, rhs, simple });
+            chain.push(Link {
+                op: op_start,
+                rhs,
+                simple,
+            });
         }
     }
+    report_chained_comparison(p, start, &chain);
     Some(lhs)
 }
 
-/// `a < b < c`: comparisons do not chain (LANGUAGE.md §4).
-fn report_chained_comparison(
-    p: &mut Parser<'_>,
-    first: &Comparison,
-    op_index: usize,
-    rhs: (u32, u32),
-    simple: bool,
-) {
-    let op = p.tokens[op_index];
-    let op_end = if op.kind == IDENT && op.text(p.text) == "matches" {
-        p.tokens[op_index + 1].end()
-    } else {
-        op.end()
+/// `a < b < c`: comparisons do not chain (LANGUAGE.md §4). One error for the whole chain, which
+/// starts at byte `start`; nothing for a single comparison.
+fn report_chained_comparison(p: &mut Parser<'_>, start: u32, chain: &[Link]) {
+    let [first, second, ..] = chain else {
+        return;
     };
+    let op_text = |link: &Link| {
+        let op = p.tokens[link.op];
+        let end = if op.kind == IDENT && op.text(p.text) == "matches" {
+            p.tokens[link.op + 1].end()
+        } else {
+            op.end()
+        };
+        (op.start, end)
+    };
+    let (op_start, op_end) = op_text(second);
     let mut d = Diagnostic::error(codes::DS0101, "comparison operators cannot be chained")
-        .primary(p.span(op.start, op_end), "a second comparison")
+        .primary(p.span(op_start, op_end), "a second comparison")
         .secondary(
-            p.span(first.start, first.rhs.1),
+            p.span(start, first.rhs.1),
             "the result of this comparison is not a value to compare again",
         );
-    if first.simple && simple {
-        let src = p.text;
-        let left = &src[first.start as usize..first.rhs.1 as usize];
-        let middle = &src[first.rhs.0 as usize..first.rhs.1 as usize];
-        let op_text = &src[op.start as usize..op_end as usize];
-        let right = &src[rhs.0 as usize..rhs.1 as usize];
-        d = d.help(format!(
-            "compare each pair separately: `{left} and {middle} {op_text} {right}`"
+    let mut pairs = vec![p.source(start, first.rhs.1).to_string()];
+    for pair in chain.windows(2) {
+        let (op_start, op_end) = op_text(&pair[1]);
+        pairs.push(format!(
+            "{} {} {}",
+            p.source(pair[0].rhs.0, pair[0].rhs.1),
+            p.source(op_start, op_end),
+            p.source(pair[1].rhs.0, pair[1].rhs.1)
         ));
+    }
+    let rewrite = pairs.join(" and ");
+    let quotable = chain.len() <= MAX_CHAIN_HELP
+        && chain.iter().all(|link| link.simple)
+        && !rewrite.contains(['\n', '\r']);
+    if quotable {
+        d = d.help(format!("compare each pair separately: `{rewrite}`"));
     } else {
-        d = d.help("combine separate comparisons with `and`");
+        d = d.help("compare each pair separately and combine them with `and`");
+    }
+    if chain.len() > 2 {
+        d = d.note(format!("this chain has {} comparisons", chain.len()));
     }
     // The operator token parsed fine, so it has no error yet: report without suppression.
     p.errors.push(d);
 }
 
-fn prefix_or_primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
+/// A prefix operator and its operand, or a primary expression with its postfix operators.
+/// `min_bp` is the binding power of the operator this is the operand of.
+fn prefix_or_primary(p: &mut Parser<'_>, min_bp: u8) -> Option<CompletedMarker> {
+    let start = p.offset();
     match p.current() {
         NOT_KW if p.nth(1) == L_PAREN => {
             // `not(x)` reads like a call and binds like one: `not(x) == y` is `(not x) == y`.
@@ -1000,12 +1120,18 @@ fn prefix_or_primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
             p.bump();
             paren_expr(p);
             let not = m.complete(p, PREFIX_EXPR);
-            Some(postfix(p, not))
+            Some(postfix(p, not, start))
         }
         NOT_KW => {
             let m = p.start();
+            let not = p.pos;
             p.bump();
-            expr_bp(p, BP_NOT);
+            let operand_start = p.offset();
+            let operand = expr_bp(p, BP_NOT);
+            if min_bp > BP_NOT && operand.is_some() {
+                // `1 + not x`: `not` binds more loosely than the operator before it (DS0114).
+                p.not_needs_parens(not, (operand_start, p.prev_end()));
+            }
             Some(m.complete(p, PREFIX_EXPR))
         }
         MINUS => {
@@ -1028,7 +1154,7 @@ fn prefix_or_primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
         }
         _ => {
             let primary = primary(p)?;
-            Some(postfix(p, primary))
+            Some(postfix(p, primary, start))
         }
     }
 }
@@ -1054,7 +1180,7 @@ fn primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
             let m = callee.precede(p);
             // Inside other calls `name = value` is a named argument, even in a `where`.
             let saved = std::mem::replace(&mut p.eq_compares, predicates);
-            arg_list(p);
+            arg_list(p, false);
             p.eq_compares = saved;
             Some(m.complete(p, CALL_EXPR))
         }
@@ -1076,22 +1202,39 @@ fn at_typed_null(p: &Parser<'_>) -> bool {
         && p.nth(3) == R_PAREN
 }
 
-/// Member access `a.b` and indexing `a[0]`.
-fn postfix(p: &mut Parser<'_>, mut lhs: CompletedMarker) -> CompletedMarker {
+/// Member access `a.b` and indexing `a[0]`. `start` is the byte offset where `lhs` starts.
+fn postfix(p: &mut Parser<'_>, mut lhs: CompletedMarker, start: u32) -> CompletedMarker {
+    // The `.` and the name of the last step, if it was a member access: `a.b(` is a method call.
+    let mut field: Option<(usize, usize)> = None;
     loop {
-        if matches!(p.current(), DOT | L_BRACK) && !fold_level(p) {
+        let method_call = p.at(L_PAREN) && field.is_some();
+        if (method_call || matches!(p.current(), DOT | L_BRACK)) && !fold_level(p) {
             return lhs;
         }
-        match p.current() {
+        let step = p.current();
+        match step {
+            L_PAREN if method_call => {
+                // `a.b.c(1)`: DataScript has no methods (DS0113). The node is a call with no
+                // name, so the arguments are still checked.
+                let (dot, name) = field.take().expect("checked above");
+                let m = lhs.precede(p);
+                let open = p.pos;
+                arg_list(p, false);
+                p.method_call(start, dot, name, open);
+                lhs = m.complete(p, CALL_EXPR);
+            }
             DOT => {
                 let m = lhs.precede(p);
+                let dot = p.pos;
                 p.bump();
                 if p.at_set(NAME_START) {
+                    field = Some((dot, p.pos));
                     name_ref(p);
                 } else {
                     p.error_expected_name("a name after `.`");
                 }
                 lhs = m.complete(p, FIELD_EXPR);
+                continue;
             }
             L_BRACK => {
                 let m = lhs.precede(p);
@@ -1105,6 +1248,7 @@ fn postfix(p: &mut Parser<'_>, mut lhs: CompletedMarker) -> CompletedMarker {
             }
             _ => return lhs,
         }
+        field = None;
     }
 }
 
@@ -1113,18 +1257,29 @@ fn paren_expr(p: &mut Parser<'_>) -> CompletedMarker {
     let open = p.pos;
     p.bump(); // (
     p.depth += 1;
+    let saved = std::mem::replace(&mut p.in_arg_list, false);
     pipeline_or_expr(p);
+    p.in_arg_list = saved;
     expect_closing(p, open);
     p.depth -= 1;
     m.complete(p, PAREN_EXPR)
 }
 
-/// `'(' [arg { ',' arg }] ')'`, where an argument is `[name '='] value`.
-fn arg_list(p: &mut Parser<'_>) {
+/// `'(' [arg { ',' arg }] ')'`, where an argument is `[name '='] value`. The list after `in`
+/// (`in_list`) needs at least one value.
+fn arg_list(p: &mut Parser<'_>, in_list: bool) {
     let m = p.start();
     let open = p.pos;
     p.bump(); // (
     p.depth += 1;
+    if in_list && p.at(R_PAREN) {
+        let d = p
+            .expected("a value in the list")
+            .primary(p.current_span(), "the list after `in` is empty")
+            .help("list at least one value: `x in (1, 2)`");
+        p.report(d);
+    }
+    let saved = std::mem::replace(&mut p.in_arg_list, true);
     if !p.at(R_PAREN) {
         // `iff(x = 1, ...)` is a comparison: those functions take no named arguments.
         let named_args = !p.eq_compares;
@@ -1140,6 +1295,7 @@ fn arg_list(p: &mut Parser<'_>) {
             }
         });
     }
+    p.in_arg_list = saved;
     expect_closing(p, open);
     p.depth -= 1;
     m.complete(p, ARG_LIST);
@@ -1186,9 +1342,14 @@ fn expect_closing(p: &mut Parser<'_>, open: usize) {
         if p.at(EOF) || p.at(SEMICOLON) || p.at(LET_KW) {
             return;
         }
-        // Skip the rest of the statement quietly: the one error above explains it.
+        // Skip the rest of the statement quietly: the one error above explains it. Stop where
+        // the next statement clearly starts, so it is not lost.
+        if !p.at_statement_after_unclosed() {
+            p.last_error_at = Some(p.pos);
+            p.recover(|p| p.at(SEMICOLON) || p.at(LET_KW) || p.at_statement_after_unclosed());
+        }
+        // No DS0106 for the missing `;` there: the unclosed bracket is the root cause.
         p.last_error_at = Some(p.pos);
-        p.recover(|p| p.at(SEMICOLON) || p.at(LET_KW));
         return;
     }
     let close_text = if close == R_BRACK { "]" } else { ")" };
@@ -1206,7 +1367,10 @@ fn expect_closing(p: &mut Parser<'_>, open: usize) {
 /// statement.
 fn closing_ahead(p: &Parser<'_>, close: crate::SyntaxKind) -> bool {
     let mut stack = Vec::new();
-    for t in &p.tokens[p.pos..] {
+    for (i, t) in p.tokens.iter().enumerate().skip(p.pos) {
+        if i > p.pos && p.statement_after_unclosed_at(i) {
+            return false;
+        }
         match t.kind {
             SEMICOLON | LET_KW => return false,
             L_PAREN => stack.push(R_PAREN),

@@ -1,0 +1,47 @@
+# A chain of four comparisons is one DS0101, with help that splits every link (M1-19).
+mode: syntax
+---- query
+T | where a < b < c < d
+---- expected
+PROGRAM@0..24
+  PIPELINE@0..23
+    NAME_REF@0..1
+      IDENT@0..1 "T"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..23
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..23
+        BIN_EXPR@10..19
+          BIN_EXPR@10..15
+            NAME_REF@10..11
+              IDENT@10..11 "a"
+            WHITESPACE@11..12 " "
+            LT@12..13 "<"
+            WHITESPACE@13..14 " "
+            NAME_REF@14..15
+              IDENT@14..15 "b"
+          WHITESPACE@15..16 " "
+          LT@16..17 "<"
+          WHITESPACE@17..18 " "
+          NAME_REF@18..19
+            IDENT@18..19 "c"
+        WHITESPACE@19..20 " "
+        LT@20..21 "<"
+        WHITESPACE@21..22 " "
+        NAME_REF@22..23
+          IDENT@22..23 "d"
+  WHITESPACE@23..24 "\n"
+
+error[DS0101]: comparison operators cannot be chained
+  --> query:1:17
+  |
+1 | T | where a < b < c < d
+  |           ----- ^ a second comparison
+  |           |
+  |           the result of this comparison is not a value to compare again
+  |
+  = help: compare each pair separately: `a < b and b < c and c < d`
+  = note: this chain has 3 comparisons

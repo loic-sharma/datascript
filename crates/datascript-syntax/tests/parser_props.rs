@@ -443,3 +443,14 @@ fn long_input_parses_in_linear_time() {
         assert!(ratio < 8.0, "{name} looks superlinear: ratio {ratio:.1}");
     }
 }
+
+/// A long comparison chain is one error, not one per link.
+#[test]
+fn long_comparison_chain_gives_one_error() {
+    let text = format!("t | where a{}", " < a".repeat(200));
+    check(&text).unwrap();
+    let parse = parse(&text, FileId(0));
+    let codes: Vec<String> = parse.errors.iter().map(|d| d.code.to_string()).collect();
+    assert_eq!(codes, ["DS0101"]);
+    assert!(parse.errors[0].message.contains("cannot be chained"));
+}

@@ -1,0 +1,46 @@
+# An unclosed `(` does not swallow the query on the next line (M1-19).
+mode: syntax
+---- query
+T | where f(a
+U | take 1
+---- expected
+PROGRAM@0..25
+  PIPELINE@0..13
+    NAME_REF@0..1
+      IDENT@0..1 "T"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..13
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      CALL_EXPR@10..13
+        NAME_REF@10..11
+          IDENT@10..11 "f"
+        ARG_LIST@11..13
+          L_PAREN@11..12 "("
+          NAME_REF@12..13
+            IDENT@12..13 "a"
+  WHITESPACE@13..14 "\n"
+  PIPELINE@14..24
+    NAME_REF@14..15
+      IDENT@14..15 "U"
+    WHITESPACE@15..16 " "
+    PIPE@16..17 "|"
+    WHITESPACE@17..18 " "
+    TAKE_OP@18..24
+      IDENT@18..22 "take"
+      WHITESPACE@22..23 " "
+      LITERAL@23..24
+        LONG@23..24 "1"
+  WHITESPACE@24..25 "\n"
+
+error[DS0112]: unclosed `(`
+  --> query:1:12
+  |
+1 | T | where f(a
+  |            ^ this `(` is never closed
+2 | U | take 1
+  | - expected `)` before this
+  |
+  = help: add `)` where the bracketed part ends

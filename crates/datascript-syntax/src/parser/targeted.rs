@@ -775,6 +775,171 @@ impl Parser<'_> {
         self.errors.push(d);
     }
 
+    /// DS0114: prefix `not` (token index `not`) as the operand of an operator that binds more
+    /// tightly, such as `1 + not x` or `a == not b`. The operand of `not` spans `operand`.
+    pub(super) fn not_needs_parens(&mut self, not: usize, operand: (u32, u32)) {
+        if self.errors_at(not) {
+            return;
+        }
+        let before = not
+            .checked_sub(1)
+            .map_or("", |i| self.tokens[i].text(self.text));
+        let not_token = self.tokens[not];
+        let edits = vec![
+            TextEdit::new(self.span(not_token.start, operand.0), "not("),
+            TextEdit::new(self.span(operand.1, operand.1), ")"),
+        ];
+        let help = match self.snippet(operand.0, operand.1) {
+            Some(text) => format!("write it as a call to say what it negates: `not({text})`"),
+            None => "write it as a call to say what it negates: `not(...)`".to_string(),
+        };
+        let d = Diagnostic::error(codes::DS0114, "`not` needs parentheses here")
+            .primary(
+                self.token_span(not),
+                format!("`not` binds more loosely than `{before}`"),
+            )
+            .help_with(help, Suggestion::new(edits, Applicability::MaybeIncorrect))
+            .note("without parentheses, `not` negates everything up to the next `and` or `or`");
+        self.errors.push(d);
+    }
+
+    /// DS0113: a method-style call `base.name(args)`. The member access starts at byte `start`;
+    /// `dot` and `name` are token indexes; the argument list opened at `open` has been parsed.
+    pub(super) fn method_call(&mut self, start: u32, dot: usize, name: usize, open: usize) {
+        if self.errors_at(open) {
+            return;
+        }
+        let name_text = self.tokens[name].text(self.text).to_string();
+        let base = self.source(start, self.tokens[dot].start).to_string();
+        let end = self.prev_end();
+        let close_start = if self.tokens[self.pos - 1].kind == R_PAREN {
+            self.tokens[self.pos - 1].start
+        } else {
+            end
+        };
+        let args = self
+            .source(self.tokens[open].end(), close_start)
+            .trim()
+            .to_string();
+        let mut d = Diagnostic::error(codes::DS0113, "DataScript has no method calls").primary(
+            self.span(self.tokens[dot].start, self.tokens[open].end()),
+            format!("`{name_text}` is called like a method of `{base}`"),
+        );
+        let string_operator = [
+            "contains",
+            "contains_cs",
+            "endswith",
+            "endswith_cs",
+            "has",
+            "has_cs",
+            "startswith",
+            "startswith_cs",
+        ]
+        .contains(&name_text.as_str());
+        let (rewrite, help) = if string_operator && !args.is_empty() && !args.contains(',') {
+            (
+                format!("{base} {name_text} {args}"),
+                format!("`{name_text}` is an operator that goes between two values"),
+            )
+        } else if args.is_empty() {
+            (
+                format!("{name_text}({base})"),
+                "call it as a function".to_string(),
+            )
+        } else {
+            (
+                format!("{name_text}({base}, {args})"),
+                format!("call it as a function, with `{base}` as the first argument"),
+            )
+        };
+        let help = if rewrite.chars().count() <= MAX_SNIPPET && !rewrite.contains(['\n', '\r']) {
+            format!("{help}: `{rewrite}`")
+        } else {
+            help
+        };
+        d = d.help_with(
+            help,
+            Suggestion::new(
+                vec![TextEdit::new(self.span(start, end), rewrite)],
+                Applicability::MaybeIncorrect,
+            ),
+        );
+        self.errors.push(d);
+    }
+
+    /// DS0115: `where a, b`. `commas` are the token indexes of the commas between conditions,
+    /// which start at byte `start`; the conditions have been parsed.
+    pub(super) fn where_with_commas(&mut self, commas: &[usize], start: u32) {
+        if self.errors_at(commas[0]) {
+            return;
+        }
+        let end = self.prev_end();
+        let edits: Vec<TextEdit> = commas.iter().map(|&i| self.word_edit(i, "and")).collect();
+        // `a or b, c` would become `a or b and c`, which groups as `a or (b and c)`.
+        let first = self.tokens.partition_point(|t| t.start < start);
+        let last = self.tokens.partition_point(|t| t.end() <= end);
+        let has_or = self.tokens[first..last]
+            .iter()
+            .any(|t| matches!(t.kind, OR_KW | PIPE2));
+        let applicability = if has_or {
+            Applicability::MaybeIncorrect
+        } else {
+            Applicability::MachineApplicable
+        };
+        let help = match self.snippet(start, end) {
+            Some(_) => {
+                let mut rewrite = String::new();
+                let mut at = start;
+                for edit in &edits {
+                    rewrite.push_str(self.source(at, edit.span.start));
+                    rewrite.push_str(&edit.replacement);
+                    at = edit.span.end;
+                }
+                rewrite.push_str(self.source(at, end));
+                format!("combine the conditions with `and`: `{rewrite}`")
+            }
+            None => "combine the conditions with `and`".to_string(),
+        };
+        let d = Diagnostic::error(codes::DS0115, "`where` takes one condition")
+            .primary(
+                self.token_span(commas[0]),
+                "a comma does not join conditions",
+            )
+            .help_with(help, Suggestion::new(edits, applicability));
+        self.errors.push(d);
+    }
+
+    /// DS0116: `distinct *, a`. `star` is the token index of `*`; the current token is the comma.
+    pub(super) fn distinct_star_with_columns(&mut self, star: usize) {
+        let star_start = self.tokens[star].start;
+        let next_start = self
+            .tokens
+            .get(self.pos + 1)
+            .map_or(self.prev_end(), |t| t.start);
+        let d = Diagnostic::error(codes::DS0116, "`distinct *` cannot list other columns")
+            .primary(self.token_span(star), "`*` already means every column")
+            .help_with(
+                "remove `*` to keep the distinct values of the listed columns, or remove the \
+                 columns to keep distinct rows",
+                Suggestion::new(
+                    vec![TextEdit::new(self.span(star_start, next_start), "")],
+                    Applicability::MaybeIncorrect,
+                ),
+            );
+        self.report(d);
+    }
+
+    /// Whether the token at index `i` already has an error from the parser.
+    fn errors_at(&self, i: usize) -> bool {
+        let token = self.tokens[i];
+        self.tokens[i].kind == ERROR
+            || self.errors.iter().any(|d| {
+                d.primary
+                    .as_ref()
+                    .is_some_and(|l| l.span.start == token.start && l.span.end >= token.end())
+            })
+    }
+
     // --- Brackets and statements ---
 
     /// DS0112: the bracket at token index `open` is never closed. The current token is where the

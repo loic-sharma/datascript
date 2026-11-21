@@ -1,0 +1,42 @@
+# Prefix `not` as the operand of `==` hides a chained comparison (M1-19).
+mode: syntax
+---- query
+T | where a == not b == c
+---- expected
+PROGRAM@0..26
+  PIPELINE@0..25
+    NAME_REF@0..1
+      IDENT@0..1 "T"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..25
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..25
+        NAME_REF@10..11
+          IDENT@10..11 "a"
+        WHITESPACE@11..12 " "
+        EQ2@12..14 "=="
+        WHITESPACE@14..15 " "
+        PREFIX_EXPR@15..25
+          NOT_KW@15..18 "not"
+          WHITESPACE@18..19 " "
+          BIN_EXPR@19..25
+            NAME_REF@19..20
+              IDENT@19..20 "b"
+            WHITESPACE@20..21 " "
+            EQ2@21..23 "=="
+            WHITESPACE@23..24 " "
+            NAME_REF@24..25
+              IDENT@24..25 "c"
+  WHITESPACE@25..26 "\n"
+
+error[DS0114]: `not` needs parentheses here
+  --> query:1:16
+  |
+1 | T | where a == not b == c
+  |                ^^^ `not` binds more loosely than `==`
+  |
+  = help: write it as a call to say what it negates: `not(b == c)`
+  = note: without parentheses, `not` negates everything up to the next `and` or `or`

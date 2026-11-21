@@ -1,0 +1,36 @@
+# A string operator written as a method suggests the operator (M1-19).
+mode: syntax
+---- query
+T | where name.contains("x")
+---- expected
+PROGRAM@0..29
+  PIPELINE@0..28
+    NAME_REF@0..1
+      IDENT@0..1 "T"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..28
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      CALL_EXPR@10..28
+        FIELD_EXPR@10..23
+          NAME_REF@10..14
+            IDENT@10..14 "name"
+          DOT@14..15 "."
+          NAME_REF@15..23
+            IDENT@15..23 "contains"
+        ARG_LIST@23..28
+          L_PAREN@23..24 "("
+          LITERAL@24..27
+            STRING@24..27 "\"x\""
+          R_PAREN@27..28 ")"
+  WHITESPACE@28..29 "\n"
+
+error[DS0113]: DataScript has no method calls
+  --> query:1:15
+  |
+1 | T | where name.contains("x")
+  |               ^^^^^^^^^^ `contains` is called like a method of `name`
+  |
+  = help: `contains` is an operator that goes between two values: `name contains "x"`

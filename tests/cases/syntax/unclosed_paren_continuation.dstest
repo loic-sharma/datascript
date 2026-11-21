@@ -1,0 +1,38 @@
+# A continuation line inside an unclosed `(` is not a new statement; the error points at the end (M1-19).
+mode: syntax
+---- query
+T | where f(a,
+b
+---- expected
+PROGRAM@0..17
+  PIPELINE@0..16
+    NAME_REF@0..1
+      IDENT@0..1 "T"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..16
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      CALL_EXPR@10..16
+        NAME_REF@10..11
+          IDENT@10..11 "f"
+        ARG_LIST@11..16
+          L_PAREN@11..12 "("
+          NAME_REF@12..13
+            IDENT@12..13 "a"
+          COMMA@13..14 ","
+          WHITESPACE@14..15 "\n"
+          NAME_REF@15..16
+            IDENT@15..16 "b"
+  WHITESPACE@16..17 "\n"
+
+error[DS0112]: unclosed `(`
+  --> query:1:12
+  |
+1 | T | where f(a,
+  |            ^ this `(` is never closed
+2 | b
+  |  - the input ends before a `)`
+  |
+  = help: add `)` where the bracketed part ends

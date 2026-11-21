@@ -40,4 +40,4 @@ error[DS0101]: comparison operators cannot be chained
   |           |
   |           the result of this comparison is not a value to compare again
   |
-  = help: combine separate comparisons with `and`
+  = help: compare each pair separately and combine them with `and`

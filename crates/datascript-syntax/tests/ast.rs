@@ -117,6 +117,43 @@ fn sort_and_top_keys() {
     assert_eq!(top.key().unwrap().direction(), Some(SortDirection::Asc));
 }
 
+/// `DESC` in caps is reported (DS0105) but still sorts descending.
+#[test]
+fn sort_direction_in_caps() {
+    let parse = parse("t | sort by a DESC, b Asc", FileId(0));
+    assert!(parse.errors.iter().all(|d| d.code.to_string() == "DS0105"));
+    let Some(Stmt::Query(q)) = parse.program().statements().next() else {
+        panic!()
+    };
+    let Some(Operator::Sort(sort)) = q.operators().next() else {
+        panic!()
+    };
+    let directions: Vec<Option<SortDirection>> = sort.keys().map(|k| k.direction()).collect();
+    assert_eq!(
+        directions,
+        [Some(SortDirection::Desc), Some(SortDirection::Asc)]
+    );
+}
+
+/// A method-style call is a call with no name, so its arguments can still be walked.
+#[test]
+fn method_call_is_a_call_without_callee() {
+    let parse = parse("t | extend x = a.b(1, 2)", FileId(0));
+    let codes: Vec<String> = parse.errors.iter().map(|d| d.code.to_string()).collect();
+    assert_eq!(codes, ["DS0113"]);
+    let Some(Stmt::Query(q)) = parse.program().statements().next() else {
+        panic!()
+    };
+    let Some(Operator::Extend(extend)) = q.operators().next() else {
+        panic!()
+    };
+    let Some(Expr::Call(call)) = extend.items().next().and_then(|i| i.expr()) else {
+        panic!()
+    };
+    assert!(call.callee().is_none());
+    assert_eq!(call.args().count(), 2);
+}
+
 #[test]
 fn take_count_distinct() {
     let ops = ops("t | take 5 | count | distinct * | distinct a, b | getschema");

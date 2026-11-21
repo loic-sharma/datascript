@@ -248,6 +248,22 @@ limit bounds the depth of the tree, not of the parser's stack. A chain of more t
 operators is DS0100 ("expression is too long"); split it with `let`. Parsing stays linear on any
 input. *(M1-18, 2026-11-21.)*
 
+### D-033 — Bare `not` stays at level 3; method calls and recovery
+Settled by M1-19, extending D-029. **A bare `not` is not an operand of a tighter operator.**
+`1 + not x == y` used to parse as `1 + (not (x == y))`, and `a == not b == c` hid a chained
+comparison. Rather than write that permissive rule into §4, the parser reports `DS0114` (as
+Python does) and suggests `not(...)`, whose meaning is plain; the tree keeps the old shape so
+nothing else cascades. After `and`/`or` and at the start of an expression a bare `not` is fine.
+**Method-style calls** `a.f(x)` get `DS0113`; the node is a `CALL_EXPR` with no name, whose first
+child is the member access, so the arguments are still parsed and walked. **A comparison chain is
+one error** with help that splits every link. **`where a, b`** is `DS0115` with an `and` fix
+(machine-applicable unless an `or` would regroup); inside a call's arguments the comma still
+starts the next argument. **`distinct *, a`** is `DS0116`. **Recovery from an unclosed bracket
+stops at a line that clearly starts a new statement**: unindented, able to start an expression,
+and after a complete expression, so `f(a⏎U | take 1` keeps the second query while `f(a,⏎b)` and
+`(a⏎- b)` stay continuations. The missing `;` there is not reported separately. *(M1-19,
+2026-11-21.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

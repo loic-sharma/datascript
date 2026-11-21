@@ -73,6 +73,14 @@ pub const DS0110: Code = Code::new(110);
 pub const DS0111: Code = Code::new(111);
 /// unbalanced parenthesis or bracket (points at the opening one)
 pub const DS0112: Code = Code::new(112);
+/// method-style call `a.f(x)` (DataScript has no methods)
+pub const DS0113: Code = Code::new(113);
+/// prefix `not` without parentheses as the operand of a tighter operator (`1 + not x`)
+pub const DS0114: Code = Code::new(114);
+/// `where` with conditions separated by commas
+pub const DS0115: Code = Code::new(115);
+/// `distinct *` with other columns
+pub const DS0116: Code = Code::new(116);
 /// `render` is not the last operator
 pub const DS0120: Code = Code::new(120);
 /// missing `by` in `sort`/`top`
@@ -252,6 +260,30 @@ pub const REGISTRY: &[CodeInfo] = &[
         code: DS0112,
         severity: Some(Severity::Error),
         summary: "unbalanced parenthesis or bracket (points at the opening one)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0113,
+        severity: Some(Severity::Error),
+        summary: "method-style call `a.f(x)` (DataScript has no methods)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0114,
+        severity: Some(Severity::Error),
+        summary: "prefix `not` without parentheses as the operand of a tighter operator (`1 + not x`)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0115,
+        severity: Some(Severity::Error),
+        summary: "`where` with conditions separated by commas",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0116,
+        severity: Some(Severity::Error),
+        summary: "`distinct *` with other columns",
         status: CodeStatus::Active,
     },
     CodeInfo {

@@ -1,0 +1,33 @@
+# `a == == c`: one error for the missing operand, none for a chain (M1-19).
+mode: syntax
+---- query
+T | where a == == c
+---- expected
+PROGRAM@0..20
+  PIPELINE@0..19
+    NAME_REF@0..1
+      IDENT@0..1 "T"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..19
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..19
+        BIN_EXPR@10..14
+          NAME_REF@10..11
+            IDENT@10..11 "a"
+          WHITESPACE@11..12 " "
+          EQ2@12..14 "=="
+        WHITESPACE@14..15 " "
+        EQ2@15..17 "=="
+        WHITESPACE@17..18 " "
+        NAME_REF@18..19
+          IDENT@18..19 "c"
+  WHITESPACE@19..20 "\n"
+
+error[DS0101]: expected an expression after `==`, found `==`
+  --> query:1:16
+  |
+1 | T | where a == == c
+  |                ^^

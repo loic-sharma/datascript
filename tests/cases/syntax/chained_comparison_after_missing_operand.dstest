@@ -1,0 +1,39 @@
+# A missing operand after `and` is one error; the comparisons are not a chain (M1-19).
+mode: syntax
+---- query
+T | where a == b and == c
+---- expected
+PROGRAM@0..26
+  PIPELINE@0..25
+    NAME_REF@0..1
+      IDENT@0..1 "T"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..25
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..25
+        BIN_EXPR@10..20
+          BIN_EXPR@10..16
+            NAME_REF@10..11
+              IDENT@10..11 "a"
+            WHITESPACE@11..12 " "
+            EQ2@12..14 "=="
+            WHITESPACE@14..15 " "
+            NAME_REF@15..16
+              IDENT@15..16 "b"
+          WHITESPACE@16..17 " "
+          AND_KW@17..20 "and"
+        WHITESPACE@20..21 " "
+        EQ2@21..23 "=="
+        WHITESPACE@23..24 " "
+        NAME_REF@24..25
+          IDENT@24..25 "c"
+  WHITESPACE@25..26 "\n"
+
+error[DS0101]: expected an expression after `and`, found `==`
+  --> query:1:22
+  |
+1 | T | where a == b and == c
+  |                      ^^

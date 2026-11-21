@@ -261,12 +261,16 @@ Precedence, from lowest to highest:
 | 7 | unary `-` |
 | 8 | call `f(x)`, member `a.b`, index `a[0]` (M2 for dynamic) |
 
-Comparison operators do not chain: `a < b < c` is a syntax error (`DS0101`) suggesting
-`a < b and b < c`.
+Comparison operators do not chain: `a < b < c` is a syntax error (`DS0101`, one per chain)
+suggesting `a < b and b < c`.
 
 `not` followed by `(` reads like a call and binds like one (as in KQL): `not(x) == y` is
 `(not x) == y`. Without parentheses, `not` is the level-3 prefix: `not x == y` is `not (x == y)`
-(D-029). Expressions may nest at most 256 levels deep (`DS0100`); each operator in a chain such as
+(D-029). So a bare `not` cannot be the operand of a level 4–7 operator: `1 + not x` and
+`a == not b` are errors (`DS0114`, as in Python) suggesting `not(...)` (D-033).
+
+There are no methods: `a.f(x)` is an error (`DS0113`) suggesting `f(a, x)`, or the operator
+form `a contains x` for the string operators (D-033). Expressions may nest at most 256 levels deep (`DS0100`); each operator in a chain such as
 `a + b + c` or `a.b.c` counts as one level (D-032).
 
 - `x in (1, 2, 3)`: the list is scalar literals or expressions of one type (after widening).

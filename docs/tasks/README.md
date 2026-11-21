@@ -51,7 +51,7 @@ Two shared files are touched by many tasks:
 | [M1-04](M1-04-types-function-catalog.md) | Type system and function catalog | M0-02 | done | M1-01, M1-02 |
 | [M1-15](M1-15-walking-skeleton.md) | Walking skeleton: one query through every layer | M1-02, M1-04, M0-04, M0-05 | done | M1-03 |
 | [M1-18](M1-18-parser-long-input.md) | Parser: long and deep input | M1-03 | done | M1-20, M1-23, M1-05 and later |
-| [M1-19](M1-19-parser-grammar-recovery.md) | Parser: grammar fixes and recovery | M1-18 | todo | M1-20, M1-23, M1-05 and later |
+| [M1-19](M1-19-parser-grammar-recovery.md) | Parser: grammar fixes and recovery | M1-18 | done | M1-20, M1-23, M1-05 and later |
 | [M1-20](M1-20-lexer-literal-fixes.md) | Lexer and literal fixes | M1-03 | todo | M1-18, M1-19, M1-21, M1-23 |
 | [M1-21](M1-21-syntax-fix-correctness.md) | Syntax suggestions that produce valid code | M1-18 | todo | M1-19, M1-20, M1-23 |
 | [M1-22](M1-22-syntax-diagnostics-coverage.md) | Syntax diagnostics: more habits and style fixes | M1-21, M1-19 | todo | M1-23, M1-05 and later |

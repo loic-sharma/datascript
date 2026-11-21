@@ -1,0 +1,58 @@
+# `where a, b` joins the conditions with `and` (M1-19).
+mode: syntax
+---- query
+T | where a > 1, b < 2, c | take 1
+---- expected
+PROGRAM@0..35
+  PIPELINE@0..34
+    NAME_REF@0..1
+      IDENT@0..1 "T"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..25
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..15
+        NAME_REF@10..11
+          IDENT@10..11 "a"
+        WHITESPACE@11..12 " "
+        GT@12..13 ">"
+        WHITESPACE@13..14 " "
+        LITERAL@14..15
+          LONG@14..15 "1"
+      COMMA@15..16 ","
+      WHITESPACE@16..17 " "
+      BIN_EXPR@17..22
+        NAME_REF@17..18
+          IDENT@17..18 "b"
+        WHITESPACE@18..19 " "
+        LT@19..20 "<"
+        WHITESPACE@20..21 " "
+        LITERAL@21..22
+          LONG@21..22 "2"
+      COMMA@22..23 ","
+      WHITESPACE@23..24 " "
+      NAME_REF@24..25
+        IDENT@24..25 "c"
+    WHITESPACE@25..26 " "
+    PIPE@26..27 "|"
+    WHITESPACE@27..28 " "
+    TAKE_OP@28..34
+      IDENT@28..32 "take"
+      WHITESPACE@32..33 " "
+      LITERAL@33..34
+        LONG@33..34 "1"
+  WHITESPACE@34..35 "\n"
+
+error[DS0115]: `where` takes one condition
+  --> query:1:16
+  |
+1 | T | where a > 1, b < 2, c | take 1
+  |                ^ a comma does not join conditions
+  |
+  = help: combine the conditions with `and`: `a > 1 and b < 2 and c`
+
+with the machine-applicable fixes applied:
+    T | where a > 1 and b < 2 and c | take 1
+which parses without errors

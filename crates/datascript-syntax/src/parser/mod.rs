@@ -55,6 +55,7 @@ pub(crate) fn parse_tokens(
         depth: 0,
         nesting: 0,
         eq_compares: false,
+        in_arg_list: false,
         too_deep: false,
         last_unclosed: None,
     };
@@ -89,6 +90,12 @@ impl TokenSet {
         let mut bits = 0u128;
         let mut i = 0;
         while i < kinds.len() {
+            // A set is a `u128`: a kind past 127 would be dropped silently. In a `const` this
+            // fails the build.
+            assert!(
+                (kinds[i] as u16) < 128,
+                "TokenSet holds only the first 128 kinds"
+            );
             bits |= 1u128 << (kinds[i] as u16);
             i += 1;
         }
@@ -121,6 +128,9 @@ struct Parser<'t> {
     /// Whether `=` here is a mistyped comparison (DS0110): in a `where` predicate, a `join ... on`
     /// condition, or the arguments of `iff` and friends.
     eq_compares: bool,
+    /// Whether the innermost bracket is a call's argument list, where a `,` starts the next
+    /// argument even after a pipeline (`f(T | where a, b)`).
+    in_arg_list: bool,
     /// Whether DS0100 was reported, after which unclosed brackets are not reported again.
     too_deep: bool,
     /// Where the last unclosed bracket was reported (token index) and the index of its error.

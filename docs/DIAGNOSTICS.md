@@ -141,6 +141,10 @@ design decision and implemented by the task named in the allocation table.
 | DS0110 | error | `=` used for comparison |
 | DS0111 | error | `&&`/`||`/`!` used instead of `and`/`or`/`not` |
 | DS0112 | error | unbalanced parenthesis or bracket (points at the opening one) |
+| DS0113 | error | method-style call `a.f(x)` (DataScript has no methods) |
+| DS0114 | error | prefix `not` without parentheses as the operand of a tighter operator (`1 + not x`) |
+| DS0115 | error | `where` with conditions separated by commas |
+| DS0116 | error | `distinct *` with other columns |
 | DS0120 | error | `render` is not the last operator |
 | DS0121 | error | missing `by` in `sort`/`top` |
 | DS0122 | error | missing `on` in `join`/`lookup` |

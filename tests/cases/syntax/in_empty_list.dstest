@@ -1,0 +1,33 @@
+# `in` needs at least one value (LANGUAGE.md §8, M1-19).
+mode: syntax
+---- query
+T | where x in ()
+---- expected
+PROGRAM@0..18
+  PIPELINE@0..17
+    NAME_REF@0..1
+      IDENT@0..1 "T"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..17
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      IN_EXPR@10..17
+        NAME_REF@10..11
+          IDENT@10..11 "x"
+        WHITESPACE@11..12 " "
+        IDENT@12..14 "in"
+        WHITESPACE@14..15 " "
+        ARG_LIST@15..17
+          L_PAREN@15..16 "("
+          R_PAREN@16..17 ")"
+  WHITESPACE@17..18 "\n"
+
+error[DS0101]: expected a value in the list, found `)`
+  --> query:1:17
+  |
+1 | T | where x in ()
+  |                 ^ the list after `in` is empty
+  |
+  = help: list at least one value: `x in (1, 2)`

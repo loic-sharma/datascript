@@ -1,0 +1,36 @@
+# With an `or`, the `and` fix would regroup the conditions: not machine-applicable (M1-19).
+mode: syntax
+---- query
+T | where a or b, c
+---- expected
+PROGRAM@0..20
+  PIPELINE@0..19
+    NAME_REF@0..1
+      IDENT@0..1 "T"
+    WHITESPACE@1..2 " "
+    PIPE@2..3 "|"
+    WHITESPACE@3..4 " "
+    WHERE_OP@4..19
+      IDENT@4..9 "where"
+      WHITESPACE@9..10 " "
+      BIN_EXPR@10..16
+        NAME_REF@10..11
+          IDENT@10..11 "a"
+        WHITESPACE@11..12 " "
+        OR_KW@12..14 "or"
+        WHITESPACE@14..15 " "
+        NAME_REF@15..16
+          IDENT@15..16 "b"
+      COMMA@16..17 ","
+      WHITESPACE@17..18 " "
+      NAME_REF@18..19
+        IDENT@18..19 "c"
+  WHITESPACE@19..20 "\n"
+
+error[DS0115]: `where` takes one condition
+  --> query:1:17
+  |
+1 | T | where a or b, c
+  |                 ^ a comma does not join conditions
+  |
+  = help: combine the conditions with `and`: `a or b and c`

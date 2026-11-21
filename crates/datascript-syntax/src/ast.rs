@@ -229,6 +229,7 @@ ast_node!(
 );
 
 impl WhereOp {
+    /// The condition rows must meet.
     pub fn predicate(&self) -> Option<Expr> {
         child(&self.syntax)
     }
@@ -241,6 +242,7 @@ ast_node!(
 );
 
 impl ProjectOp {
+    /// The output columns, each an expression with an optional name.
     pub fn items(&self) -> impl Iterator<Item = NamedExpr> + use<> {
         children(&self.syntax)
     }
@@ -253,6 +255,7 @@ ast_node!(
 );
 
 impl ProjectAwayOp {
+    /// The columns to remove, as names or `*` patterns.
     pub fn patterns(&self) -> impl Iterator<Item = ColumnPattern> + use<> {
         children(&self.syntax)
     }
@@ -265,6 +268,7 @@ ast_node!(
 );
 
 impl ProjectRenameOp {
+    /// The `new = old` renames.
     pub fn items(&self) -> impl Iterator<Item = RenameItem> + use<> {
         children(&self.syntax)
     }
@@ -277,6 +281,7 @@ ast_node!(
 );
 
 impl ExtendOp {
+    /// The columns to add or replace, each an expression with an optional name.
     pub fn items(&self) -> impl Iterator<Item = NamedExpr> + use<> {
         children(&self.syntax)
     }
@@ -307,6 +312,7 @@ ast_node!(
 );
 
 impl ByClause {
+    /// The grouping keys after `by`.
     pub fn keys(&self) -> impl Iterator<Item = NamedExpr> + use<> {
         children(&self.syntax)
     }
@@ -319,6 +325,7 @@ ast_node!(
 );
 
 impl SortOp {
+    /// The sort keys, in order of priority.
     pub fn keys(&self) -> impl Iterator<Item = SortKey> + use<> {
         children(&self.syntax)
     }
@@ -341,6 +348,7 @@ impl TopOp {
         child(&self.syntax)
     }
 
+    /// The sort key after `by`.
     pub fn key(&self) -> Option<SortKey> {
         child(&self.syntax)
     }
@@ -383,6 +391,7 @@ impl DistinctOp {
         token(&self.syntax, STAR)
     }
 
+    /// The columns to deduplicate on; empty for `distinct *`.
     pub fn columns(&self) -> impl Iterator<Item = Expr> + use<> {
         children(&self.syntax)
     }
@@ -395,6 +404,7 @@ ast_node!(
 );
 
 impl JoinOp {
+    /// The join kind from `kind = ...`, if written.
     pub fn kind(&self) -> Option<JoinKind> {
         child(&self.syntax)
     }
@@ -434,6 +444,7 @@ ast_node!(
 );
 
 impl UnionOp {
+    /// The tables to append, in order.
     pub fn tables(&self) -> impl Iterator<Item = Expr> + use<> {
         children(&self.syntax)
     }
@@ -472,6 +483,7 @@ ast_node!(
 );
 
 impl RenderProp {
+    /// The property name before `=`.
     pub fn name(&self) -> Option<Name> {
         child(&self.syntax)
     }
@@ -496,6 +508,7 @@ impl NamedExpr {
         child(&self.syntax)
     }
 
+    /// The value expression.
     pub fn expr(&self) -> Option<Expr> {
         child(&self.syntax)
     }
@@ -526,10 +539,12 @@ ast_node!(
 );
 
 impl RenameItem {
+    /// The new column name, before `=`.
     pub fn new_name(&self) -> Option<Name> {
         child(&self.syntax)
     }
 
+    /// The column being renamed, after `=`.
     pub fn old_name(&self) -> Option<NameRef> {
         child(&self.syntax)
     }
@@ -556,20 +571,28 @@ pub enum NullsPlacement {
 }
 
 impl SortKey {
+    /// The expression to sort by.
     pub fn expr(&self) -> Option<Expr> {
         child(&self.syntax)
     }
 
     /// The `asc` or `desc` token, if written.
     pub fn direction_token(&self) -> Option<SyntaxToken> {
-        tokens(&self.syntax).find(|t| t.kind() == IDENT && matches!(t.text(), "asc" | "desc"))
+        // Any case: `DESC` is reported (DS0105) but still means descending.
+        tokens(&self.syntax).find(|t| {
+            t.kind() == IDENT
+                && (t.text().eq_ignore_ascii_case("asc") || t.text().eq_ignore_ascii_case("desc"))
+        })
     }
 
     /// The direction, if written. The default depends on the operator.
     pub fn direction(&self) -> Option<SortDirection> {
-        self.direction_token().map(|t| match t.text() {
-            "asc" => SortDirection::Asc,
-            _ => SortDirection::Desc,
+        self.direction_token().map(|t| {
+            if t.text().eq_ignore_ascii_case("asc") {
+                SortDirection::Asc
+            } else {
+                SortDirection::Desc
+            }
         })
     }
 
@@ -602,6 +625,7 @@ pub enum Arg {
 }
 
 impl ArgList {
+    /// The arguments in order, positional or named.
     pub fn args(&self) -> impl Iterator<Item = Arg> + use<> {
         self.syntax.children().filter_map(|node| {
             if let Some(named) = NamedExpr::cast(node.clone()) {
@@ -620,6 +644,7 @@ ast_node!(
 );
 
 impl Name {
+    /// The name's token (an identifier, or a quoted `['...']` name).
     pub fn token(&self) -> Option<SyntaxToken> {
         tokens(&self.syntax).next()
     }
@@ -671,10 +696,12 @@ pub enum LiteralKind {
 }
 
 impl Literal {
+    /// The literal's token.
     pub fn token(&self) -> Option<SyntaxToken> {
         tokens(&self.syntax).next()
     }
 
+    /// What kind of literal this is, from its token.
     pub fn kind(&self) -> Option<LiteralKind> {
         Some(match self.token()?.kind() {
             LONG => LiteralKind::Long,
@@ -709,6 +736,7 @@ ast_node!(
 );
 
 impl NameRef {
+    /// The referenced name's token.
     pub fn token(&self) -> Option<SyntaxToken> {
         tokens(&self.syntax).next()
     }
@@ -739,10 +767,13 @@ ast_node!(
 );
 
 impl CallExpr {
+    /// The function's name. `None` for a method-style call `a.f(x)` (DS0113), whose first child is
+    /// the member access.
     pub fn callee(&self) -> Option<NameRef> {
         child(&self.syntax)
     }
 
+    /// The parenthesized argument list.
     pub fn arg_list(&self) -> Option<ArgList> {
         child(&self.syntax)
     }
@@ -760,6 +791,7 @@ ast_node!(
 );
 
 impl FieldExpr {
+    /// The expression before `.`.
     pub fn base(&self) -> Option<Expr> {
         child(&self.syntax)
     }
@@ -778,10 +810,12 @@ ast_node!(
 );
 
 impl IndexExpr {
+    /// The expression before `[`.
     pub fn base(&self) -> Option<Expr> {
         child(&self.syntax)
     }
 
+    /// The expression inside the brackets.
     pub fn index(&self) -> Option<Expr> {
         children(&self.syntax).nth(1)
     }
@@ -803,10 +837,12 @@ pub enum PrefixOp {
 }
 
 impl PrefixExpr {
+    /// The operator token: `not`, `-` or `!` (reported as DS0111).
     pub fn op_token(&self) -> Option<SyntaxToken> {
         tokens(&self.syntax).next()
     }
 
+    /// The operator, read from its token.
     pub fn op(&self) -> Option<PrefixOp> {
         match self.op_token()?.kind() {
             MINUS => Some(PrefixOp::Neg),
@@ -816,6 +852,7 @@ impl PrefixExpr {
         }
     }
 
+    /// The expression the operator applies to.
     pub fn operand(&self) -> Option<Expr> {
         child(&self.syntax)
     }
@@ -888,10 +925,12 @@ pub enum BinaryOp {
 }
 
 impl BinExpr {
+    /// The left operand.
     pub fn lhs(&self) -> Option<Expr> {
         child(&self.syntax)
     }
 
+    /// The right operand.
     pub fn rhs(&self) -> Option<Expr> {
         children(&self.syntax).nth(1)
     }
@@ -901,6 +940,7 @@ impl BinExpr {
         tokens(&self.syntax).next()
     }
 
+    /// The operator, read from its token. Habits (`&&`, `||`, `=`, `<>`) read as the operator meant.
     pub fn op(&self) -> Option<BinaryOp> {
         let token = self.op_token()?;
         Some(match token.kind() {
@@ -942,6 +982,7 @@ ast_node!(
 );
 
 impl InExpr {
+    /// The value tested for membership.
     pub fn lhs(&self) -> Option<Expr> {
         child(&self.syntax)
     }
@@ -974,6 +1015,7 @@ ast_node!(
 );
 
 impl BetweenExpr {
+    /// The value tested against the range.
     pub fn lhs(&self) -> Option<Expr> {
         child(&self.syntax)
     }
@@ -983,6 +1025,7 @@ impl BetweenExpr {
         tokens(&self.syntax).next()
     }
 
+    /// Whether this is `!between`.
     pub fn negated(&self) -> bool {
         self.op_token().is_some_and(|t| t.text().starts_with('!'))
     }
