@@ -170,6 +170,9 @@ design decision and implemented by the task named in the allocation table.
 | DS1005 | error | duplicate output column name |
 | DS1006 | error | a table name used where a value is expected (`let alias = orders;`) |
 | DS1007 | info | `join` renamed colliding non-key columns (says how to rename explicitly; `on key` columns are merged, D-019) |
+| DS1030 | error | `join` condition that is not a column name or `$left.a == $right.b` |
+| DS1031 | error | `$left`/`$right` used outside a `join` condition |
+| DS1032 | error | `distinct` given an expression instead of a column name |
 | DS2001 | error | predicate is not `bool` |
 | DS2002 | error | wrong number of arguments |
 | DS2003 | error | operator not defined for these types |
@@ -182,6 +185,7 @@ design decision and implemented by the task named in the allocation table.
 | DS2010 | error | a pipeline (a table) used where a value is expected |
 | DS2011 | error | named argument in a call to a function that takes none |
 | DS2012 | error | field access or indexing on a value that is not `dynamic` (`dynamic` is M2) |
+| DS2030 | error | `summarize` with no aggregate and no `by` key |
 | DS2101 | warning | `take`/`limit` before `sort`: the rows kept are arbitrary *(planned, M1-14)* |
 | DS2102 | warning | predicate is always true or always false *(planned, M1-14)* |
 | DS2103 | warning | `sort` key without `asc`/`desc` (default is asc, ≠ KQL); machine-applicable fix inserts `asc` *(planned, M1-14, D-005)* |

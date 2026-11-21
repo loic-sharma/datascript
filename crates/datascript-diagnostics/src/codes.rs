@@ -127,6 +127,12 @@ pub const DS1005: Code = Code::new(1005);
 pub const DS1006: Code = Code::new(1006);
 /// `join` renamed colliding non-key columns (says how to rename explicitly; `on key` columns are merged, D-019)
 pub const DS1007: Code = Code::new(1007);
+/// `join` condition that is not a column name or `$left.a == $right.b`
+pub const DS1030: Code = Code::new(1030);
+/// `$left`/`$right` used outside a `join` condition
+pub const DS1031: Code = Code::new(1031);
+/// `distinct` given an expression instead of a column name
+pub const DS1032: Code = Code::new(1032);
 /// predicate is not `bool`
 pub const DS2001: Code = Code::new(2001);
 /// wrong number of arguments
@@ -149,6 +155,8 @@ pub const DS2010: Code = Code::new(2010);
 pub const DS2011: Code = Code::new(2011);
 /// field access or indexing on a value that is not `dynamic` (`dynamic` is M2)
 pub const DS2012: Code = Code::new(2012);
+/// `summarize` with no aggregate and no `by` key
+pub const DS2030: Code = Code::new(2030);
 /// `take`/`limit` before `sort`: the rows kept are arbitrary (planned, M1-14)
 pub const DS2101: Code = Code::new(2101);
 /// predicate is always true or always false (planned, M1-14)
@@ -455,6 +463,24 @@ pub const REGISTRY: &[CodeInfo] = &[
         status: CodeStatus::Active,
     },
     CodeInfo {
+        code: DS1030,
+        severity: Some(Severity::Error),
+        summary: "`join` condition that is not a column name or `$left.a == $right.b`",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS1031,
+        severity: Some(Severity::Error),
+        summary: "`$left`/`$right` used outside a `join` condition",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS1032,
+        severity: Some(Severity::Error),
+        summary: "`distinct` given an expression instead of a column name",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
         code: DS2001,
         severity: Some(Severity::Error),
         summary: "predicate is not `bool`",
@@ -524,6 +550,12 @@ pub const REGISTRY: &[CodeInfo] = &[
         code: DS2012,
         severity: Some(Severity::Error),
         summary: "field access or indexing on a value that is not `dynamic` (`dynamic` is M2)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS2030,
+        severity: Some(Severity::Error),
+        summary: "`summarize` with no aggregate and no `by` key",
         status: CodeStatus::Active,
     },
     CodeInfo {

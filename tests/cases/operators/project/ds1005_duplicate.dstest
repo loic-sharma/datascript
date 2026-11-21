@@ -1,0 +1,33 @@
+# Duplicate output names in `project` are DS1005; the first column is kept, so later operators still see it.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | project amount, amount;
+from 'orders.csv' | project total = amount, total = qty | where total > 1
+---- expected
+error[DS1005]: duplicate column name `amount`
+  --> query:1:37
+  |
+1 | from 'orders.csv' | project amount, amount;
+  |                             ------  ^^^^^^ a second column named `amount`
+  |                             |
+  |                             another column with this name
+  |
+  = help: remove the repeated `amount`
+
+error[DS1005]: duplicate column name `total`
+  --> query:2:45
+  |
+2 | from 'orders.csv' | project total = amount, total = qty | where total > 1
+  |                             -----           ^^^^^ a second column named `total`
+  |                             |
+  |                             another column with this name
+  |
+  = help: output column names must be unique; give this one another name, such as `total2`
+
+query 1 columns:
+  amount: real
+
+query 2 columns:
+  total: real

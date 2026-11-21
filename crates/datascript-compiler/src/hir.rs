@@ -118,18 +118,140 @@ pub struct Stage {
 pub enum Op {
     /// `where predicate`; the predicate is `bool`.
     Where(Expr),
-    /// `project` of columns.
+    /// The output columns, in order: `project`, and also `project-away` and `project-rename`,
+    /// whose items are columns of the input.
     Project(Vec<ProjectItem>),
+    /// `extend`: each item adds a column at the end, or replaces the column of that name in
+    /// place. An item sees the columns made by the items before it (D-040).
+    Extend(Vec<ProjectItem>),
+    /// `summarize aggregates by keys`. The output is the keys, then the aggregates. With no
+    /// aggregates it is the distinct keys.
+    Summarize {
+        keys: Vec<ProjectItem>,
+        aggregates: Vec<ProjectItem>,
+    },
+    /// `sort by keys`.
+    Sort(Vec<SortKey>),
+    /// `top count by key`.
+    Top { count: u64, key: SortKey },
     /// `take n`.
     Take(u64),
-    /// An operator whose expressions were checked but whose output schema is not computed yet
-    /// (M1-16). Reported as not implemented.
+    /// `count`: one row with one `long` column, `Count`.
+    Count,
+    /// `distinct`: the distinct values of these input columns (all of them for `distinct *`).
+    Distinct(Vec<String>),
+    /// `join`.
+    Join(Box<Join>),
+    /// `union`: the tables appended to the input, in order. Columns are matched by name.
+    Union(Vec<Source>),
+    /// `getschema`: one row per input column.
+    GetSchema,
+    /// An operator whose output schema is not computed yet (`render`, M1-10). Reported as not
+    /// implemented.
     Unsupported { name: String },
     /// The operator has an error.
     Error,
 }
 
-/// One output column of `project`.
+/// One key of `sort` or `top`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SortKey {
+    pub expr: Expr,
+    pub descending: bool,
+    /// Whether nulls come first; the default depends on the direction (LANGUAGE.md §3.4).
+    pub nulls_first: bool,
+}
+
+/// A bound `join`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Join {
+    pub kind: JoinKind,
+    /// The right table.
+    pub right: Source,
+    /// The conditions, in order.
+    pub keys: Vec<JoinKey>,
+    /// Right columns renamed because the left has a column of the same name (`DS1007`), as
+    /// `(right name, output name)`.
+    pub renamed: Vec<(String, String)>,
+}
+
+/// The kinds of `join` (LANGUAGE.md §3.2, D-004).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum JoinKind {
+    Inner,
+    LeftOuter,
+    RightOuter,
+    FullOuter,
+    LeftSemi,
+    LeftAnti,
+    RightSemi,
+    RightAnti,
+}
+
+impl JoinKind {
+    /// The kind as written after `kind =`.
+    pub fn from_name(name: &str) -> Option<JoinKind> {
+        Some(match name {
+            "inner" => JoinKind::Inner,
+            "leftouter" => JoinKind::LeftOuter,
+            "rightouter" => JoinKind::RightOuter,
+            "fullouter" => JoinKind::FullOuter,
+            "leftsemi" => JoinKind::LeftSemi,
+            "leftanti" => JoinKind::LeftAnti,
+            "rightsemi" => JoinKind::RightSemi,
+            "rightanti" => JoinKind::RightAnti,
+            _ => return None,
+        })
+    }
+
+    /// The name written after `kind =`.
+    pub fn name(self) -> &'static str {
+        match self {
+            JoinKind::Inner => "inner",
+            JoinKind::LeftOuter => "leftouter",
+            JoinKind::RightOuter => "rightouter",
+            JoinKind::FullOuter => "fullouter",
+            JoinKind::LeftSemi => "leftsemi",
+            JoinKind::LeftAnti => "leftanti",
+            JoinKind::RightSemi => "rightsemi",
+            JoinKind::RightAnti => "rightanti",
+        }
+    }
+
+    /// Semi and anti joins return the columns of one side only.
+    pub fn one_side(self) -> Option<JoinSide> {
+        match self {
+            JoinKind::LeftSemi | JoinKind::LeftAnti => Some(JoinSide::Left),
+            JoinKind::RightSemi | JoinKind::RightAnti => Some(JoinSide::Right),
+            _ => None,
+        }
+    }
+}
+
+/// A side of a `join`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum JoinSide {
+    Left,
+    Right,
+}
+
+/// One equality condition of a `join`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct JoinKey {
+    /// The left column.
+    pub left: String,
+    /// The right column.
+    pub right: String,
+    /// The type both columns are compared as (they are widened to it, LANGUAGE.md §4.2).
+    pub ty: Type,
+    /// `on key`: the two columns become one output column, in the left column's position
+    /// (D-019). Its value is the left one, the right one for `rightouter`, and
+    /// `coalesce(left, right)` for `fullouter`. `$left.a == $right.b` keeps both.
+    pub merged: bool,
+    pub span: Span,
+}
+
+/// One output column of `project`, `extend` or `summarize`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProjectItem {
     pub name: String,

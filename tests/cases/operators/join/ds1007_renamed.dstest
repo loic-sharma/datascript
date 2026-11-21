@@ -1,0 +1,64 @@
+# Other colliding columns are renamed `name1`, … with one DS1007 info per join.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime); 'r.csv'(customerId: string, amount: real, qty: long, qty1: long)
+---- query
+from 'orders.csv' | join 'r.csv' on customerId;
+from 'orders.csv' | join (from 'r.csv' | where qty > 1) on customerId;
+from 'orders.csv' | join 'r.csv' on customerId, amount
+---- expected
+info[DS1007]: `join` renamed 2 columns of the right table: `amount` to `amount1`, `qty` to `qty2`
+  --> query:1:26
+  |
+1 | from 'orders.csv' | join 'r.csv' on customerId;
+  |                          ^^^^^^^ this table has columns with the same names as the left side
+  |
+  = help: to choose the names yourself, rename them on the right: `join (from 'r.csv' | project-rename right_amount = amount, right_qty = qty)`
+  = note: a column named in `on` is not renamed: the two sides make one column (only `$left.a == $right.b` keeps both)
+
+info[DS1007]: `join` renamed 2 columns of the right table: `amount` to `amount1`, `qty` to `qty2`
+  --> query:2:26
+  |
+2 | from 'orders.csv' | join (from 'r.csv' | where qty > 1) on customerId;
+  |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this table has columns with the same names as the left side
+  |
+  = help: to choose the names yourself, rename them on the right: `join (from 'r.csv' | where qty > 1 | project-rename right_amount = amount, right_qty = qty)`
+  = note: a column named in `on` is not renamed: the two sides make one column (only `$left.a == $right.b` keeps both)
+
+info[DS1007]: `join` renamed column `qty` of the right table to `qty2`
+  --> query:3:26
+  |
+3 | from 'orders.csv' | join 'r.csv' on customerId, amount
+  |                          ^^^^^^^ this table also has a column `qty`
+  |
+  = help: to choose the names yourself, rename them on the right: `join (from 'r.csv' | project-rename right_qty = qty)`
+  = note: a column named in `on` is not renamed: the two sides make one column (only `$left.a == $right.b` keeps both)
+
+query 1 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  amount1: real
+  qty2: long
+  qty1: long
+
+query 2 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  amount1: real
+  qty2: long
+  qty1: long
+
+query 3 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  qty2: long
+  qty1: long

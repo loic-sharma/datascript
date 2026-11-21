@@ -1,0 +1,46 @@
+# `$left.a == $right.b` keeps both columns; the same name on both sides is renamed with DS1007.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime); 'customers.csv'(customerId: string, name: string, country: string, signupDate: datetime); 'c2.csv'(id: string, name: string)
+---- query
+from 'orders.csv' | join 'c2.csv' on $left.customerId == $right.id;
+from 'orders.csv' | join 'c2.csv' on $right.id == $left.customerId;
+from 'orders.csv' | join 'customers.csv' on $left.customerId == $right.customerId
+---- expected
+info[DS1007]: `join` renamed column `customerId` of the right table to `customerId1`
+  --> query:3:26
+  |
+3 | from 'orders.csv' | join 'customers.csv' on $left.customerId == $right.customerId
+  |                          ^^^^^^^^^^^^^^^ this table also has a column `customerId`
+  |
+  = help: to choose the names yourself, rename them on the right: `join (from 'customers.csv' | project-rename right_customerId = customerId)`
+  = note: a column named in `on` is not renamed: the two sides make one column (only `$left.a == $right.b` keeps both)
+
+query 1 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  id: string
+  name: string
+
+query 2 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  id: string
+  name: string
+
+query 3 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  customerId1: string
+  name: string
+  country: string
+  signupDate: datetime

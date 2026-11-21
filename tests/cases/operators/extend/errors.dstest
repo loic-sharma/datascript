@@ -1,0 +1,41 @@
+# `extend` errors: a duplicate name (DS1005) and an aggregate (DS2004).
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | extend a = 1, a = 2;
+from 'orders.csv' | extend total = sum(amount)
+---- expected
+error[DS1005]: duplicate column name `a`
+  --> query:1:35
+  |
+1 | from 'orders.csv' | extend a = 1, a = 2;
+  |                            -      ^ a second column named `a`
+  |                            |
+  |                            another column with this name
+  |
+  = help: output column names must be unique; give this one another name, such as `a2`
+
+error[DS2004]: aggregate function `sum` cannot be used in `extend`
+  --> query:2:36
+  |
+2 | from 'orders.csv' | extend total = sum(amount)
+  |                                    ^^^ this combines many rows into one value
+  |
+  = help: aggregate in `summarize` first, then use the result: `| summarize result = sum(amount) by ...`
+
+query 1 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  a: long
+
+query 2 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  total: real

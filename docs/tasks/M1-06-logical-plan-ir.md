@@ -28,5 +28,7 @@ Lower the typed HIR into the engine-neutral relational IR (D-002) and pretty-pri
 ## Carried over
 - [x] (from M1-15) Move planning out of `binder.rs` into the IR builder. *(Done in M1-05: `plan.rs` lowers the HIR to the IR; extend it there.)*
 - [ ] (from M0-03) Un-skip and bless `tests/cases/harness/explain.dstest` (needs host tables from M1-17) and confirm `harness/syntax.dstest` is blessed.
+- [ ] (from M1-16) Plan the operators the binder now types but `plan.rs` rejects with DS9001 "`<op>` cannot run yet" (`plan::cannot_run_yet`): `hir::Op::{Summarize, Sort, Top, Count, Distinct, Join, Union, GetSchema}`. Each stage's `columns` already holds its output schema. `extend` is planned as one `Project` per item (D-040) and the `project` family as `Project`; replace that with the real IR nodes if you prefer. Re-bless `tests/cases/skeleton/not_implemented.dstest` (it shows the DS9001 for `summarize`).
+- [ ] (from M1-16) `hir::JoinKey::merged` keys are one output column (D-019): the left value, the right one for `rightouter`, `coalesce(left, right)` for `fullouter`; `hir::Join::renamed` maps right columns to their output names (`name1`, …).
 
 ## Follow-ups

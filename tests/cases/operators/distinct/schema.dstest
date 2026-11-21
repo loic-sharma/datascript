@@ -1,0 +1,18 @@
+# `distinct` keeps the listed columns, or all of them for `distinct *`.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | distinct customerId, orderId;
+from 'orders.csv' | distinct *
+---- expected
+query 1 columns:
+  customerId: string
+  orderId: string
+
+query 2 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime

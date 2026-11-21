@@ -1,0 +1,22 @@
+# `fullouter` with rows missing on both sides: `c-999` has orders but no customer, `c-200` has a
+# customer but no orders. The one `customerId` column is `coalesce(left, right)`, so it is never
+# null (D-019).
+mode: run
+skip: `join` cannot run yet (M1-06, M1-09)
+---- query
+from '../../../data/orders.csv'
+| where customerId in ('c-001', 'c-999')
+| join kind = fullouter (from '../../../data/customers.csv' | where customerId in ('c-001', 'c-200')) on customerId
+| project customerId, orderId, name
+| sort by customerId asc, orderId asc
+---- expected
+customerId | orderId | name
+string     | string  | string
+-----------+---------+----------
+c-001      | o-0015  | Ana Silva
+c-001      | o-0024  | Ana Silva
+c-001      | o-0030  | Ana Silva
+c-001      | o-0031  | Ana Silva
+c-200      | null    | Mo Haddad
+c-999      | o-0007  | null
+c-999      | o-0020  | null

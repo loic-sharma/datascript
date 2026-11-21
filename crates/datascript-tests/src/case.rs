@@ -17,7 +17,7 @@ pub const DEFAULT_NOW: &str = "2024-06-01T00:00:00Z";
 pub const DEFAULT_ENGINE: &str = "datafusion";
 
 const HEADER_KEYS: &[&str] = &[
-    "mode", "order", "now", "engine", "tables", "schema", "skip", "eol",
+    "mode", "order", "now", "engine", "tables", "schema", "skip", "eol", "show",
 ];
 const SECTION_NAMES: &[&str] = &["query", "expected"];
 
@@ -120,6 +120,8 @@ pub struct TestCase {
     pub schema: Option<MockSchemaProvider>,
     /// Reason from `skip:`.
     pub skip: Option<String>,
+    /// `show: schema`: `check` cases also print each query's output columns.
+    pub show_schema: bool,
     /// The query text: `\r\n` normalized, trailing blank lines removed, ending with one `\n`.
     /// With `eol: crlf`, every line then ends with `\r\n` instead.
     pub query: String,
@@ -338,6 +340,25 @@ impl Parser {
             },
         };
 
+        let show_schema = match header("show") {
+            None => false,
+            Some(v) => match v.value.as_str() {
+                "schema" if mode == Mode::Check => true,
+                "schema" => {
+                    return Err(err(
+                        v.line,
+                        "`show: schema` is only for `mode: check` cases",
+                    ));
+                }
+                other => {
+                    return Err(err(
+                        v.line,
+                        format!("unknown show `{other}`{}", hint(other, &["schema"])),
+                    ));
+                }
+            },
+        };
+
         let mut query = None;
         let mut expected = Vec::new();
         for s in &sections {
@@ -384,6 +405,7 @@ impl Parser {
             tables,
             schema,
             skip,
+            show_schema,
             query: if crlf {
                 format!("{}\r\n", query.replace('\n', "\r\n"))
             } else {

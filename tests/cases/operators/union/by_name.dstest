@@ -1,0 +1,12 @@
+# `union` matches columns by name, in order of first appearance; types widen (§4.2).
+mode: check
+show: schema
+schema: 'a.csv'(x: long, y: string); 'b.csv'(y: string, z: real, x: real); 'c.csv'(w: int, x: int)
+---- query
+from 'a.csv' | union 'b.csv', (from 'c.csv' | where w > 1)
+---- expected
+query 1 columns:
+  x: real
+  y: string
+  z: real
+  w: int

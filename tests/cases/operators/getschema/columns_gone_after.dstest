@@ -1,0 +1,19 @@
+# After `getschema`, the input columns are gone.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | getschema | where amount > 1
+---- expected
+error[DS1001]: unknown column `amount`
+  --> query:1:39
+  |
+1 | from 'orders.csv' | getschema | where amount > 1
+  |                                       ^^^^^^ no column named `amount` here
+  |
+  = note: columns available at this point: ColumnName, ColumnOrdinal, DataType
+
+query 1 columns:
+  ColumnName: string
+  ColumnOrdinal: long
+  DataType: string

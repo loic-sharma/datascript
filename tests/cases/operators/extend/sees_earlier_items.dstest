@@ -1,0 +1,15 @@
+# An `extend` item sees the columns made by the items before it (D-040).
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | extend total = amount * qty, big = total > 100
+---- expected
+query 1 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  total: real
+  big: bool

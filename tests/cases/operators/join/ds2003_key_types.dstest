@@ -1,0 +1,42 @@
+# Key columns whose types cannot be compared are DS2003.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime); 'r.csv'(customerId: long, qty: string)
+---- query
+from 'orders.csv' | join 'r.csv' on customerId;
+from 'orders.csv' | join 'r.csv' on $left.qty == $right.qty
+---- expected
+error[DS2003]: cannot join on `customerId`: the left side is `string` and the right side is `long`
+  --> query:1:37
+  |
+1 | from 'orders.csv' | join 'r.csv' on customerId;
+  |                                     ^^^^^^^^^^ the key columns have types that cannot be compared
+  |
+  = help: convert the right column first: `join (from 'r.csv' | extend customerId = tostring(customerId)) on customerId`
+  = note: on the left `customerId` is `string` (read from orders.csv); on the right `customerId` is `long` (read from r.csv)
+
+error[DS2003]: cannot join on `$left.qty` and `$right.qty`: the left side is `long` and the right side is `string`
+  --> query:2:37
+  |
+2 | from 'orders.csv' | join 'r.csv' on $left.qty == $right.qty
+  |                                     ^^^^^^^^^^^^^^^^^^^^^^^ the key columns have types that cannot be compared
+  |
+  = help: convert the right column first: `join (from 'r.csv' | extend qty = tolong(qty)) on $left.qty == $right.qty`
+  = note: on the left `qty` is `long` (read from orders.csv); on the right `qty` is `string` (read from r.csv)
+
+query 1 columns:
+  orderId: string
+  customerId: (error)
+  amount: real
+  qty: long
+  timestamp: datetime
+  qty1: string
+
+query 2 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  customerId1: long
+  qty1: string

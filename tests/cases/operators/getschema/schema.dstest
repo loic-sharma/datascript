@@ -1,0 +1,11 @@
+# `getschema` returns one row per column: `ColumnName`, `ColumnOrdinal`, `DataType`.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | getschema
+---- expected
+query 1 columns:
+  ColumnName: string
+  ColumnOrdinal: long
+  DataType: string

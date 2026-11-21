@@ -1,0 +1,11 @@
+# A generated name skips input columns and names written in the same `extend`.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime); 'c1.csv'(Column1: long)
+---- query
+from 'c1.csv' | extend Column1 + 1, Column2 = 0
+---- expected
+query 1 columns:
+  Column1: long
+  Column3: long
+  Column2: long

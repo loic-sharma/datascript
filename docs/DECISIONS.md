@@ -402,6 +402,28 @@ ties, rather than the furthest argument any form reached. **Untyped results are 
 the catalog**: `Resolved::return_type` may be `Null`, which the binder reports as `DS2009`
 (D-038). *(M1-23, 2026-11-21.)*
 
+### D-040 — Operator schemas and column naming details (M1-16)
+LANGUAGE.md §3.3 left some cases open; the binder settles them as follows. **`extend` items see
+the items before them** (`extend total = amount * qty, big = total > 100`), as in KQL; an item
+that replaces a column replaces it for the later items too. `project` items see only the input
+(a renamed column cannot be read again in the same `project`). **Unnamed computed columns** in
+`project` get `Column1`, … as in `extend`; a bare column keeps its name. Generated names skip any
+name already taken: the input columns (for `extend`) and every name written in the same operator.
+**Unnamed `summarize` items**: an aggregate call over exactly one column is `f_col`, any other
+aggregate call `f_` (`countif(qty > 1)` → `countif_`, `percentile(x, 50)` → `percentile_`), and
+an expression that is not a bare aggregate call (`sum(a) * 2`) gets `Column1`, …. Derived names
+that collide get the first free `1`, `2`, … suffix, so explicit names always keep theirs.
+**Duplicate names** (`DS1005`) keep the first column, so later operators still see one column of
+that name and report nothing more. **`project-rename`** applies its items in order, and a new name
+another column has is `DS1005` (swapping two names needs `project-away` or `project`).
+**`distinct`** takes column names only (`DS1032`, with help to `extend` first). **`summarize`**
+with neither an aggregate nor a key is `DS2030`. **`join`**: renamed right columns take the first
+`name1`, `name2`, … that neither side uses, and one `DS1007` lists every rename of a join; it is
+not reported when a condition has an error, since the rename may only be a symptom. A condition
+that is not a column name or `$left.a == $right.b` (either order) is `DS1030`, and `$left`/`$right`
+anywhere else are `DS1031`. Key columns widen per §4.2; types that do not are `DS2003`, like a
+`union` column conflict. *(M1-16, 2026-11-21.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

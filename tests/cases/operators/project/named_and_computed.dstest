@@ -1,0 +1,13 @@
+# `project` selects, renames and computes, in the order written; an unnamed expression gets `Column1`, ….
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | project orderId, total = amount * qty, amount + 1, tag = 'x', qty * 2
+---- expected
+query 1 columns:
+  orderId: string
+  total: real
+  Column1: real
+  tag: string
+  Column2: long

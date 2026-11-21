@@ -1,0 +1,11 @@
+# `on key` columns of different number types widen to one type (§4.2).
+mode: check
+show: schema
+schema: 'l.csv'(k: int, a: string); 'r.csv'(b: string, k: long)
+---- query
+from 'l.csv' | join kind = fullouter 'r.csv' on k
+---- expected
+query 1 columns:
+  k: long
+  a: string
+  b: string

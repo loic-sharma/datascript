@@ -6,14 +6,6 @@ from 'orders.csv' | summarize amount;
 from 'orders.csv' | summarize sum(amount) + qty;
 from 'orders.csv' | summarize x = 1
 ---- expected
-error[DS9001]: `summarize` is not implemented yet
-  --> query:1:21
-  |
-1 | from 'orders.csv' | summarize amount;
-  |                     ^^^^^^^^^ not supported by this version of DataScript
-  |
-  = note: this version can read a `.csv` file, a tabular `let` or a pipeline in parentheses, and apply `where`, `project` of columns and `take`
-
 error[DS2005]: column `amount` is not aggregated
   --> query:1:31
   |
@@ -22,14 +14,6 @@ error[DS2005]: column `amount` is not aggregated
   |
   = help: use it inside an aggregate, such as `sum(amount)`, or group by it: `by amount`
 
-error[DS9001]: `summarize` is not implemented yet
-  --> query:2:21
-  |
-2 | from 'orders.csv' | summarize sum(amount) + qty;
-  |                     ^^^^^^^^^ not supported by this version of DataScript
-  |
-  = note: this version can read a `.csv` file, a tabular `let` or a pipeline in parentheses, and apply `where`, `project` of columns and `take`
-
 error[DS2005]: column `qty` is not aggregated
   --> query:2:45
   |
@@ -37,14 +21,6 @@ error[DS2005]: column `qty` is not aggregated
   |                                             ^^^ this has a value on each row
   |
   = help: use it inside an aggregate, such as `sum(qty)`, or group by it: `by qty`
-
-error[DS9001]: `summarize` is not implemented yet
-  --> query:3:21
-  |
-3 | from 'orders.csv' | summarize x = 1
-  |                     ^^^^^^^^^ not supported by this version of DataScript
-  |
-  = note: this version can read a `.csv` file, a tabular `let` or a pipeline in parentheses, and apply `where`, `project` of columns and `take`
 
 error[DS2005]: this `summarize` item does not aggregate anything
   --> query:3:35

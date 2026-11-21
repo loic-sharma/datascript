@@ -1,0 +1,34 @@
+# Duplicate explicit names in `summarize` are DS1005.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | summarize n = count(), n = sum(qty) by customerId;
+from 'orders.csv' | summarize customerId = count() by customerId
+---- expected
+error[DS1005]: duplicate column name `n`
+  --> query:1:44
+  |
+1 | from 'orders.csv' | summarize n = count(), n = sum(qty) by customerId;
+  |                               -            ^ a second column named `n`
+  |                               |
+  |                               another column with this name
+  |
+  = help: output column names must be unique; give this one another name, such as `n2`
+
+error[DS1005]: duplicate column name `customerId`
+  --> query:2:31
+  |
+2 | from 'orders.csv' | summarize customerId = count() by customerId
+  |                               ^^^^^^^^^^              ---------- another column with this name
+  |                               |
+  |                               a second column named `customerId`
+  |
+  = help: output column names must be unique; give this one another name, such as `customerId2`
+
+query 1 columns:
+  customerId: string
+  n: long
+
+query 2 columns:
+  customerId: string

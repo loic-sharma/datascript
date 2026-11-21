@@ -1,0 +1,54 @@
+# `sort` and `top` errors: an unknown column, an aggregate key, and a count that is not a literal.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | sort by amout asc;
+from 'orders.csv' | top 3 by sum(amount) desc;
+from 'orders.csv' | top qty by amount desc
+---- expected
+error[DS1001]: unknown column `amout`
+  --> query:1:29
+  |
+1 | from 'orders.csv' | sort by amout asc;
+  |                             ^^^^^ no column named `amout` here
+  |
+  = help: a column with a similar name exists: `amount`
+  = note: columns available at this point: orderId, customerId, amount, qty, timestamp
+
+error[DS2004]: aggregate function `sum` cannot be used in `top`
+  --> query:2:30
+  |
+2 | from 'orders.csv' | top 3 by sum(amount) desc;
+  |                              ^^^ this combines many rows into one value
+  |
+  = help: aggregate in `summarize` first, then use the result: `| summarize result = sum(amount) by ...`
+
+error[DS9001]: a `top` count that is not a whole-number literal is not implemented yet
+  --> query:3:25
+  |
+3 | from 'orders.csv' | top qty by amount desc
+  |                         ^^^ not supported by this version of DataScript
+  |
+  = note: this version can read a `.csv` file, a tabular `let` or a pipeline in parentheses
+
+query 1 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+
+query 2 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+
+query 3 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime

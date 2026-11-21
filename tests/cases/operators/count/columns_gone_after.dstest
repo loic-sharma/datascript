@@ -1,0 +1,18 @@
+# After `count`, only `Count` exists.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | count | project amount
+---- expected
+error[DS1001]: unknown column `amount`
+  --> query:1:37
+  |
+1 | from 'orders.csv' | count | project amount
+  |                                     ^^^^^^ no column named `amount` here
+  |
+  = help: a column with a similar name exists: `Count`
+  = note: columns available at this point: Count
+
+query 1 columns:
+  amount: (error)

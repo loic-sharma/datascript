@@ -1,0 +1,65 @@
+# A `join` condition must be a column name or `$left.a == $right.b` (DS1030).
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime); 'customers.csv'(customerId: string, name: string, country: string, signupDate: datetime)
+---- query
+from 'orders.csv' | join 'customers.csv' on amount > 1;
+from 'orders.csv' | join 'customers.csv' on customerId == customerId;
+from 'orders.csv' | join 'customers.csv' on $left.customerId == $left.orderId
+---- expected
+error[DS1030]: a `join` condition must be a column name or `$left.a == $right.b`
+  --> query:1:45
+  |
+1 | from 'orders.csv' | join 'customers.csv' on amount > 1;
+  |                                             ^^^^^^^^^^ not a `join` condition
+  |
+  = help: `join` compares columns: compute `amount > 1` with `extend` on each side first, then name the new column after `on`
+
+error[DS1030]: a `join` condition must be a column name or `$left.a == $right.b`
+  --> query:2:45
+  |
+2 | from 'orders.csv' | join 'customers.csv' on customerId == customerId;
+  |                                             ^^^^^^^^^^^^^^^^^^^^^^^^ not a `join` condition
+  |
+  = help: to join on the column both tables have, name it once: `on customerId`
+
+error[DS1030]: both sides of this `join` condition use `$left`
+  --> query:3:45
+  |
+3 | from 'orders.csv' | join 'customers.csv' on $left.customerId == $left.orderId
+  |                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this compares one table with itself
+  |
+  = help: compare a left column with a right one: `$left.a == $right.b`
+
+query 1 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  customerId1: string
+  name: string
+  country: string
+  signupDate: datetime
+
+query 2 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  customerId1: string
+  name: string
+  country: string
+  signupDate: datetime
+
+query 3 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  customerId1: string
+  name: string
+  country: string
+  signupDate: datetime

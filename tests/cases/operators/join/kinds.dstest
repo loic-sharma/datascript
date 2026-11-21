@@ -1,0 +1,79 @@
+# Each join kind's output. `on key` gives one key column in the left position (D-019); semi and anti joins return one side.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime); 'customers.csv'(customerId: string, name: string, country: string, signupDate: datetime)
+---- query
+from 'orders.csv' | join 'customers.csv' on customerId;
+from 'orders.csv' | join kind = leftouter 'customers.csv' on customerId;
+from 'orders.csv' | join kind = rightouter 'customers.csv' on customerId;
+from 'orders.csv' | join kind = fullouter 'customers.csv' on customerId;
+from 'orders.csv' | join kind = leftsemi 'customers.csv' on customerId;
+from 'orders.csv' | join kind = leftanti 'customers.csv' on customerId;
+from 'orders.csv' | join kind = rightsemi 'customers.csv' on customerId;
+from 'orders.csv' | join kind = rightanti 'customers.csv' on customerId
+---- expected
+query 1 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  name: string
+  country: string
+  signupDate: datetime
+
+query 2 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  name: string
+  country: string
+  signupDate: datetime
+
+query 3 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  name: string
+  country: string
+  signupDate: datetime
+
+query 4 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  name: string
+  country: string
+  signupDate: datetime
+
+query 5 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+
+query 6 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+
+query 7 columns:
+  customerId: string
+  name: string
+  country: string
+  signupDate: datetime
+
+query 8 columns:
+  customerId: string
+  name: string
+  country: string
+  signupDate: datetime

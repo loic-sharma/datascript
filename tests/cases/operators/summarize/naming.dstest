@@ -1,0 +1,19 @@
+# Unnamed aggregates and keys are named by LANGUAGE.md §3.3. Output: keys first, then aggregates.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv'
+| summarize sum(amount), count(), avg(amount * 2), sum(amount), total = sum(qty), countif(qty > 1)
+    by customerId, bin(timestamp, 1d), qty + amount
+---- expected
+query 1 columns:
+  customerId: string
+  timestamp: datetime
+  Column1: real
+  sum_amount: real
+  count_: long
+  avg_: real
+  sum_amount1: real
+  total: long
+  countif_: long

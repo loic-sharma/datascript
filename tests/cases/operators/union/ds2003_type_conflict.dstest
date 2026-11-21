@@ -1,0 +1,19 @@
+# A column whose types do not widen is DS2003; the column gets the error type, so nothing else is reported.
+mode: check
+show: schema
+schema: 'a.csv'(x: long, y: string); 'b.csv'(x: string)
+---- query
+from 'a.csv' | union 'b.csv' | where x > 1
+---- expected
+error[DS2003]: `union` cannot combine column `x` of types `long` and `string`
+  --> query:1:22
+  |
+1 | from 'a.csv' | union 'b.csv' | where x > 1
+  |                      ^^^^^^^ here `x` is `string`
+  |
+  = help: convert it to one type before the `union`: `union (from 'b.csv' | extend x = tolong(x))`
+  = note: before this table, `x` is `long` (read from a.csv)
+
+query 1 columns:
+  x: (error)
+  y: string

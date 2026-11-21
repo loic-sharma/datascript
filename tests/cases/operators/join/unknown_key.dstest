@@ -1,0 +1,66 @@
+# A key column missing from one side, or both, is DS1001 with that side's columns.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime); 'customers.csv'(customerId: string, name: string, country: string, signupDate: datetime)
+---- query
+from 'orders.csv' | join 'customers.csv' on custmerId;
+from 'orders.csv' | join 'customers.csv' on orderId;
+from 'orders.csv' | join 'customers.csv' on $left.customerId == $right.custId
+---- expected
+error[DS1001]: neither table has a column `custmerId`
+  --> query:1:45
+  |
+1 | from 'orders.csv' | join 'customers.csv' on custmerId;
+  |                                             ^^^^^^^^^ not a column of either table
+  |
+  = help: a column both tables have has a similar name: `customerId`
+  = note: columns both tables have: customerId
+
+error[DS1001]: the right table has no column `orderId`
+  --> query:2:45
+  |
+2 | from 'orders.csv' | join 'customers.csv' on orderId;
+  |                                             ^^^^^^^ not a column of the right table
+  |
+  = note: columns of the right table: customerId, name, country, signupDate
+
+error[DS1001]: the right table has no column `custId`
+  --> query:3:72
+  |
+3 | from 'orders.csv' | join 'customers.csv' on $left.customerId == $right.custId
+  |                                                                        ^^^^^^ not a column of the right table
+  |
+  = note: columns of the right table: customerId, name, country, signupDate
+
+query 1 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  customerId1: string
+  name: string
+  country: string
+  signupDate: datetime
+
+query 2 columns:
+  orderId: (error)
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  customerId1: string
+  name: string
+  country: string
+  signupDate: datetime
+
+query 3 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  customerId1: string
+  name: string
+  country: string
+  signupDate: datetime

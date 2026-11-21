@@ -1,0 +1,13 @@
+# `summarize` with no aggregate and no key is DS2030.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | summarize | take 1
+---- expected
+error[DS2030]: `summarize` has nothing to compute
+  --> query:1:21
+  |
+1 | from 'orders.csv' | summarize | take 1
+  |                     ^^^^^^^^^ no aggregate and no `by` key
+  |
+  = help: add an aggregate, a key, or both: `summarize count() by key`

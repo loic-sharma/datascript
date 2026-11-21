@@ -1,0 +1,18 @@
+# After `summarize`, only its output columns exist.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | summarize total = sum(amount) by customerId | where amount > 1
+---- expected
+error[DS1001]: unknown column `amount`
+  --> query:1:73
+  |
+1 | from 'orders.csv' | summarize total = sum(amount) by customerId | where amount > 1
+  |                                                                         ^^^^^^ no column named `amount` here
+  |
+  = note: columns available at this point: customerId, total
+
+query 1 columns:
+  customerId: string
+  total: real

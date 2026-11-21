@@ -1,0 +1,15 @@
+# `extend` adds columns at the end or replaces one in place; unnamed expressions get `Column1`, ….
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | extend total = amount * qty, amount = amount * 2, qty + 1
+---- expected
+query 1 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  total: real
+  Column1: long

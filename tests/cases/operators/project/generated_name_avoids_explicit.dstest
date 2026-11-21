@@ -1,0 +1,10 @@
+# A generated `Column1` skips names written in the same `project`.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | project Column1 = qty, amount + 1
+---- expected
+query 1 columns:
+  Column1: long
+  Column2: real

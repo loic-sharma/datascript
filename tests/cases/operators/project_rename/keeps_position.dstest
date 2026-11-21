@@ -1,0 +1,13 @@
+# `project-rename` keeps each column's position.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | project-rename total = amount, buyer = customerId
+---- expected
+query 1 columns:
+  orderId: string
+  buyer: string
+  total: real
+  qty: long
+  timestamp: datetime

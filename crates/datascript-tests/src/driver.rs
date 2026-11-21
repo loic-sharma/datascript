@@ -41,6 +41,8 @@ pub struct CaseInput<'a> {
     pub tables: &'a [(String, String)],
     /// Schemas from `schema:`. When present, the driver must not read files.
     pub schema: Option<&'a MockSchemaProvider>,
+    /// `show: schema`: `check` also prints each query's output columns.
+    pub show_schema: bool,
     pub config: &'a DriverConfig,
 }
 

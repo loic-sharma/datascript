@@ -1,0 +1,28 @@
+# The README example: `on customerId` gives one `customerId` column and no DS1007 (D-019).
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+let topCustomers = from 'orders.csv'
+| summarize revenue = sum(amount) by customerId
+| top 10 by revenue desc;
+
+from 'orders.csv'
+| join kind = inner topCustomers on customerId;
+
+from 'orders.csv'
+| join kind = inner topCustomers on customerId
+| summarize revenue = sum(amount) by customerId, month = startofmonth(timestamp)
+---- expected
+query 1 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+  revenue: real
+
+query 2 columns:
+  customerId: string
+  month: datetime
+  revenue: real

@@ -1,0 +1,42 @@
+# `distinct` errors: an expression (DS1032), a repeated column (DS1005), an unknown column (DS1001).
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | distinct amount * 2;
+from 'orders.csv' | distinct customerId, customerId;
+from 'orders.csv' | distinct custmerId
+---- expected
+error[DS1032]: `distinct` takes column names
+  --> query:1:30
+  |
+1 | from 'orders.csv' | distinct amount * 2;
+  |                              ^^^^^^^^^^ this is an expression, not a column
+  |
+  = help: compute it first and name it: `extend value = amount * 2 | distinct value`
+
+error[DS1005]: duplicate column name `customerId`
+  --> query:2:42
+  |
+2 | from 'orders.csv' | distinct customerId, customerId;
+  |                              ----------  ^^^^^^^^^^ a second column named `customerId`
+  |                              |
+  |                              another column with this name
+  |
+  = help: remove the repeated `customerId`
+
+error[DS1001]: unknown column `custmerId`
+  --> query:3:30
+  |
+3 | from 'orders.csv' | distinct custmerId
+  |                              ^^^^^^^^^ no column named `custmerId` here
+  |
+  = help: a column with a similar name exists: `customerId`
+  = note: columns available at this point: orderId, customerId, amount, qty, timestamp
+
+query 1 columns: unknown
+
+query 2 columns:
+  customerId: string
+
+query 3 columns: unknown

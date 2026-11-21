@@ -1,0 +1,9 @@
+# `count` gives one `long` column, `Count`.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | count | where Count > 1
+---- expected
+query 1 columns:
+  Count: long

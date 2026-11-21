@@ -133,7 +133,14 @@ impl Driver for PipelineDriver {
                 block_on(session.check(&query.src, query.file, &ctx))?
             }
         };
-        Ok(query.render(&analysis.diagnostics))
+        let mut out = query.render(&analysis.diagnostics);
+        if input.show_schema {
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            out.push_str(&query_schemas(&analysis.hir));
+        }
+        Ok(out)
     }
 
     fn explain(&self, input: &CaseInput<'_>) -> DriverResult {
@@ -177,6 +184,32 @@ impl Driver for PipelineDriver {
     fn output_order_defined(&self, query: &str) -> Option<bool> {
         Some(output_order_defined(query))
     }
+}
+
+/// For `show: schema`: each query's output columns, one per line, or `unknown` when an error
+/// or a pending source hides them, separated by blank lines.
+fn query_schemas(hir: &datascript_compiler::hir::Hir) -> String {
+    let mut out = String::new();
+    for (i, query) in hir.queries().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        match &query.pipeline.columns {
+            Some(columns) => {
+                out.push_str(&format!("query {} columns:\n", i + 1));
+                for c in columns {
+                    let ty = if c.ty.is_error() {
+                        "(error)".to_string()
+                    } else {
+                        c.ty.to_string()
+                    };
+                    out.push_str(&format!("  {}: {ty}\n", c.name));
+                }
+            }
+            None => out.push_str(&format!("query {} columns: unknown\n", i + 1)),
+        }
+    }
+    out
 }
 
 /// Whether every query statement's row order is defined (LANGUAGE.md §3.4): its last `sort` or

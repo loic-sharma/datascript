@@ -14,17 +14,17 @@
 //!   silently (DIAGNOSTICS.md rule 8). A node with a syntax error is not bound at all, so a
 //!   syntax error adds no semantic errors (ARCHITECTURE.md § Compilation pipeline).
 //!
-//! Operator schemas beyond `where`, `project` of columns and `take` are M1-16; sources other than
-//! `.csv` paths, tabular `let`s and parenthesized pipelines are M1-17. Those operators still have
-//! their expressions checked, then give `DS9001` "not implemented yet".
+//! Operator schemas and column naming (M1-16) are in [`ops`], `join` in [`join`]. Sources other
+//! than `.csv` paths, tabular `let`s and parenthesized pipelines are M1-17, and `render` is M1-10;
+//! they give `DS9001` "not implemented yet".
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use arrow_schema::{Schema, SchemaRef};
 use datascript_diagnostics::codes::{
-    DS0003, DS1001, DS1002, DS1003, DS1004, DS1006, DS2001, DS2004, DS2005, DS2010, DS2011, DS2012,
-    DS3001, DS9001,
+    DS0003, DS1001, DS1002, DS1003, DS1004, DS1006, DS1031, DS2001, DS2004, DS2005, DS2010, DS2011,
+    DS2012, DS3001, DS9001,
 };
 use datascript_diagnostics::{
     Applicability, Diagnostic, FileId, Span, Suggestion, TextEdit, did_you_mean,
@@ -36,9 +36,12 @@ use crate::Type;
 use crate::arrow::{from_arrow, to_arrow};
 use crate::catalog::{CallSite, FunctionCatalog, FunctionKind, ResolveError};
 use crate::hir::{
-    Column, Expr, ExprKind, Hir, LetBinding, LetValue, Op, Pipeline, ProjectItem, Query, Source,
-    Stage, Statement,
+    Column, Expr, ExprKind, Hir, LetBinding, LetValue, Op, Pipeline, Query, Source, Stage,
+    Statement,
 };
+
+mod join;
+mod ops;
 use crate::ir::{BinaryOp, Value};
 use crate::operators::{self, Operand};
 use crate::source::{SchemaLookup, SchemaProvider, SourceError, SourceRef};
@@ -390,9 +393,15 @@ impl<'a> Binder<'a> {
         op: &Operator,
         columns: &Option<Vec<Column>>,
     ) -> (Op, Option<Vec<Column>>) {
-        let keeps_columns = matches!(op, Operator::Where(_) | Operator::Take(_));
         if self.broken.contains(op.syntax()) {
-            let after = if keeps_columns { columns.clone() } else { None };
+            let after = match op {
+                Operator::Where(_) | Operator::Take(_) | Operator::Sort(_) | Operator::Top(_) => {
+                    columns.clone()
+                }
+                Operator::Count(_) => Some(Self::count_columns()),
+                Operator::GetSchema(_) => Some(Self::getschema_columns()),
+                _ => None,
+            };
             return (Op::Error, after);
         }
         let row = |place| Cx {
@@ -409,122 +418,50 @@ impl<'a> Binder<'a> {
                 (Op::Where(expr), columns.clone())
             }
             Operator::Project(op) => self.bind_project(op, columns),
+            Operator::ProjectAway(op) => self.bind_project_away(op, columns),
+            Operator::ProjectRename(op) => self.bind_project_rename(op, columns),
+            Operator::Extend(op) => self.bind_extend(op, columns),
+            Operator::Summarize(op) => self.bind_summarize(op, columns),
+            Operator::Sort(op) => {
+                let keys: Vec<_> = op
+                    .keys()
+                    .filter_map(|key| self.bind_sort_key(&key, columns, "`sort`", false))
+                    .collect();
+                (Op::Sort(keys), columns.clone())
+            }
+            Operator::Top(op) => {
+                let count = op.count().and_then(|count| self.take_count(&count, "top"));
+                let key = op
+                    .key()
+                    .and_then(|key| self.bind_sort_key(&key, columns, "`top`", true));
+                match (count, key) {
+                    (Some(count), Some(key)) => (Op::Top { count, key }, columns.clone()),
+                    _ => (Op::Error, columns.clone()),
+                }
+            }
             Operator::Take(op) => {
-                let count = op.count().and_then(|count| self.take_count(&count));
+                let count = op.count().and_then(|count| self.take_count(&count, "take"));
                 match count {
                     Some(count) => (Op::Take(count), columns.clone()),
                     None => (Op::Error, columns.clone()),
                 }
             }
-            other => {
-                // M1-16 computes these operators' schemas. Check their expressions now, so
-                // mistakes in them are reported, then say the operator is not implemented.
-                match other {
-                    Operator::Extend(op) => {
-                        for item in op.items() {
-                            if let Some(expr) = item.expr() {
-                                let expr = self.expr(&expr, &row("`extend`"));
-                                self.value_sink(expr);
-                            }
-                        }
-                    }
-                    Operator::Summarize(op) => {
-                        for item in op.aggregates() {
-                            if let Some(expr) = item.expr() {
-                                self.aggregate_item(&expr, Cols::of(columns));
-                            }
-                        }
-                        for key in op.by().into_iter().flat_map(|by| by.keys()) {
-                            if let Some(expr) = key.expr() {
-                                let expr = self.expr(&expr, &row("`by`"));
-                                self.value_sink(expr);
-                            }
-                        }
-                    }
-                    Operator::Sort(op) => {
-                        for key in op.keys() {
-                            if let Some(expr) = key.expr() {
-                                self.expr(&expr, &row("`sort`"));
-                            }
-                        }
-                    }
-                    Operator::Top(op) => {
-                        if let Some(expr) = op.key().and_then(|key| key.expr()) {
-                            self.expr(&expr, &row("`top`"));
-                        }
-                    }
-                    Operator::Distinct(op) => {
-                        for expr in op.columns() {
-                            self.expr(&expr, &row("`distinct`"));
-                        }
-                    }
-                    _ => {}
-                }
-                let span = self.span(other);
-                let what = format!("`{}`", other.name());
-                self.not_implemented(self.first_token_span(other.syntax(), span), &what);
-                let name = other.name();
-                (Op::Unsupported { name }, None)
+            Operator::Count(_) => (Op::Count, Some(Self::count_columns())),
+            Operator::Distinct(op) => self.bind_distinct(op, columns),
+            Operator::Join(op) => self.bind_join(op, columns),
+            Operator::Union(op) => self.bind_union(op, columns),
+            Operator::GetSchema(_) => (Op::GetSchema, Some(Self::getschema_columns())),
+            Operator::Render(_) => {
+                // `render` is M1-10.
+                let span = self.span(op);
+                let what = format!("`{}`", op.name());
+                self.not_implemented(self.first_token_span(op.syntax(), span), &what);
+                (Op::Unsupported { name: op.name() }, None)
             }
         }
     }
 
-    fn bind_project(
-        &mut self,
-        op: &ast::ProjectOp,
-        columns: &Option<Vec<Column>>,
-    ) -> (Op, Option<Vec<Column>>) {
-        let cx = Cx {
-            cols: Cols::of(columns),
-            agg: Agg::Row("`project`"),
-        };
-        let mut items = Vec::new();
-        let mut out = columns.as_ref().map(|_| Vec::new());
-        let mut ok = true;
-        for item in op.items() {
-            let item_span = self.span(&item);
-            let Some(expr) = item.expr() else {
-                ok = false;
-                continue;
-            };
-            let bound = self.expr(&expr, &cx);
-            let bound = self.value_sink(bound);
-            // Naming and computing columns is M1-16.
-            if item.name().is_some() {
-                self.not_implemented(item_span, "naming a column in `project`");
-                ok = false;
-                continue;
-            }
-            let ast::Expr::NameRef(name_ref) = &expr else {
-                self.not_implemented(item_span, "a computed column in `project`");
-                ok = false;
-                continue;
-            };
-            let name = name_ref.text().unwrap_or_default();
-            if let Some(out) = &mut out {
-                let read_from = match columns {
-                    Some(cs) => cs
-                        .iter()
-                        .find(|c| c.name == name)
-                        .and_then(|c| c.read_from.clone()),
-                    None => None,
-                };
-                out.push(Column {
-                    name: name.clone(),
-                    ty: bound.ty,
-                    read_from,
-                });
-            }
-            items.push(ProjectItem { name, expr: bound });
-        }
-        if ok {
-            (Op::Project(items), out)
-        } else {
-            (Op::Error, None)
-        }
-    }
-
-    fn take_count(&mut self, count: &ast::Expr) -> Option<u64> {
+    fn take_count(&mut self, count: &ast::Expr, op: &str) -> Option<u64> {
         let span = self.span(count);
         if self.broken.contains(count.syntax()) {
             return None;
@@ -535,7 +472,10 @@ impl<'a> Binder<'a> {
             // A bad literal was reported by the lexer.
             return literal::long(lit.token()?.text(), span).ok();
         }
-        self.not_implemented(span, "a `take` count that is not a whole-number literal");
+        self.not_implemented(
+            span,
+            &format!("a `{op}` count that is not a whole-number literal"),
+        );
         None
     }
 
@@ -661,6 +601,25 @@ impl<'a> Binder<'a> {
         let Some(name) = name_ref.text() else {
             return Expr::error(span);
         };
+        if let Some(token) = name_ref.token()
+            && matches!(
+                token.kind(),
+                SyntaxKind::DOLLAR_LEFT | SyntaxKind::DOLLAR_RIGHT
+            )
+        {
+            self.diagnostics.push(
+                Diagnostic::error(
+                    DS1031,
+                    format!("`{name}` can only be used in a `join` condition"),
+                )
+                .primary(span, "not in a `join` condition")
+                .help(format!(
+                    "`{name}.column` names a column of one side of a `join`, in `on \
+                     $left.a == $right.b`; elsewhere, use the column name"
+                )),
+            );
+            return Expr::error(span);
+        }
         if let Cols::Known(columns) = cx.cols
             && let Some(column) = columns.iter().find(|c| c.name == name)
         {
@@ -1154,7 +1113,7 @@ impl<'a> Binder<'a> {
                 .primary(span, "not supported by this version of DataScript")
                 .note(
                     "this version can read a `.csv` file, a tabular `let` or a pipeline in \
-                     parentheses, and apply `where`, `project` of columns and `take`",
+                     parentheses",
                 ),
         );
     }

@@ -1,0 +1,18 @@
+# `project` (renamed and computed), `project-away`, `project-rename` and `extend` (replacing in place,
+# and reading an earlier item) run end to end.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where amount > 200
+| project id = orderId, customerId, amount, cents = amount * 100
+| project-away customerId
+| project-rename total = amount
+| extend total = total * 2, big = total > 400
+| take 3
+---- expected
+id     | total | cents   | big
+string | real  | real    | bool
+-------+-------+---------+-----
+o-0006 | 503.5 | 25175.0 | true
+o-0028 | 491.5 | 24575.0 | true
+o-0029 | 411.0 | 20550.0 | true

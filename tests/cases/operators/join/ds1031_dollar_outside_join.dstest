@@ -1,0 +1,21 @@
+# `$left` and `$right` only mean something in a `join` condition (DS1031).
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | where $left.amount > 1
+---- expected
+error[DS1031]: `$left` can only be used in a `join` condition
+  --> query:1:27
+  |
+1 | from 'orders.csv' | where $left.amount > 1
+  |                           ^^^^^ not in a `join` condition
+  |
+  = help: `$left.column` names a column of one side of a `join`, in `on $left.a == $right.b`; elsewhere, use the column name
+
+query 1 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime

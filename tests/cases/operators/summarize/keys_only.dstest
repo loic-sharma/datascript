@@ -1,0 +1,10 @@
+# `summarize` with no aggregates returns the distinct keys.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | summarize by customerId, day = bin(timestamp, 1d)
+---- expected
+query 1 columns:
+  customerId: string
+  day: datetime

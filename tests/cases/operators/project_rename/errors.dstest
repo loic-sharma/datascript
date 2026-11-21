@@ -1,0 +1,38 @@
+# `project-rename` of an unknown column is DS1001; a new name that another column has is DS1005.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | project-rename total = amout;
+from 'orders.csv' | project-rename amount = qty
+---- expected
+error[DS1001]: unknown column `amout`
+  --> query:1:44
+  |
+1 | from 'orders.csv' | project-rename total = amout;
+  |                                            ^^^^^ no column named `amout` here
+  |
+  = help: a column with a similar name exists: `amount`
+  = note: columns available at this point: orderId, customerId, amount, qty, timestamp
+
+error[DS1005]: duplicate column name `amount`
+  --> query:2:36
+  |
+2 | from 'orders.csv' | project-rename amount = qty
+  |                                    ^^^^^^ there is already a column `amount`
+  |
+  = help: pick a name no other column has, or remove `amount` first with `project-away amount`
+
+query 1 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime
+
+query 2 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime

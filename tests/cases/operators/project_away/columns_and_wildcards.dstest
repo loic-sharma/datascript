@@ -1,0 +1,25 @@
+# `project-away` removes columns, with `*` wildcards; the rest keep their order.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | project-away amount, qty;
+from 'orders.csv' | project-away *Id;
+from 'orders.csv' | project-away nothing*
+---- expected
+query 1 columns:
+  orderId: string
+  customerId: string
+  timestamp: datetime
+
+query 2 columns:
+  amount: real
+  qty: long
+  timestamp: datetime
+
+query 3 columns:
+  orderId: string
+  customerId: string
+  amount: real
+  qty: long
+  timestamp: datetime

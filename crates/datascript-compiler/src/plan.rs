@@ -1,9 +1,9 @@
 //! Planning: lowers the typed [`Hir`](crate::hir::Hir) to the logical plan IR.
 //!
 //! M1-06 grows this into the full IR builder (desugaring, the other plan nodes). For now it
-//! handles what the binder can produce without errors: `.csv` scans, tabular `let`s and
-//! parenthesized pipelines (inlined), `where`, `project` and `take`. `let` references in
-//! expressions are replaced by their values.
+//! handles `.csv` scans, tabular `let`s and parenthesized pipelines (inlined), `where`, the
+//! `project` family, `extend` (as projects) and `take`; other operators give `DS9001` "cannot run
+//! yet". `let` references in expressions are replaced by their values.
 
 use std::sync::Arc;
 
@@ -25,6 +25,13 @@ pub(crate) fn plan_query(query: &hir::Query) -> Result<ir::QueryPlan, Diagnostic
 }
 
 fn plan_pipeline(pipeline: &hir::Pipeline) -> Result<Plan, Diagnostic> {
+    let mut columns_before: Vec<Column> = match &pipeline.source {
+        hir::Source::Scan { columns, .. } => columns.clone(),
+        hir::Source::Let { pipeline, .. } | hir::Source::Subquery { pipeline, .. } => {
+            pipeline.columns.clone().unwrap_or_default()
+        }
+        hir::Source::Error { .. } => Vec::new(),
+    };
     let mut plan = match &pipeline.source {
         hir::Source::Scan {
             source,
@@ -47,6 +54,49 @@ fn plan_pipeline(pipeline: &hir::Pipeline) -> Result<Plan, Diagnostic> {
             .columns
             .as_ref()
             .ok_or_else(|| internal(stage.span, "a stage with unknown columns"))?;
+        if let hir::Op::Extend(items) = &stage.op {
+            // One `Project` per item: an item can read the columns made by the ones before it.
+            for item in items {
+                let mut after = columns_before.clone();
+                let column = Column {
+                    name: item.name.clone(),
+                    ty: item.expr.ty,
+                    read_from: None,
+                };
+                match after.iter_mut().find(|c| c.name == item.name) {
+                    Some(existing) => *existing = column,
+                    None => after.push(column),
+                }
+                let project = after
+                    .iter()
+                    .map(|c| {
+                        Ok(ir::ProjectItem {
+                            name: c.name.clone(),
+                            expr: if c.name == item.name {
+                                expr(&item.expr)?
+                            } else {
+                                ir::Expr {
+                                    kind: ir::ExprKind::Column(c.name.clone()),
+                                    ty: c.ty,
+                                    span: stage.span,
+                                }
+                            },
+                        })
+                    })
+                    .collect::<Result<_, Diagnostic>>()?;
+                plan = Plan {
+                    node: PlanNode::Project {
+                        input: Box::new(plan),
+                        columns: project,
+                    },
+                    schema: schema_of(&after),
+                    span: stage.span,
+                };
+                columns_before = after;
+            }
+            columns_before = columns.clone();
+            continue;
+        }
         let input = Box::new(plan);
         let node = match &stage.op {
             hir::Op::Where(predicate) => PlanNode::Filter {
@@ -69,10 +119,20 @@ fn plan_pipeline(pipeline: &hir::Pipeline) -> Result<Plan, Diagnostic> {
                 input,
                 count: *count,
             },
+            hir::Op::Extend(_) => unreachable!("planned above"),
+            hir::Op::Summarize { .. }
+            | hir::Op::Sort(_)
+            | hir::Op::Top { .. }
+            | hir::Op::Count
+            | hir::Op::Distinct(_)
+            | hir::Op::Join(_)
+            | hir::Op::Union(_)
+            | hir::Op::GetSchema => return Err(cannot_run_yet(stage)),
             hir::Op::Unsupported { .. } | hir::Op::Error => {
                 return Err(internal(stage.span, "an operator with an error"));
             }
         };
+        columns_before = columns.clone();
         plan = Plan {
             node,
             schema: schema_of(columns),
@@ -155,6 +215,27 @@ fn schema_of(columns: &[Column]) -> SchemaRef {
             .map(|c| to_arrow(&c.name, c.ty))
             .collect::<Vec<_>>(),
     ))
+}
+
+/// `DS9001` for an operator the binder checks but the planner cannot plan yet (M1-06).
+fn cannot_run_yet(stage: &hir::Stage) -> Diagnostic {
+    let name = match &stage.op {
+        hir::Op::Summarize { .. } => "summarize",
+        hir::Op::Sort(_) => "sort",
+        hir::Op::Top { .. } => "top",
+        hir::Op::Count => "count",
+        hir::Op::Distinct(_) => "distinct",
+        hir::Op::Join(_) => "join",
+        hir::Op::Union(_) => "union",
+        hir::Op::GetSchema => "getschema",
+        _ => "this operator",
+    };
+    Diagnostic::error(DS9001, format!("`{name}` cannot run yet"))
+        .primary(stage.span, "this version can check it, but not run it")
+        .note(
+            "this version can run `where`, `project`, `project-away`, `project-rename`, \
+             `extend` and `take`",
+        )
 }
 
 fn internal(span: datascript_diagnostics::Span, what: &str) -> Diagnostic {

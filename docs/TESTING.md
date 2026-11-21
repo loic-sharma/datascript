@@ -61,6 +61,7 @@ error[DS1001]: unknown column `amout`
 | `engine` | `datafusion`, … | `datafusion` | Backend under test. A comma-separated list runs the case on each (see "Several engines") |
 | `tables` | `name=path, ...` | | Host-registered tables (simulates `--table`/drag-drop) |
 | `schema` | `name(col: type, ...); ...` | | Schemas for a mock `SchemaProvider`, for `check`/`explain` cases before a real backend exists (M1-05). With `schema`, no files are read |
+| `show` | `schema` | | `check` cases only: after the diagnostics, print each query's output columns (`name: type`, one per line; `unknown` when an error hides them). Used to test operator schemas (M1-16) |
 | `skip` | reason | | Skip with a reason (e.g. known bug, links a task) |
 | `eol` | `lf`, `crlf` | `lf` | Line endings of the query. `.dstest` files are always stored with LF (`.gitattributes`), so `crlf` converts every query line ending to `\r\n` before running |
 

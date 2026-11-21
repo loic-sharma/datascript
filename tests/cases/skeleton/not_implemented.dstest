@@ -1,12 +1,13 @@
-# Walking skeleton (M1-15): operators outside the skeleton give DS9001, never a panic.
-mode: check
+# Operators the binder checks but the planner cannot plan yet give DS9001 at run time, never a
+# panic (M1-06 and M1-09 make them run).
+mode: run
 ---- query
 from '../../data/orders.csv' | summarize sum(amount) by customerId
 ---- expected
-error[DS9001]: `summarize` is not implemented yet
+error[DS9001]: `summarize` cannot run yet
   --> query:1:32
   |
 1 | from '../../data/orders.csv' | summarize sum(amount) by customerId
-  |                                ^^^^^^^^^ not supported by this version of DataScript
+  |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this version can check it, but not run it
   |
-  = note: this version can read a `.csv` file, a tabular `let` or a pipeline in parentheses, and apply `where`, `project` of columns and `take`
+  = note: this version can run `where`, `project`, `project-away`, `project-rename`, `extend` and `take`

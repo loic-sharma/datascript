@@ -22,14 +22,6 @@ error[DS2004]: aggregate function `sum` cannot be used in `where`
   |
   = help: aggregate in `summarize` first, then use the result: `| summarize result = sum(amount) by ...`
 
-error[DS9001]: `summarize` is not implemented yet
-  --> query:3:21
-  |
-3 | from 'orders.csv' | summarize sum(count()) by sum(qty)
-  |                     ^^^^^^^^^ not supported by this version of DataScript
-  |
-  = note: this version can read a `.csv` file, a tabular `let` or a pipeline in parentheses, and apply `where`, `project` of columns and `take`
-
 error[DS2004]: aggregate function `count` cannot be used inside another aggregate
   --> query:3:35
   |

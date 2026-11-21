@@ -238,6 +238,7 @@ fn run_case(
         now_micros: case.now_micros,
         tables: &case.tables,
         schema: case.schema.as_ref(),
+        show_schema: case.show_schema,
         config,
     };
     let test_dir = path.parent().unwrap_or(Path::new("."));

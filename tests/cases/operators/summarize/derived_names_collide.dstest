@@ -1,0 +1,12 @@
+# A derived name that is already taken gets `1`, `2`, …; explicit names keep theirs.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv' | summarize sum_amount = count(), sum(amount) by bin(timestamp, 1d), timestamp1 = 1
+---- expected
+query 1 columns:
+  timestamp: datetime
+  timestamp1: long
+  sum_amount: long
+  sum_amount1: real

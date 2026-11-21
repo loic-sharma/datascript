@@ -241,16 +241,16 @@ M1 operators are marked ●, M2 operators ○.
 | Operator | Syntax | Notes |
 |---|---|---|
 | ● `where` | `where <predicate>` | Predicate must be bool. `=` in a predicate gives a targeted error suggesting `==` |
-| ● `project` | `project a, b, c = a + b` | Select, rename, and compute. Output in the order written |
+| ● `project` | `project a, b, c = a + b` | Select, rename, and compute. Output in the order written. Unnamed expressions get `Column1`, … |
 | ● `project-away` | `project-away a, b` | Wildcards `col*` allowed |
-| ● `project-rename` | `project-rename new = old` | Keeps column position |
-| ● `extend` | `extend c = a * 2` | Adds columns at the end, or replaces a column in place. Unnamed expressions get `Column1`, … |
-| ● `summarize` | `summarize [name =] agg(...) , ... [by key [, ...]]` | Keys may be expressions: `by bin(ts, 1h)`. Output: keys first, then aggregates. With no aggregates it returns the distinct keys |
+| ● `project-rename` | `project-rename new = old` | Keeps column position. Items apply in order; a new name another column has is `DS1005` |
+| ● `extend` | `extend c = a * 2` | Adds columns at the end, or replaces a column in place. Unnamed expressions get `Column1`, …. An item sees the columns made by the items before it (D-040) |
+| ● `summarize` | `summarize [name =] agg(...) , ... [by key [, ...]]` | Keys may be expressions: `by bin(ts, 1h)`. Output: keys first, then aggregates. With no aggregates it returns the distinct keys. With neither, `DS2030` |
 | ● `sort` / `order` | `sort by a desc, b asc nulls last` | ≠ KQL: default direction is **asc** (D-005). Omitting the direction is warning `DS2103`, with a fix that inserts `asc`. See §3.4 |
 | ● `top` | `top 10 by revenue desc` | Default desc, as in KQL (top-N is about largest) |
 | ● `take` / `limit` | `take 100` | No ordering guarantee unless it follows `sort` |
 | ● `count` | `count` | One row, column `Count` |
-| ● `distinct` | `distinct a, b` or `distinct *` | |
+| ● `distinct` | `distinct a, b` or `distinct *` | Column names only (`DS1032`) |
 | ● `join` | `join kind = inner (right) on key` or `on $left.a == $right.b` | Kinds: `inner` (default), `leftouter`, `rightouter`, `fullouter`, `leftsemi`, `leftanti`, `rightsemi`, `rightanti`. ≠ KQL: no `innerunique` (`DS0124`), and the default is `inner`. Unknown kinds are `DS0123`. Decision D-004 |
 | ● `union` | `union t2, t3` | By column name, columns in order of first appearance. Missing columns become null. Type conflicts widen per §4.2 or give `DS2003` |
 | ● `render` | `render timechart [with (title = "...")]` | Must be last (`DS0120`). See §6 |
@@ -276,15 +276,18 @@ does `join (from 'customers.csv' | where active) on customerId`.
   `key1`). The key keeps the left column's position. For `rightouter` it takes the right side's
   value, and for `fullouter` it is `coalesce(left.key, right.key)`. The key columns must have
   compatible types (widened per §4.2), otherwise `DS2003`.
-- `join ... on $left.a == $right.b` keeps both `a` and `b`.
+- `join ... on $left.a == $right.b` (or `$right.b == $left.a`) keeps both `a` and `b`. Any other
+  condition is `DS1030`; `$left` and `$right` outside a `join` condition are `DS1031`.
 - `join` output is the left columns, then the right columns (minus any `on key` columns). Other
   collisions are renamed `name1`, `name2` (as in KQL), and the binder emits an info diagnostic
   (`DS1007`) that says how to rename them explicitly. Semi and anti joins return one side only.
 - Unnamed aggregates: `sum(amount)` → `sum_amount`; an aggregate over anything other than a single
-  column → `sum_`; `count()` → `count_`. A second collision appends `1`, `2`, ….
+  column → `sum_`; `count()` → `count_`. A second collision appends `1`, `2`, …. An item that is
+  not a bare aggregate call (`sum(a) * 2`) gets `Column1`, … (D-040).
 - Unnamed `by` keys: a key that references exactly one column, like `bin(ts, 1h)`, takes that
   column's name (`ts`). Other expressions get `Column1`, ….
-- Duplicate explicit names are `DS1005`.
+- Duplicate explicit names (`name = ...` or a bare column) are `DS1005`. Generated and derived
+  names skip every name already taken in the operator, so explicit names keep theirs (D-040).
 
 ### 3.4 Row order
 

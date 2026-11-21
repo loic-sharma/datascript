@@ -23,4 +23,7 @@ with did-you-mean. `render` not last is DS0120 in the parser (M1-03), not here.
 - [ ] Golden cases for every chart kind (default inference + explicit props) and every render error.
 - [ ] RenderSpec JSON schema documented (the web UI consumes it in M4).
 
+## Carried over
+- [ ] (from M1-16) `render` is the last operator the binder still binds as `hir::Op::Unsupported` with DS9001 (`Binder::bind_operator`). Give it a real HIR op that passes its input columns through.
+
 ## Follow-ups
