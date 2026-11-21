@@ -1,48 +1,63 @@
-//! The engine-neutral logical plan IR (ARCHITECTURE.md § Semantics).
+//! The engine-neutral logical plan IR (ARCHITECTURE.md § Semantics, D-002).
 //!
-//! The walking skeleton (M1-15) has `Scan`, `Filter`, `Project` and `Limit`; M1-06 adds the
-//! other nodes. M1-05 added the expression kinds the binder checks. Every node and expression carries the [`Span`] it came from, so backends can map
-//! runtime errors back to the source.
+//! The planner (`plan.rs`) lowers the typed HIR to these nodes, desugaring as it goes: `extend`,
+//! `project-away` and `project-rename` become [`PlanNode::Project`], `count` an
+//! [`PlanNode::Aggregate`], `top` a [`PlanNode::TopN`], `getschema` [`PlanNode::Values`], and
+//! tabular `let`s are inlined. Every node and expression carries the [`Span`] it came from, so
+//! backends can map runtime errors back to the source. The IR serializes with serde, for
+//! debugging and for engines in another process.
 
 use std::fmt::{self, Write as _};
 
 use arrow_schema::SchemaRef;
 use datascript_diagnostics::Span;
+use serde::{Deserialize, Serialize};
 
 use crate::Type;
 use crate::source::SourceRef;
 
+pub use crate::capabilities::JoinKind;
 pub use datascript_syntax::ast::{BinaryOp, PrefixOp};
 
 /// A compiled program: one plan per query statement, in source order.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Program {
     pub queries: Vec<QueryPlan>,
 }
 
 /// The plan of one query statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct QueryPlan {
     pub root: Plan,
     /// The schema of the result, in canonical Arrow types (LANGUAGE.md §5).
     pub output_schema: SchemaRef,
+    /// What a final `render` asks frontends to draw; `None` without one.
+    pub render: Option<RenderSpec>,
 }
 
+/// Placeholder for the chart a `render` operator describes. M1-10 defines its contents.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct RenderSpec {}
+
 /// A plan node with its output schema and source span.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Plan {
     pub node: PlanNode,
-    /// The node's output schema, in canonical Arrow types.
+    /// The node's output schema, in canonical Arrow types. A column with no DataScript type
+    /// (`hir::Column::arrow_only`) keeps the Arrow type it was read with.
     pub schema: SchemaRef,
     pub span: Span,
 }
 
-/// A relational operator.
-#[derive(Debug, Clone, PartialEq)]
+/// A relational operator. Column names in a node's output schema are unique.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PlanNode {
     /// Reads a source. `schema` is the widened source schema; the backend casts each column to
     /// its canonical type at the scan (LANGUAGE.md §5.1).
     Scan { source: SourceRef },
+    /// Literal rows; each row has one value per column of `schema`.
+    Values { rows: Vec<Vec<Value>> },
     /// Keeps the rows for which `predicate` is true.
     Filter { input: Box<Plan>, predicate: Expr },
     /// Computes the output columns, in order.
@@ -50,19 +65,72 @@ pub enum PlanNode {
         input: Box<Plan>,
         columns: Vec<ProjectItem>,
     },
+    /// Groups by `group_by` and computes `aggregates` per group. The output is the keys, then
+    /// the aggregates. Each aggregate is one call of an aggregate function whose arguments are
+    /// row expressions. With no keys there is exactly one group, even over no rows; with no
+    /// aggregates the output is the distinct keys.
+    Aggregate {
+        input: Box<Plan>,
+        group_by: Vec<ProjectItem>,
+        aggregates: Vec<ProjectItem>,
+    },
+    /// Orders the rows by `keys`, the first key first.
+    Sort {
+        input: Box<Plan>,
+        keys: Vec<SortKey>,
+    },
     /// Keeps at most `count` rows.
     Limit { input: Box<Plan>, count: u64 },
+    /// The first `count` rows in the order of `keys`: `Limit` over `Sort`.
+    TopN {
+        input: Box<Plan>,
+        count: u64,
+        keys: Vec<SortKey>,
+    },
+    /// Removes duplicate rows.
+    Distinct { input: Box<Plan> },
+    /// An equi-join. Each condition's `left` reads the left input and `right` the right one.
+    /// The output is the left columns, then the right ones; semi and anti joins output only
+    /// their side's columns. The planner renames right columns so that names stay unique.
+    Join {
+        left: Box<Plan>,
+        right: Box<Plan>,
+        kind: JoinKind,
+        on: Vec<JoinCondition>,
+    },
+    /// Appends the rows of each input, in order. Every input has the node's schema.
+    Union { inputs: Vec<Plan> },
 }
 
-/// One output column of a [`PlanNode::Project`].
-#[derive(Debug, Clone, PartialEq)]
+/// One key of a [`PlanNode::Sort`] or [`PlanNode::TopN`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SortKey {
+    pub expr: Expr,
+    pub descending: bool,
+    /// Whether nulls come first. Always explicit: the defaults differ between engines.
+    pub nulls_first: bool,
+}
+
+/// One equality of a [`PlanNode::Join`]; both sides have the same type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JoinCondition {
+    pub left: Expr,
+    pub right: Expr,
+}
+
+/// One output column of a [`PlanNode::Project`] or [`PlanNode::Aggregate`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProjectItem {
     pub name: String,
     pub expr: Expr,
 }
 
 /// A typed scalar expression.
-#[derive(Debug, Clone, PartialEq)]
+///
+/// A reference to a column with no DataScript type (one that can only be projected,
+/// `hir::Column::arrow_only`) has the type [`Type::Error`]; its Arrow type is in the input
+/// schema. No other expression has the error type.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Expr {
     pub kind: ExprKind,
     pub ty: Type,
@@ -70,7 +138,7 @@ pub struct Expr {
 }
 
 /// The kinds of scalar expression.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ExprKind {
     /// A column of the input, by name.
     Column(String),
@@ -110,7 +178,7 @@ pub enum ExprKind {
 }
 
 /// A literal value.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     Bool(bool),
     Long(i64),
@@ -249,14 +317,18 @@ fn write_list(f: &mut fmt::Formatter<'_>, items: &[Expr]) -> fmt::Result {
     Ok(())
 }
 
-fn write_operand(f: &mut fmt::Formatter<'_>, e: &Expr) -> fmt::Result {
-    if matches!(
+fn needs_parens(e: &Expr) -> bool {
+    matches!(
         e.kind,
         ExprKind::Binary { .. }
             | ExprKind::In { .. }
             | ExprKind::Between { .. }
             | ExprKind::Unary { .. }
-    ) {
+    )
+}
+
+fn write_operand(f: &mut fmt::Formatter<'_>, e: &Expr) -> fmt::Result {
+    if needs_parens(e) {
         write!(f, "({e})")
     } else {
         write!(f, "{e}")
@@ -283,44 +355,143 @@ fn write_plan(out: &mut String, plan: &Plan, depth: usize) {
     let indent = "  ".repeat(depth);
     let _ = match &plan.node {
         PlanNode::Scan { source } => {
-            let columns: Vec<String> = plan
-                .schema
-                .fields()
+            writeln!(
+                out,
+                "{indent}Scan: {source} ({})",
+                schema_text(&plan.schema)
+            )
+        }
+        PlanNode::Values { rows } => {
+            let rows: Vec<String> = rows
                 .iter()
-                .map(|field| match crate::arrow::from_arrow(field) {
-                    Ok(ty) => format!("{}: {ty}", field.name()),
-                    Err(e) => format!("{}: arrow:{e}", field.name()),
+                .map(|row| {
+                    let values: Vec<String> = row.iter().map(Value::to_string).collect();
+                    format!("({})", values.join(", "))
                 })
                 .collect();
-            writeln!(out, "{indent}Scan: {source} ({})", columns.join(", "))
+            writeln!(
+                out,
+                "{indent}Values: ({}) [{}]",
+                schema_text(&plan.schema),
+                rows.join(", ")
+            )
         }
         PlanNode::Filter { predicate, .. } => writeln!(out, "{indent}Filter: {predicate}"),
         PlanNode::Project { columns, .. } => {
-            let items: Vec<String> = columns
+            writeln!(out, "{indent}Project: {}", items_text(columns))
+        }
+        PlanNode::Aggregate {
+            group_by,
+            aggregates,
+            ..
+        } => {
+            let mut line = items_text(aggregates);
+            if !group_by.is_empty() {
+                if !line.is_empty() {
+                    line.push(' ');
+                }
+                line.push_str("by ");
+                line.push_str(&items_text(group_by));
+            }
+            writeln!(out, "{indent}Aggregate: {line}")
+        }
+        PlanNode::Sort { keys, .. } => writeln!(out, "{indent}Sort: {}", keys_text(keys)),
+        PlanNode::Limit { count, .. } => writeln!(out, "{indent}Limit: {count}"),
+        PlanNode::TopN { count, keys, .. } => {
+            writeln!(out, "{indent}TopN: {count} by {}", keys_text(keys))
+        }
+        PlanNode::Distinct { .. } => writeln!(out, "{indent}Distinct"),
+        PlanNode::Join { kind, on, .. } => {
+            let on: Vec<String> = on
                 .iter()
-                .map(|item| match &item.expr.kind {
-                    ExprKind::Column(name) if *name == item.name => name.clone(),
-                    _ => format!("{} = {}", item.name, item.expr),
+                .map(|c| {
+                    let mut text = String::new();
+                    let _ = write_operand_to(&mut text, &c.left);
+                    text.push_str(" == ");
+                    let _ = write_operand_to(&mut text, &c.right);
+                    text
                 })
                 .collect();
-            writeln!(out, "{indent}Project: {}", items.join(", "))
+            writeln!(out, "{indent}Join: {kind} on {}", on.join(", "))
         }
-        PlanNode::Limit { count, .. } => writeln!(out, "{indent}Limit: {count}"),
+        PlanNode::Union { .. } => writeln!(out, "{indent}Union"),
     };
-    if let Some(input) = plan.input() {
+    for input in plan.inputs() {
         write_plan(out, input, depth + 1);
     }
 }
 
+/// `name: type, ...`; a column with no DataScript type shows its Arrow type.
+fn schema_text(schema: &SchemaRef) -> String {
+    let columns: Vec<String> = schema
+        .fields()
+        .iter()
+        .map(|field| match crate::arrow::from_arrow(field) {
+            Ok(ty) => format!("{}: {ty}", field.name()),
+            Err(_) => format!("{}: arrow {}", field.name(), field.data_type()),
+        })
+        .collect();
+    columns.join(", ")
+}
+
+/// `name` for a column passed through unchanged, `name = expr` otherwise.
+fn items_text(items: &[ProjectItem]) -> String {
+    let items: Vec<String> = items
+        .iter()
+        .map(|item| match &item.expr.kind {
+            ExprKind::Column(name) if *name == item.name => name.clone(),
+            _ => format!("{} = {}", item.name, item.expr),
+        })
+        .collect();
+    items.join(", ")
+}
+
+fn keys_text(keys: &[SortKey]) -> String {
+    let keys: Vec<String> = keys
+        .iter()
+        .map(|k| {
+            let mut text = String::new();
+            let _ = write_operand_to(&mut text, &k.expr);
+            text.push_str(if k.descending { " desc" } else { " asc" });
+            text.push_str(if k.nulls_first {
+                " nulls first"
+            } else {
+                " nulls last"
+            });
+            text
+        })
+        .collect();
+    keys.join(", ")
+}
+
+fn write_operand_to(out: &mut String, e: &Expr) -> fmt::Result {
+    if needs_parens(e) {
+        write!(out, "({e})")
+    } else {
+        write!(out, "{e}")
+    }
+}
+
 impl Plan {
-    /// The node's input, if it has one.
-    pub fn input(&self) -> Option<&Plan> {
+    /// The node's inputs, in order: the left input of a join first.
+    pub fn inputs(&self) -> Vec<&Plan> {
         match &self.node {
-            PlanNode::Scan { .. } => None,
+            PlanNode::Scan { .. } | PlanNode::Values { .. } => Vec::new(),
             PlanNode::Filter { input, .. }
             | PlanNode::Project { input, .. }
-            | PlanNode::Limit { input, .. } => Some(input),
+            | PlanNode::Aggregate { input, .. }
+            | PlanNode::Sort { input, .. }
+            | PlanNode::Limit { input, .. }
+            | PlanNode::TopN { input, .. }
+            | PlanNode::Distinct { input } => vec![input],
+            PlanNode::Join { left, right, .. } => vec![left, right],
+            PlanNode::Union { inputs } => inputs.iter().collect(),
         }
+    }
+
+    /// The first input: the only one of most nodes, the left one of a join.
+    pub fn first_input(&self) -> Option<&Plan> {
+        self.inputs().into_iter().next()
     }
 }
 

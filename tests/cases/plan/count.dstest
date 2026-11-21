@@ -1,0 +1,9 @@
+# `count` is an `Aggregate` with no keys: one row, even over no rows.
+mode: explain
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime); 'customers.csv'(customerId: string, name: string, region: string)
+---- query
+from 'orders.csv' | where amount > 100 | count
+---- expected
+Aggregate: Count = count()
+  Filter: amount > 100.0
+    Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)

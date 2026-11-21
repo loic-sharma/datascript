@@ -260,7 +260,7 @@ M1 operators are marked ●, M2 operators ○.
 | ● `join` | `join kind = inner (right) on key` or `on $left.a == $right.b` | Kinds: `inner` (default), `leftouter`, `rightouter`, `fullouter`, `leftsemi`, `leftanti`, `rightsemi`, `rightanti`. ≠ KQL: no `innerunique` (`DS0124`), and the default is `inner`. Unknown kinds are `DS0123`. Decision D-004 |
 | ● `union` | `union t2, t3` | By column name, columns in order of first appearance. Missing columns become null. Type conflicts widen per §4.2 or give `DS2003` |
 | ● `render` | `render timechart [with (title = "...")]` | Must be last (`DS0120`). See §6 |
-| ● `getschema` | `getschema` | Returns the table `ColumnName: string, ColumnOrdinal: long, DataType: string` |
+| ● `getschema` | `getschema` | Returns the table `ColumnName: string, ColumnOrdinal: long, DataType: string`. Ordinals start at 0; a column with no DataScript type shows its Arrow type (D-042) |
 | ○ `lookup` | `lookup (dim) on key` | |
 | ○ `mv-expand` | `mv-expand tags` | Needs `dynamic` |
 | ○ `parse` | `parse msg with "user=" user " id=" id:long` | |

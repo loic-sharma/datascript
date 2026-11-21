@@ -857,7 +857,7 @@ ast_node!(
 );
 
 /// A prefix operator.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PrefixOp {
     /// `-x`
     Neg,
@@ -894,7 +894,7 @@ ast_node!(
 );
 
 /// A string operator. Case-insensitive unless the name ends in `_cs`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum StringOp {
     Has,
     HasCs,
@@ -923,7 +923,7 @@ impl StringOp {
 }
 
 /// A binary operator.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum BinaryOp {
     Or,
     And,

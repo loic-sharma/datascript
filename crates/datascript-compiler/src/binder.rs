@@ -44,10 +44,12 @@ use crate::hir::{
 mod join;
 mod ops;
 mod sources;
+
 use crate::capabilities::Capabilities;
 use crate::ir::{BinaryOp, Value};
 use crate::operators::{self, Operand};
 use crate::source::{SchemaLookup, SchemaProvider, SourceRef};
+pub(crate) use ops::unique_name;
 
 /// The schema after one pipeline stage (for column completion, later).
 #[derive(Debug, Clone, PartialEq)]

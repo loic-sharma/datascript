@@ -1,0 +1,23 @@
+# The README example without its final `render` (M1-10): the path `let` and the tabular `let` are
+# inlined into the query, and `top` is a `TopN`.
+mode: explain
+schema: 'data/orders/*.parquet'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+let orders = 'data/orders/*.parquet';
+
+let topCustomers = from orders
+| summarize revenue = sum(amount) by customerId
+| top 10 by revenue desc;
+
+from orders
+| join kind = inner topCustomers on customerId
+| summarize revenue = sum(amount) by customerId, month = startofmonth(timestamp)
+---- expected
+Aggregate: revenue = sum(amount) by customerId, month = startofmonth(timestamp)
+  Project: orderId, customerId, amount, qty, timestamp, revenue
+    Join: inner on customerId == customerId1
+      Scan: 'data/orders/*.parquet' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+      Project: customerId1 = customerId, revenue
+        TopN: 10 by revenue desc nulls last
+          Aggregate: revenue = sum(amount) by customerId
+            Scan: 'data/orders/*.parquet' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)

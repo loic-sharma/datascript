@@ -1,0 +1,22 @@
+# `summarize` is an `Aggregate`: keys first, then one aggregate call per item. An item that
+# computes over aggregates gets hidden columns for its calls and a `Project` after.
+mode: explain
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime); 'customers.csv'(customerId: string, name: string, region: string)
+---- query
+from 'orders.csv' | summarize revenue = sum(amount), n = count() by customerId, day = bin(timestamp, 1d);
+from 'orders.csv' | summarize avgPrice = sum(amount) / count(), max(qty) by customerId;
+from 'orders.csv' | summarize by customerId;
+from 'orders.csv' | summarize total = sum(amount)
+---- expected
+Aggregate: revenue = sum(amount), n = count() by customerId, day = bin(timestamp, 1d)
+  Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+
+Project: customerId, avgPrice = avgPrice_1 / cast(avgPrice_2, real), max_qty
+  Aggregate: avgPrice_1 = sum(amount), avgPrice_2 = count(), max_qty = max(qty) by customerId
+    Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+
+Aggregate: by customerId
+  Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+
+Aggregate: total = sum(amount)
+  Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)

@@ -1,0 +1,7 @@
+# `getschema` is a `Values` node: the rows are known when the query is compiled.
+mode: explain
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime); 'customers.csv'(customerId: string, name: string, region: string)
+---- query
+from 'orders.csv' | project orderId, amount | getschema
+---- expected
+Values: (ColumnName: string, ColumnOrdinal: long, DataType: string) [("orderId", 0, "string"), ("amount", 1, "real")]

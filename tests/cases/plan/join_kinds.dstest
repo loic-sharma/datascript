@@ -1,0 +1,21 @@
+# Semi and anti joins keep one side's columns and need no projection. `$left.a == $right.b`
+# keeps both columns; a narrower key is cast to the type both sides are compared as.
+mode: explain
+schema: 'l.csv'(id: long, v: string, small: int); 'r.csv'(rid: long, v: string, w: real)
+---- query
+from 'l.csv' | join kind = leftsemi 'r.csv' on $left.id == $right.rid;
+from 'l.csv' | join kind = rightanti 'r.csv' on $left.id == $right.rid;
+from 'l.csv' | join kind = leftouter 'r.csv' on $left.small == $right.rid
+---- expected
+Join: leftsemi on id == rid
+  Scan: 'l.csv' (id: long, v: string, small: int)
+  Scan: 'r.csv' (rid: long, v: string, w: real)
+
+Join: rightanti on id == rid
+  Scan: 'l.csv' (id: long, v: string, small: int)
+  Scan: 'r.csv' (rid: long, v: string, w: real)
+
+Join: leftouter on cast(small, long) == rid
+  Scan: 'l.csv' (id: long, v: string, small: int)
+  Project: rid, v1 = v, w
+    Scan: 'r.csv' (rid: long, v: string, w: real)

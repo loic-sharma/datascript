@@ -8,7 +8,9 @@ use std::fmt;
 use crate::catalog::FunctionCatalog;
 
 /// A `join` kind (LANGUAGE.md §3.2).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum JoinKind {
     Inner,
     LeftOuter,
@@ -50,6 +52,16 @@ impl JoinKind {
     /// The kind with this name.
     pub fn from_name(name: &str) -> Option<JoinKind> {
         JoinKind::ALL.into_iter().find(|kind| kind.name() == name)
+    }
+
+    /// Semi and anti joins return the columns of one side only.
+    pub fn one_side(self) -> Option<crate::hir::JoinSide> {
+        use crate::hir::JoinSide;
+        match self {
+            JoinKind::LeftSemi | JoinKind::LeftAnti => Some(JoinSide::Left),
+            JoinKind::RightSemi | JoinKind::RightAnti => Some(JoinSide::Right),
+            _ => None,
+        }
     }
 }
 

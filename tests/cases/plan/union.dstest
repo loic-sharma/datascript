@@ -1,0 +1,14 @@
+# `union` projects each input to the output columns: matched by name, cast where the output type
+# is wider, a typed null where an input lacks the column. An input that already matches is kept.
+mode: explain
+schema: 'a.csv'(x: long, y: string); 'b.csv'(y: string, z: real, x: real); 'c.csv'(x: real, y: string, z: real)
+---- query
+from 'a.csv' | union 'b.csv', (from 'c.csv' | where z > 1)
+---- expected
+Union
+  Project: x = cast(x, real), y, z = real(null)
+    Scan: 'a.csv' (x: long, y: string)
+  Project: x, y, z
+    Scan: 'b.csv' (y: string, z: real, x: real)
+  Filter: z > 1.0
+    Scan: 'c.csv' (x: real, y: string, z: real)

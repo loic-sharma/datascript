@@ -10,7 +10,9 @@ use std::fmt;
 ///   binder replaces it with the type its context needs (or reports `DS2009` when there is none).
 /// - [`Type::Error`] is given to an expression that already has a reported error. It is
 ///   compatible with every type, so one mistake produces one diagnostic (DIAGNOSTICS.md rule 8).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum Type {
     /// `bool`
     Bool,

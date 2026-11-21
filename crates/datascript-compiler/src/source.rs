@@ -17,7 +17,9 @@ use crate::capabilities::SourceFormat;
 /// directory of the run).
 ///
 /// Every value in it is a constant, so the same text always names the same source (D-022).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum SourceRef {
     /// A file path, exactly as the string's value spells it. The format comes from the
     /// extension ([`format_of_path`]).
@@ -100,7 +102,9 @@ pub fn format_of_path(path: &str) -> Option<SourceFormat> {
 }
 
 /// A reader function call with constant arguments.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct ReaderCall {
     /// The function: `read_csv`, `read_parquet` or `read_json`.
     pub function: String,
@@ -140,7 +144,9 @@ impl fmt::Display for ReaderCall {
 }
 
 /// The constant value of a reader option.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum OptionValue {
     Bool(bool),
     Long(i64),

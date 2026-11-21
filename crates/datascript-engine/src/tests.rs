@@ -145,7 +145,9 @@ fn run_executes_each_query() {
 fn not_implemented_is_a_diagnostic() {
     let (session, _) = session();
     let ctx = session.exec_context(Path::new("."));
-    let output = block_on(session.run(&source("from 'orders.csv' | count"), FileId(0), &ctx));
+    // `render` is checked but not implemented yet (M1-10).
+    let src = source("from 'orders.csv' | render table");
+    let output = block_on(session.run(&src, FileId(0), &ctx));
     let codes: Vec<_> = output.diagnostics.iter().map(|d| d.code).collect();
     assert_eq!(codes, [DS9001]);
 }

@@ -48,5 +48,7 @@ Design-review additions:
 - [ ] (from M1-05) The binder now accepts every operator of LANGUAGE.md §4.1 and catalog calls; `lower_expr` returns DS9001 "not implemented in the DataFusion engine yet" for `ExprKind::Call`, `in~`/`!in~`, `=~`/`!~`, the string operators and `matches regex`. Unary minus on `long` must raise DS4003 on overflow (D-014).
 - [ ] (from M1-16) Un-skip `tests/cases/operators/join/run_fullouter_nulls.dstest` once `join` runs. Its expected table was written by hand from the fixtures (`fullouter` with nulls on both sides: `c-999` has no customer, `c-200` no orders); check the rows rather than blessing blindly.
 - [ ] (from M1-16) Un-skip `tests/cases/harness/run.dstest` once it can run (needs `summarize`).
+- [ ] (from M1-06) Lower the IR nodes M1-06 added: `Values`, `Aggregate`, `Sort`, `TopN`, `Distinct`, `Join` (one expression per side in each `JoinCondition`) and `Union`. Until then `Lowering::plan` reports them with `cannot_run_yet` (DS9001 "`summarize` and `count` cannot run yet", …); delete that function when every node lowers, and replace `tests/cases/skeleton/not_implemented.dstest` (it shows that DS9001) with a real `run` case. Plans are trees now: walk `Plan::inputs()`, not just `first_input()`.
+- [ ] (from M1-06) A reference to a projection-only column (no DataScript type) has `Type::Error` in the IR; take its type from the input schema, which keeps the Arrow type (D-042).
 
 ## Follow-ups

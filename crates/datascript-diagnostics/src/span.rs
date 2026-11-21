@@ -2,15 +2,17 @@
 
 use std::ops::Range;
 
+use serde::{Deserialize, Serialize};
+
 /// Identifies a [`SourceFile`](crate::SourceFile) inside a [`SourceMap`](crate::SourceMap).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct FileId(pub u32);
 
 /// A byte range in one source file.
 ///
 /// `start` and `end` are UTF-8 byte offsets with `start <= end`. An empty span (`start == end`)
 /// points between two characters, for example at the end of the input.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Span {
     /// The file the span points into.
     pub file: FileId,

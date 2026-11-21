@@ -1,0 +1,22 @@
+# `project`, `project-away` and `project-rename` are a `Project`; `extend` is one `Project` per
+# item, since an item can read the ones before it (D-040).
+mode: explain
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime); 'customers.csv'(customerId: string, name: string, region: string)
+---- query
+from 'orders.csv' | project orderId, total = amount * qty;
+from 'orders.csv' | project-away timestamp, qty;
+from 'orders.csv' | project-rename id = orderId;
+from 'orders.csv' | extend total = amount * qty, big = total > 100
+---- expected
+Project: orderId, total = amount * cast(qty, real)
+  Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+
+Project: orderId, customerId, amount
+  Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+
+Project: id = orderId, customerId, amount, qty, timestamp
+  Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+
+Project: orderId, customerId, amount, qty, timestamp, total, big = total > 100.0
+  Project: orderId, customerId, amount, qty, timestamp, total = amount * cast(qty, real)
+    Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)

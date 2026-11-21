@@ -1,0 +1,13 @@
+# `distinct *` is a `Distinct`; `distinct` over some columns projects them first.
+mode: explain
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime); 'customers.csv'(customerId: string, name: string, region: string)
+---- query
+from 'orders.csv' | distinct *;
+from 'orders.csv' | distinct customerId, qty
+---- expected
+Distinct
+  Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+
+Distinct
+  Project: customerId, qty
+    Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)

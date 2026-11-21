@@ -294,6 +294,7 @@ version = "59.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f56aa009563c7100bafca7f0c4259b9ae83a439d676a6314b3a8c96f12a92f51"
 dependencies = [
+ "serde",
  "serde_core",
  "serde_json",
 ]
@@ -1231,6 +1232,8 @@ dependencies = [
  "arrow-schema",
  "datascript-diagnostics",
  "datascript-syntax",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1285,6 +1288,7 @@ dependencies = [
  "datascript-diagnostics",
  "proptest",
  "rowan",
+ "serde",
 ]
 
 [[package]]

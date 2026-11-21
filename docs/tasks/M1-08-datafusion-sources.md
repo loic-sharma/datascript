@@ -56,5 +56,6 @@ Design-review additions:
 - [ ] (from M1-17) `SourceRef` now has `Path`, `Glob`, `Reader(ReaderCall)` and `Table`. `CsvTable::open` handles only `Path` and `read_csv` without options; other cases return `SourceError::Unreadable` ("not supported yet"), and `Table` returns `NotFound` (the binder reports DS1002 "unknown table"). Implement them, and register host tables so `Table` lookups find them.
 - [ ] (from M1-17) `DataFusionEngine`'s `Capabilities::formats` is `{Csv}`, so other formats are DS4001 before any read (`tests/cases/sources/datafusion_formats.dstest`). Add each format as it can be read, and re-bless that case.
 - [ ] (from M1-17) The binder already builds DS3002 (unknown extension) and DS3003 (unknown or planned reader option) and checks option values (DS2041–DS2043) from `source::READERS` (D-041), so `SourceError` needs no `UnknownFormat` case. Golden cases for them are in `tests/cases/sources/`; add the engine-side DS3xxx cases next to them.
+- [ ] (from M1-06) LANGUAGE.md §5.1 says decimal precision loss in M1 "is documented in the `getschema` output", but `getschema` is planned from the HIR columns, which only hold the widened type (`real`). Keep the source's Arrow type for widened columns (as `hir::Column::arrow_only` does for untyped ones) and show it in the `DataType` text, or change the spec.
 
 ## Follow-ups

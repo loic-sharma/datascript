@@ -1,0 +1,17 @@
+# `sort` is a `Sort` and `top` a `TopN`. Null placement is always explicit: ascending puts
+# nulls first, descending last, unless the query says otherwise (LANGUAGE.md §3.4).
+mode: explain
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime); 'customers.csv'(customerId: string, name: string, region: string)
+---- query
+from 'orders.csv' | sort by amount desc, orderId asc;
+from 'orders.csv' | sort by qty nulls last;
+from 'orders.csv' | top 3 by amount * qty
+---- expected
+Sort: amount desc nulls last, orderId asc nulls first
+  Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+
+Sort: qty asc nulls last
+  Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+
+TopN: 3 by (amount * cast(qty, real)) desc nulls last
+  Scan: 'orders.csv' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)

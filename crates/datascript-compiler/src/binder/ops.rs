@@ -29,7 +29,7 @@ pub(super) enum Naming {
 }
 
 /// The smallest `base`, `base1`, `base2`, … not in `taken`.
-pub(super) fn unique_name(base: &str, taken: &HashSet<String>) -> String {
+pub(crate) fn unique_name(base: &str, taken: &HashSet<String>) -> String {
     if !taken.contains(base) {
         return base.to_string();
     }

@@ -256,9 +256,10 @@ struct Lowering<'a> {
 
 impl Lowering<'_> {
     async fn plan(&mut self, plan: &Plan) -> Result<LogicalPlan, Diagnostic> {
-        // The IR is a chain for now, so walk to the scan and build upwards.
+        // Only single-input nodes lower for now, so walk the first inputs to the bottom and build
+        // upwards; the first node that cannot be lowered yet is reported (M1-09).
         let mut chain = vec![plan];
-        while let Some(input) = chain.last().and_then(|p| p.input()) {
+        while let Some(input) = chain.last().and_then(|p| p.first_input()) {
             chain.push(input);
         }
         let mut builder: Option<LogicalPlanBuilder> = None;
@@ -281,6 +282,16 @@ impl Lowering<'_> {
                     let count = usize::try_from(*count).unwrap_or(usize::MAX);
                     b.limit(0, Some(count)).map_err(fail)?
                 }
+                (
+                    PlanNode::Values { .. }
+                    | PlanNode::Aggregate { .. }
+                    | PlanNode::Sort { .. }
+                    | PlanNode::TopN { .. }
+                    | PlanNode::Distinct { .. }
+                    | PlanNode::Join { .. }
+                    | PlanNode::Union { .. },
+                    _,
+                ) => return Err(cannot_run_yet(node)),
                 (_, None) => return Err(internal(span, "a plan node has no input")),
             });
         }
@@ -425,6 +436,26 @@ fn engine_error(span: Span, error: &DataFusionError) -> Diagnostic {
     Diagnostic::error(DS4002, "the query failed while running")
         .primary(span, "this step failed")
         .note(format!("DataFusion said: {}", error.strip_backtrace()))
+}
+
+/// `DS9001` for a plan node this backend cannot lower yet (M1-09).
+fn cannot_run_yet(plan: &Plan) -> Diagnostic {
+    let what = match &plan.node {
+        PlanNode::Aggregate { .. } => "`summarize` and `count` cannot run yet",
+        PlanNode::Sort { .. } => "`sort` cannot run yet",
+        PlanNode::TopN { .. } => "`top` cannot run yet",
+        PlanNode::Distinct { .. } => "`distinct` cannot run yet",
+        PlanNode::Join { .. } => "`join` cannot run yet",
+        PlanNode::Union { .. } => "`union` cannot run yet",
+        PlanNode::Values { .. } => "`getschema` cannot run yet",
+        _ => "this operator cannot run yet",
+    };
+    Diagnostic::error(DS9001, what)
+        .primary(plan.span, "this version can check it, but not run it")
+        .note(
+            "this version can run `where`, `project`, `project-away`, `project-rename`, \
+             `extend` and `take`",
+        )
 }
 
 fn internal(span: Span, message: &str) -> Diagnostic {

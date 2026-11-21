@@ -140,3 +140,5 @@ pub fn program_of(analysis: Analysis, file: FileId) -> Result<Program, Vec<Diagn
 mod binder_tests;
 #[cfg(test)]
 mod catalog_tests;
+#[cfg(test)]
+mod plan_tests;

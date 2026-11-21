@@ -178,58 +178,8 @@ pub struct Join {
     pub renamed: Vec<(String, String)>,
 }
 
-/// The kinds of `join` (LANGUAGE.md §3.2, D-004).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum JoinKind {
-    Inner,
-    LeftOuter,
-    RightOuter,
-    FullOuter,
-    LeftSemi,
-    LeftAnti,
-    RightSemi,
-    RightAnti,
-}
-
-impl JoinKind {
-    /// The kind as written after `kind =`.
-    pub fn from_name(name: &str) -> Option<JoinKind> {
-        Some(match name {
-            "inner" => JoinKind::Inner,
-            "leftouter" => JoinKind::LeftOuter,
-            "rightouter" => JoinKind::RightOuter,
-            "fullouter" => JoinKind::FullOuter,
-            "leftsemi" => JoinKind::LeftSemi,
-            "leftanti" => JoinKind::LeftAnti,
-            "rightsemi" => JoinKind::RightSemi,
-            "rightanti" => JoinKind::RightAnti,
-            _ => return None,
-        })
-    }
-
-    /// The name written after `kind =`.
-    pub fn name(self) -> &'static str {
-        match self {
-            JoinKind::Inner => "inner",
-            JoinKind::LeftOuter => "leftouter",
-            JoinKind::RightOuter => "rightouter",
-            JoinKind::FullOuter => "fullouter",
-            JoinKind::LeftSemi => "leftsemi",
-            JoinKind::LeftAnti => "leftanti",
-            JoinKind::RightSemi => "rightsemi",
-            JoinKind::RightAnti => "rightanti",
-        }
-    }
-
-    /// Semi and anti joins return the columns of one side only.
-    pub fn one_side(self) -> Option<JoinSide> {
-        match self {
-            JoinKind::LeftSemi | JoinKind::LeftAnti => Some(JoinSide::Left),
-            JoinKind::RightSemi | JoinKind::RightAnti => Some(JoinSide::Right),
-            _ => None,
-        }
-    }
-}
+/// The kinds of `join` (LANGUAGE.md §3.2, D-004); the same type the capabilities use.
+pub use crate::capabilities::JoinKind;
 
 /// A side of a `join`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

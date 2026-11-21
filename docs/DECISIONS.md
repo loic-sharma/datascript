@@ -439,6 +439,25 @@ report `DS1006`. **Projection-only columns** (no DataScript type) keep their Arr
 `hir::Column::arrow_only`; a bare name in `project` passes them through, `project-away` and
 `project-rename` keep them, and any other use is `DS2008`. *(M1-17, 2026-11-21.)*
 
+### D-042 — How the planner desugars into the IR (M1-06)
+The IR keeps column names unique in every node's output and refers to columns by name, so the
+planner adds projections rather than giving the IR qualified names. **`summarize`**: each
+`Aggregate` item is one aggregate call over row expressions. An item that computes over
+aggregates (`sum(a) / count()`) has each call computed as a hidden column (`<item>_1`, `_2`, …,
+skipping taken names) and a `Project` after the `Aggregate` finishes it; `count` is an `Aggregate`
+with no keys. **`join`**: each condition holds one expression per side, cast to the key's common
+type. For inner and outer joins a `Project` on the right gives right columns their output names
+(the `DS1007` renames) and each `on key` right column a hidden name, then a `Project` after the
+join merges the pair (D-019). Semi and anti joins need neither. **`union`** projects every input to
+the output columns, with typed nulls for a missing column and casts for widened ones; an input that
+already matches is kept. **`distinct a, b`** is `Distinct` over `Project`. **`getschema`** is a
+`Values` node computed at compile time: ordinals start at 0, as in KQL, and a column with no
+DataScript type shows its Arrow type. **Sort keys always carry an explicit null placement**,
+because engine defaults differ. **`extend`** stays one `Project` per item. A reference to a
+projection-only column has `Type::Error` in the IR; its Arrow type is in the node schemas. The
+compiler has one `JoinKind` (`capabilities::JoinKind`, re-exported by `hir` and `ir`). The IR
+derives serde `Serialize` and `Deserialize`. *(M1-06, 2026-11-21.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack
