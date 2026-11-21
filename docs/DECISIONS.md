@@ -328,6 +328,7 @@ The maintainer chose to require `from` at every pipeline head (`from 'orders.csv
 the right side of `join`/`union`/`lookup` left bare, generators (`range`, `datatable`, `print`)
 starting a query on their own, `from` kept contextual, and no bare-source fallback. It lets the
 parser know where a table starts, makes a `let`'s kind syntactic, makes the missing-`;` fix certain
-before a `from` line, and helps completion; the cost is a habit KQL users must change, softened by a
+before a `from` that follows a complete statement, and helps completion; the cost is a habit KQL users must change, softened by a
 machine-applicable fix. Until [M1-24](tasks/M1-24-from-keyword.md) lands, LANGUAGE.md still
-describes bare sources. M1-24 turns this into D-036 and updates D-006, D-020 and D-029.
+describes bare sources. M1-24 turns this into D-036 and updates D-006, D-020 and D-029;
+[M1-25](tasks/M1-25-from-diagnostics.md) updates D-033 and D-035.
