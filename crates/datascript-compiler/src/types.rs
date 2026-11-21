@@ -104,9 +104,9 @@ impl Type {
     /// - Equal types meet at themselves.
     /// - [`Type::Error`] meets anything at `Error`, so callers stay silent.
     /// - [`Type::Null`] meets anything at the other type.
-    /// - Numbers widen `int` → `long` → `real`; `decimal` widens to `real` when mixed with
-    ///   `real`.
-    /// - Nothing else converts implicitly: `None`.
+    /// - Numbers widen `int` → `long` → `real`.
+    /// - Nothing else converts implicitly: `None`. `decimal` mixes with no other type until M2
+    ///   (D-039), so the operator table and the lattice agree.
     pub fn common(self, other: Type) -> Option<Type> {
         use Type::*;
         Some(match (self, other) {
@@ -115,7 +115,6 @@ impl Type {
             (Null, t) | (t, Null) => t,
             (Int, Long) | (Long, Int) => Long,
             (Int | Long, Real) | (Real, Int | Long) => Real,
-            (Decimal, Real) | (Real, Decimal) => Real,
             _ => return None,
         })
     }
@@ -216,7 +215,6 @@ mod tests {
         assert_eq!(Int.common(Real), Some(Real));
         assert_eq!(Long.common(Real), Some(Real));
         assert_eq!(Real.common(Int), Some(Real));
-        assert_eq!(Decimal.common(Real), Some(Real));
         assert_eq!(Int.common(Int), Some(Int));
         // Widening goes one way only.
         assert!(Int.coerces_to(Long));
@@ -232,6 +230,11 @@ mod tests {
         assert_eq!(Bool.common(Long), None);
         assert_eq!(DateTime.common(TimeSpan), None);
         assert_eq!(Decimal.common(Long), None);
+        // D-039: `decimal` mixes with nothing in M1, so `decimal + real` and `decimal == real`
+        // are both errors, like the operator table says.
+        assert_eq!(Decimal.common(Real), None);
+        assert_eq!(Real.common(Decimal), None);
+        assert_eq!(Decimal.common(Decimal), Some(Decimal));
         assert_eq!(Dynamic.common(String), None);
         assert!(!Long.coerces_to(String));
         assert!(!String.coerces_to(Long));

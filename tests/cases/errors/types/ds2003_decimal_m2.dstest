@@ -1,0 +1,36 @@
+# `decimal` does not mix with other types until M2 (D-039): not even `real`.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, small: int, timestamp: datetime, wait: timespan, shipped: bool)
+---- query
+from 'orders.csv' | where decimal(null) + amount > 0;
+from 'orders.csv' | where decimal(null) == amount;
+from 'orders.csv' | where round(decimal(null)) > 0
+---- expected
+error[DS2003]: cannot add `decimal` and `real`
+  --> query:1:27
+  |
+1 | from 'orders.csv' | where decimal(null) + amount > 0;
+  |                           ^^^^^^^^^^^^^   ------ this is `real` (column `amount` was read from orders.csv)
+  |                           |
+  |                           this is `decimal`
+  |
+  = help: `decimal` values do not mix with other types yet; convert first: `toreal(decimal(null))`
+
+error[DS2003]: cannot compare `decimal` with `real`
+  --> query:2:27
+  |
+2 | from 'orders.csv' | where decimal(null) == amount;
+  |                           ^^^^^^^^^^^^^    ------ this is `real` (column `amount` was read from orders.csv)
+  |                           |
+  |                           this is `decimal`
+  |
+  = help: `decimal` values do not mix with other types yet; convert first: `toreal(decimal(null))`
+
+error[DS2006]: argument `x` of `round` must be a number, found `decimal`
+  --> query:3:33
+  |
+3 | from 'orders.csv' | where round(decimal(null)) > 0
+  |                                 ^^^^^^^^^^^^^ this is `decimal`
+  |
+  = help: convert it first if that is what you meant: `toreal(decimal(null))`
+  = note: signature: `round(x: T[, digits: integer]) -> long or real, where T is a number`

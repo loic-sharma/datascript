@@ -98,7 +98,7 @@ fn signatures_are_well_formed() {
                 "`{}` has an empty repeated group",
                 f.name
             );
-            if let ReturnRule::SameAsArg(n) = sig.returns {
+            if let ReturnRule::SameAsArg(n) | ReturnRule::IntegerAsLong(n) = sig.returns {
                 assert!(
                     n < sig.min_args(),
                     "`{}` returns a missing argument",
@@ -251,7 +251,7 @@ fn signature_display() {
     assert_eq!(
         lines("bin"),
         [
-            "bin(value: T, size: T) -> T, where T is a number",
+            "bin(value: T, size: T) -> long or real, where T is a number",
             "bin(value: datetime, size: timespan) -> datetime",
             "bin(value: timespan, size: timespan) -> timespan",
         ]
@@ -290,6 +290,99 @@ fn sum_of_integers_is_long() {
 }
 
 #[test]
+fn integer_math_is_long() {
+    // D-021: like `-x`, these give `long` for an `int`, so `abs(toint(-2147483648))` fits.
+    for name in ["abs", "round", "floor", "ceiling"] {
+        assert_eq!(returns(name, &[Int]), Long, "{name}");
+        assert_eq!(returns(name, &[Long]), Long, "{name}");
+        assert_eq!(returns(name, &[Real]), Real, "{name}");
+    }
+    assert_eq!(returns("round", &[Int, Long]), Long);
+    assert_eq!(returns("bin", &[Int, Int]), Long);
+    assert_eq!(returns("bin", &[Int, Long]), Long);
+    assert_eq!(returns("bin", &[Int, Real]), Real);
+    // Only the first argument decides: an error elsewhere keeps the type.
+    assert_eq!(returns("round", &[Int, Error]), Long);
+    assert_eq!(returns("abs", &[Error]), Error);
+    let line = |name: &str| def(name).signature_lines()[0].clone();
+    assert_eq!(
+        line("abs"),
+        "abs(x: T) -> long or real, where T is a number"
+    );
+    assert_eq!(
+        line("bin"),
+        "bin(value: T, size: T) -> long or real, where T is a number"
+    );
+    assert_eq!(
+        line("sum"),
+        "sum(x: T) -> long or real, where T is a number"
+    );
+}
+
+#[test]
+fn functions_with_null_arguments() {
+    // Only untyped `null`s decide the result: it stays `Null` for the binder to report (D-038).
+    let cases: &[(&str, &[Type])] = &[
+        ("abs", &[Null]),
+        ("round", &[Null]),
+        ("sum", &[Null]),
+        ("sumif", &[Null, Bool]),
+        ("min", &[Null]),
+        ("max", &[Null]),
+        ("take_any", &[Null]),
+        ("iff", &[Bool, Null, Null]),
+        ("coalesce", &[Null, Null]),
+        ("case", &[Bool, Null, Null]),
+        ("percentile", &[Null, Long]),
+        ("bin", &[Null, Null]),
+    ];
+    for (name, args) in cases {
+        assert_eq!(returns(name, args), Null, "{name}{args:?}");
+    }
+    // A typed argument, or a fixed result, decides it.
+    assert_eq!(returns("bin", &[Null, TimeSpan]), DateTime);
+    assert_eq!(returns("bin", &[Null, Int]), Long);
+    assert_eq!(returns("abs", &[Null]), Null);
+    assert_eq!(returns("avg", &[Null]), Real);
+    assert_eq!(returns("strlen", &[Null]), Long);
+    assert_eq!(returns("tostring", &[Null]), String);
+    assert_eq!(returns("iff", &[Null, Null, String]), String);
+    assert_eq!(returns("coalesce", &[Null, Null, Real]), Real);
+    let resolved = def("ago").resolve(&[Null]).unwrap();
+    assert_eq!(resolved.arg_types, [TimeSpan]);
+    // `null` for a number parameter keeps its type: the backend casts it.
+    let resolved = def("pow").resolve(&[Null, Null]).unwrap();
+    assert_eq!(
+        (resolved.arg_types.as_slice(), resolved.return_type),
+        (&[Null, Null][..], Real)
+    );
+}
+
+#[test]
+fn decimal_arguments() {
+    // D-039: `decimal` is M2 and mixes with no other type, like in the operator table.
+    arg_error("avg", &[Decimal]);
+    arg_error("sum", &[Decimal]);
+    arg_error("min", &[Decimal]);
+    arg_error("abs", &[Decimal]);
+    arg_error("pow", &[Decimal, Real]);
+    let e = arg_error("coalesce", &[Decimal, Real]);
+    assert_eq!(
+        e.expected,
+        Expected::SameAs {
+            index: 0,
+            ty: Decimal
+        }
+    );
+    assert_eq!(returns("iff", &[Bool, Decimal, Decimal]), Decimal);
+    assert_eq!(returns("iff", &[Bool, Decimal, Null]), Decimal);
+    assert_eq!(returns("isnull", &[Decimal]), Bool);
+    assert_eq!(returns("tostring", &[Decimal]), String);
+    assert_eq!(returns("take_any", &[Decimal]), Decimal);
+    assert_eq!(returns("dcount", &[Decimal]), Long);
+}
+
+#[test]
 fn type_variable_widens() {
     let resolved = def("iff").resolve(&[Bool, Long, Real]).unwrap();
     assert_eq!(resolved.return_type, Real);
@@ -298,7 +391,6 @@ fn type_variable_widens() {
     assert_eq!(returns("coalesce", &[Int, Long, Real]), Real);
     assert_eq!(returns("case", &[Bool, Long, Bool, Int, Real]), Real);
     assert_eq!(returns("bin", &[Long, Real]), Real);
-    assert_eq!(returns("abs", &[Int]), Int);
     assert_eq!(returns("round", &[Real, Long]), Real);
 }
 
@@ -493,7 +585,9 @@ fn arg_type_error_merges_overloads() {
         "argument `value` of `bin` must be a number, `datetime` or `timespan`, found `string`"
     );
     assert!(d.help.is_empty());
-    assert!(d.notes[0].starts_with("`bin` has these forms: `bin(value: T, size: T) -> T"));
+    assert!(
+        d.notes[0].starts_with("`bin` has these forms: `bin(value: T, size: T) -> long or real")
+    );
 
     // `bin(ts, 5)` with `ts: datetime`: the datetime form gets furthest.
     let e = arg_error("bin", &[DateTime, Long]);
@@ -501,6 +595,105 @@ fn arg_type_error_merges_overloads() {
     assert_eq!(
         e.expected,
         Expected::OneOf(vec![TypeClass::Exact(TimeSpan)])
+    );
+}
+
+/// A function with made-up forms, for resolution rules the built-ins do not exercise.
+fn made_up(signatures: Vec<Signature>) -> FunctionDef {
+    FunctionDef {
+        name: "f",
+        kind: FunctionKind::Scalar,
+        signatures,
+        doc: "",
+        examples: Vec::new(),
+    }
+}
+
+fn form(params: &[(&'static str, Type)]) -> Signature {
+    Signature {
+        required: params
+            .iter()
+            .map(|&(name, ty)| Param {
+                name,
+                ty: ParamType::Class(TypeClass::Exact(ty)),
+            })
+            .collect(),
+        optional: Vec::new(),
+        repeat: None,
+        trailing: Vec::new(),
+        returns: ReturnRule::Fixed(Bool),
+    }
+}
+
+fn made_up_error(f: &FunctionDef, args: &[Type]) -> ArgTypeError {
+    match f.resolve(args) {
+        Err(ResolveError::ArgType(e)) => e,
+        other => panic!("{args:?} should be an argument type error: {other:?}"),
+    }
+}
+
+#[test]
+fn arg_type_error_prefers_exact_matches() {
+    // `f(1, 2, 3)`: the first form only gets to `c` by widening `a` and `b`; the second matched `a`
+    // exactly and fails at `b`. Before M1-23 the furthest argument, `c`, was blamed.
+    let f = made_up(vec![
+        form(&[("a", Real), ("b", Real), ("c", String)]),
+        form(&[("a", Long), ("b", String), ("c", Long)]),
+    ]);
+    let e = made_up_error(&f, &[Long, Long, Long]);
+    assert_eq!(e.index, 1);
+    assert_eq!(e.expected, Expected::OneOf(vec![TypeClass::Exact(String)]));
+
+    // Equally good forms failing at different arguments: the first form decides.
+    let f = made_up(vec![
+        form(&[("a", Long), ("b", String), ("c", Long)]),
+        form(&[("a", Long), ("b", Long), ("c", String)]),
+    ]);
+    let e = made_up_error(&f, &[Long, Bool, Bool]);
+    assert_eq!(e.index, 1);
+    // `null` matches but is not an exact match: it does not make a form better.
+    let e = made_up_error(&f, &[Null, Long, Long]);
+    assert_eq!((e.index, e.found), (2, Long));
+    let e = made_up_error(&f, &[Null, Bool, Long]);
+    assert_eq!(e.index, 1);
+    // Forms failing at the same argument still merge.
+    let e = made_up_error(&f, &[Bool, Long, Long]);
+    assert_eq!(
+        (e.index, e.expected),
+        (0, Expected::OneOf(vec![TypeClass::Exact(Long)]))
+    );
+}
+
+#[test]
+fn describe_accepted_with_several_kinds_of_form() {
+    let repeated = |min| Signature {
+        repeat: Some(Repeat {
+            params: vec![Param {
+                name: "v",
+                ty: ParamType::Class(TypeClass::Any),
+            }],
+            min,
+        }),
+        ..form(&[])
+    };
+    let f = made_up(vec![form(&[("a", Long)]), repeated(3)]);
+    assert_eq!(
+        ArityError::describe_accepted(&f),
+        "1 argument, or at least 3 arguments"
+    );
+    let mut pairs = repeated(1);
+    pairs.repeat.as_mut().unwrap().params.push(Param {
+        name: "w",
+        ty: ParamType::Class(TypeClass::Any),
+    });
+    let f = made_up(vec![repeated(4), pairs]);
+    assert_eq!(
+        ArityError::describe_accepted(&f),
+        "at least 4 arguments, or an even number of arguments, at least 2"
+    );
+    assert_eq!(
+        ArityError::describe_accepted(&made_up(vec![form(&[])])),
+        "no arguments"
     );
 }
 
@@ -589,4 +782,93 @@ fn planned_functions_are_known_and_not_in_the_catalog() {
         assert_eq!(unknown.planned, Some(*milestone), "{name}");
     }
     assert_eq!(catalog().lookup("strln").unwrap_err().planned, None);
+}
+
+/// Every catalog example binds without diagnostics. The columns an example uses, and their
+/// types, are inferred: unknown names become columns, then the first assignment of types to them
+/// under which the example checks cleanly is kept.
+#[test]
+fn every_example_resolves() {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use arrow_schema::{DataType, Field, Schema, TimeUnit};
+    use datascript_diagnostics::SourceFile;
+
+    use crate::{Capabilities, SchemaLookup, SchemaProvider, SourceRef, check};
+
+    struct Table(Vec<(std::string::String, DataType)>);
+    impl SchemaProvider for Table {
+        fn schema_of(&self, _: &SourceRef) -> SchemaLookup {
+            let fields: Vec<Field> = self
+                .0
+                .iter()
+                .map(|(name, dt)| Field::new(name, dt.clone(), true))
+                .collect();
+            SchemaLookup::Ready(Arc::new(Schema::new(fields)))
+        }
+    }
+    let candidates = [
+        (Long, DataType::Int64),
+        (Real, DataType::Float64),
+        (String, DataType::Utf8),
+        (Bool, DataType::Boolean),
+        (
+            DateTime,
+            DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())),
+        ),
+        (TimeSpan, DataType::Duration(TimeUnit::Microsecond)),
+    ];
+
+    for f in catalog().iter() {
+        for example in &f.examples {
+            let program = match f.kind {
+                FunctionKind::Scalar => format!("from 't.csv' | extend x = {example}"),
+                FunctionKind::Aggregate => format!("from 't.csv' | summarize x = {example}"),
+            };
+            // `extend` and `summarize` check their expressions, then report DS9001 "not
+            // implemented yet" until M1-16; that one is not about the example.
+            let run = |columns: &[(std::string::String, DataType)]| {
+                let mut diagnostics = check(
+                    &SourceFile::new("example.ds", &program),
+                    FileId(0),
+                    &Table(columns.to_vec()),
+                    &Capabilities::full(),
+                )
+                .diagnostics;
+                diagnostics.retain(|d| {
+                    !(d.code == codes::DS9001 && d.message.ends_with("is not implemented yet"))
+                });
+                diagnostics
+            };
+            // The names the example uses as columns.
+            let names: Vec<std::string::String> = run(&[])
+                .iter()
+                .filter(|d| d.code == codes::DS1001)
+                .filter_map(|d| d.primary.as_ref())
+                .map(|label| program[label.span.start as usize..label.span.end as usize].into())
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            let combinations = candidates.len().pow(names.len() as u32);
+            let found = (0..combinations).find_map(|mut n| {
+                let mut columns = Vec::new();
+                let mut types = BTreeMap::new();
+                for name in &names {
+                    let (ty, dt) = &candidates[n % candidates.len()];
+                    n /= candidates.len();
+                    columns.push((name.clone(), dt.clone()));
+                    types.insert(name.clone(), *ty);
+                }
+                run(&columns).is_empty().then_some(types)
+            });
+            assert!(
+                found.is_some(),
+                "example `{example}` of `{}` does not resolve for any column types; with none: \
+                 {:?}",
+                f.name,
+                run(&[]).iter().map(|d| &d.message).collect::<Vec<_>>()
+            );
+        }
+    }
 }

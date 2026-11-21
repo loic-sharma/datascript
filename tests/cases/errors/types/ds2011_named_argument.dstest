@@ -11,4 +11,4 @@ error[DS2011]: `round` takes no named arguments
   |                                         ^^^^^^^^^^ named argument
   |
   = help: pass the value by position: `round(amount, 2)`
-  = note: signature: `round(x: T[, digits: integer]) -> T, where T is a number`
+  = note: signature: `round(x: T[, digits: integer]) -> long or real, where T is a number`

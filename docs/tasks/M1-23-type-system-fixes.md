@@ -1,6 +1,6 @@
 # M1-23 — Type system and catalog fixes
 
-**Status:** todo
+**Status:** done — null scaling is `long`, `decimal` mixes with nothing (D-039), integer math returns `long`, M2 Arrow types are DS2008, overload blame prefers exact matches
 **Depends on:** M1-04
 **Crates:** `datascript-compiler` (`types.rs`, `operators.rs`, `catalog.rs`, `builtins.rs`, `arrow.rs`)
 **Diagnostic codes:** none new (M1-04 builders for DS2002/DS2003/DS2006/DS2009)
@@ -37,17 +37,26 @@ M1-08/M1-09.
   mentions KQL names but `FOREIGN_NAMES` has none.
 
 ## Acceptance criteria
-- [ ] Unit test running every operator row with `Null` on each side.
-- [ ] Commutativity property test: for `+ * == !=` and every type pair, `binary(l, r)` succeeds
+- [x] Unit test running every operator row with `Null` on each side.
+- [x] Commutativity property test: for `+ * == !=` and every type pair, `binary(l, r)` succeeds
       exactly when `binary(r, l)` does, with mirrored operand types.
-- [ ] Unit tests for `decimal` operands and for functions with `null` arguments.
-- [ ] Every catalog example is resolved (with column types inferred from the example), not only
+- [x] Unit tests for `decimal` operands and for functions with `null` arguments.
+- [x] Every catalog example is resolved (with column types inferred from the example), not only
       parsed.
-- [ ] Unit test that the `Error` short-circuit returns `bool` for `and`/`or`/`not` and the string
+- [x] Unit test that the `Error` short-circuit returns `bool` for `and`/`or`/`not` and the string
       operators.
-- [ ] Any spec change is in LANGUAGE.md and DECISIONS.md.
+- [x] Any spec change is in LANGUAGE.md and DECISIONS.md.
 
 ## Carried over
-- [ ] (from M1-05) `catalog::PLANNED` and `UnknownFunction::planned` landed in M1-05 and the binder uses them (DS1004 "not available yet"); drop that bullet from the scope, keep the list in sync. The binder reports a function whose result type is `Null` as DS2009 at the `null` argument, so defaulting the type here would change `errors/types/ds2009_untyped_null.dstest`.
+- [x] (from M1-05) `catalog::PLANNED` and `UnknownFunction::planned` landed in M1-05 and the binder uses them (DS1004 "not available yet"); drop that bullet from the scope, keep the list in sync. The binder reports a function whose result type is `Null` as DS2009 at the `null` argument, so defaulting the type here would change `errors/types/ds2009_untyped_null.dstest`.
 
 ## Follow-ups
+- Informational: the review's "dead `Var` + `Null` branch in `ArgTypeError::help`" does not
+  exist; the only `Null` branch is in `bind` (`coalesce(null, x)` fixes `T` at `x`) and is
+  covered by `arg_type_error_for_mismatched_type_variable`.
+- Informational: `Resolved::return_type` stays `Null` when only untyped `null`s decide it
+  (documented there and on `resolve`); defaulting it would change the binder's DS2009 (D-038).
+- Informational: `every_example_resolves` infers column types by searching assignments, and
+  ignores the DS9001 "not implemented yet" that `extend`/`summarize` give until M1-16.
+- `decimal` and `guid` as real types are M2-10 (new task); restoring the `dynamic` mappings is
+  carried over to M2-03.

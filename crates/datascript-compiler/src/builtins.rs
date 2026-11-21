@@ -57,19 +57,8 @@ fn fixed(ty: Type) -> ReturnRule {
 
 const SAME_AS_FIRST: ReturnRule = ReturnRule::SameAsArg(0);
 
-/// `sum` of integers is `long` (D-021); of reals, `real`.
-fn sum_type(args: &[Type]) -> Type {
-    match args[0] {
-        Type::Int | Type::Long => Type::Long,
-        Type::Null => Type::Null,
-        other => other,
-    }
-}
-
-const SUM_RETURN: ReturnRule = ReturnRule::Custom {
-    rule: sum_type,
-    display: "long or real",
-};
+/// The first argument's type with integers as `long` (D-021): `sum`, `abs`, `round`, ….
+const FIRST_AS_LONG: ReturnRule = ReturnRule::IntegerAsLong(0);
 
 struct Def {
     name: &'static str,
@@ -157,13 +146,13 @@ pub(crate) fn functions() -> Vec<FunctionDef> {
             "Adds up the non-null values in each group. The sum of integers is `long`; of reals, \
              `real`. With no non-null values the result is null.",
         )
-        .sig(sig(vec![p("x", T_NUM)], SUM_RETURN))
+        .sig(sig(vec![p("x", T_NUM)], FIRST_AS_LONG))
         .examples(&["sum(amount)"]),
         aggregate(
             "sumif",
             "Adds up the non-null values in each group for the rows where `predicate` is true.",
         )
-        .sig(sig(vec![p("x", T_NUM), p("predicate", BOOL)], SUM_RETURN))
+        .sig(sig(vec![p("x", T_NUM), p("predicate", BOOL)], FIRST_AS_LONG))
         .examples(&["sumif(amount, status == \"shipped\")"]),
         aggregate("avg", "The mean of the non-null values in each group, as a `real`.")
             .sig(sig(vec![p("x", NUMBER)], fixed(Type::Real)))
@@ -374,9 +363,10 @@ pub(crate) fn functions() -> Vec<FunctionDef> {
             .examples(&["ago(1d)"]),
         scalar(
             "bin",
-            "Rounds `value` down to a multiple of `size`. Datetimes are binned from the Unix epoch.",
+            "Rounds `value` down to a multiple of `size`. Datetimes are binned from the Unix epoch; \
+             integers give a `long`.",
         )
-        .sig(sig(vec![p("value", T_NUM), p("size", T_NUM)], SAME_AS_FIRST))
+        .sig(sig(vec![p("value", T_NUM), p("size", T_NUM)], FIRST_AS_LONG))
         .sig(sig(
             vec![p("value", DATETIME), p("size", TIMESPAN)],
             fixed(Type::DateTime),
@@ -444,21 +434,22 @@ pub(crate) fn functions() -> Vec<FunctionDef> {
         ))
         .examples(&["datetime_diff(\"day\", shippedAt, orderedAt)"]),
         // Math.
-        scalar("abs", "The absolute value.")
-            .sig(sig(vec![p("x", T_NUM)], SAME_AS_FIRST))
+        scalar("abs", "The absolute value. Of an integer, a `long`.")
+            .sig(sig(vec![p("x", T_NUM)], FIRST_AS_LONG))
             .sig(sig(vec![p("x", TIMESPAN)], fixed(Type::TimeSpan)))
             .examples(&["abs(delta)"]),
         scalar(
             "round",
-            "Rounds to `digits` decimal places (default 0), halves away from zero.",
+            "Rounds to `digits` decimal places (default 0), halves away from zero. Of an integer, \
+             a `long`.",
         )
-        .sig(sig(vec![p("x", T_NUM)], SAME_AS_FIRST).optional(vec![p("digits", INTEGER)]))
+        .sig(sig(vec![p("x", T_NUM)], FIRST_AS_LONG).optional(vec![p("digits", INTEGER)]))
         .examples(&["round(amount, 2)"]),
-        scalar("floor", "The largest whole number not greater than `x`.")
-            .sig(sig(vec![p("x", T_NUM)], SAME_AS_FIRST))
+        scalar("floor", "The largest whole number not greater than `x`. Of an integer, a `long`.")
+            .sig(sig(vec![p("x", T_NUM)], FIRST_AS_LONG))
             .examples(&["floor(amount)"]),
-        scalar("ceiling", "The smallest whole number not less than `x`.")
-            .sig(sig(vec![p("x", T_NUM)], SAME_AS_FIRST))
+        scalar("ceiling", "The smallest whole number not less than `x`. Of an integer, a `long`.")
+            .sig(sig(vec![p("x", T_NUM)], FIRST_AS_LONG))
             .examples(&["ceiling(amount)"]),
         real_math("sqrt", "The square root.", "sqrt(area)"),
         scalar("pow", "`base` raised to the power `exponent`.")

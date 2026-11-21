@@ -58,7 +58,7 @@ Two shared files are touched by many tasks:
 | [M1-20](M1-20-lexer-literal-fixes.md) | Lexer and literal fixes | M1-03 | done | M1-18, M1-19, M1-21, M1-23 |
 | [M1-21](M1-21-syntax-fix-correctness.md) | Syntax suggestions that produce valid code | M1-18 | done | M1-19, M1-20, M1-23 |
 | [M1-22](M1-22-syntax-diagnostics-coverage.md) | Syntax diagnostics: more habits and style fixes | M1-21, M1-19 | done | M1-23, M1-05 and later |
-| [M1-23](M1-23-type-system-fixes.md) | Type system and catalog fixes | M1-04 | todo | M1-18…M1-22 |
+| [M1-23](M1-23-type-system-fixes.md) | Type system and catalog fixes | M1-04 | done | M1-18…M1-22 |
 | [M1-24](M1-24-from-keyword.md) | Require `from` at the start of a query | M1-22 | done | M1-23 |
 | [M1-25](M1-25-from-diagnostics.md) | `from` mistakes and statement starts | M1-24 | done | M1-23, M1-05 and later |
 | [M1-05](M1-05-binder.md) | Binder core and expression checking | M1-15, M1-24 | done | M1-03 |
@@ -87,6 +87,7 @@ Two shared files are touched by many tasks:
 | [M2-07](M2-07-formatter.md) | Formatter (`ds fmt`) | M1-13 | todo |
 | [M2-08](M2-08-error-explanations.md) | Long-form error explanations | M1-13 | todo |
 | [M2-09](M2-09-schema-overrides.md) | Reader schema overrides | M1-13 | todo |
+| [M2-10](M2-10-decimal-guid.md) | `decimal` and `guid` types | M1-13 | todo |
 
 ## M3 — Editor experience
 

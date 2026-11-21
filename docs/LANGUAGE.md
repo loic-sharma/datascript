@@ -372,9 +372,11 @@ zero follows IEEE 754 (`inf`, `nan`).
 
 ### 4.2 Implicit conversions
 
-- Numeric widening only: `int` → `long` → `real`. `decimal` (M2) widens to `real` when mixed
-  with `real`.
-- `null` takes the type its context needs (`iff(p, null, 1)` is `long`). Where there is no
+- Numeric widening only: `int` → `long` → `real`. `decimal` (M2) does not mix with any other
+  type in M1, not even `real`: `decimal + real` and `decimal == real` are `DS2003` (D-039). M2-10
+  decides its conversions.
+- `null` takes the type its context needs (`iff(p, null, 1)` is `long`). Next to a number class
+  it is `long`: in `wait * null` it scales the `timespan` by a `long`. Where there is no
   context (`extend x = null`), `DS2009` asks for a typed null: `long(null)`, `string(null)`, ….
 - No other implicit conversions. `"1" + 1` is a type error suggesting `tolong()` or `tostring()`.
 
@@ -414,9 +416,9 @@ Source columns are widened to a DataScript type at the scan (D-012):
 | Timestamp(any unit, any or no timezone) | `datetime` | Converted to UTC. No timezone means UTC. Nanoseconds are truncated to µs |
 | Date32, Date64 | `datetime` | Midnight UTC |
 | Duration(any unit) | `timespan` | Nanoseconds truncated to µs |
-| FixedSizeBinary(16) with extension type `arrow.uuid` | `guid` (M2) | Without the extension type: none |
-| Utf8 with extension type `arrow.json` | `dynamic` (M2) | |
-| Struct, List, LargeList, Map | `dynamic` (M2) | |
+| FixedSizeBinary(16) with extension type `arrow.uuid` | none in M1; `guid` from M2 (M2-10) | Without the extension type: none |
+| Utf8 with extension type `arrow.json` | none in M1; `dynamic` from M2 (M2-03) | |
+| Struct, List, LargeList, Map | none in M1; `dynamic` from M2 (M2-03) | |
 | Anything else (Binary, Time32/64, Interval, …) | none | |
 
 Columns with no DataScript type are readable but can only be projected (`project`, `project-away`,
@@ -468,7 +470,8 @@ Semantics follow KQL unless noted (D-014). All datetime functions work in UTC.
   `datetime_part(part, dt)`, `dayofweek` (timespan since Sunday, as in KQL),
   `format_datetime(dt, fmt)` (KQL format specifiers such as `yyyy-MM-dd HH:mm:ss`), `datetime_diff`.
 - **Math**: `abs`, `round(x [, digits])` (half away from zero), `floor`, `ceiling`, `sqrt`, `pow`,
-  `log`, `log10`, `exp`.
+  `log`, `log10`, `exp`. `abs`, `round`, `floor`, `ceiling` and `bin` of an integer return `long`,
+  like integer arithmetic (D-021).
 
 `now()` is evaluated **once per program run** (D-015), from a clock the host provides (needed for
 WASM and for deterministic tests).

@@ -59,6 +59,10 @@ pub enum ReturnRule {
     Fixed(Type),
     /// The type of argument `n` (0-based) after conversion, which for a `T` parameter is `T`.
     SameAsArg(usize),
+    /// Like [`ReturnRule::SameAsArg`], but an integer becomes `long`, as integer arithmetic does
+    /// (D-021): `sum` and `abs` of an `int` are `long`, so `abs(toint(-2147483648))` does not
+    /// overflow.
+    IntegerAsLong(usize),
     /// Computed from the converted argument types. `display` is how the result reads in a
     /// signature. Not called when an argument has [`Type::Error`]; the result is then `Error`.
     Custom {
@@ -175,12 +179,19 @@ impl Signature {
         out.push_str(") -> ");
         match self.returns {
             ReturnRule::Fixed(ty) => out.push_str(ty.name()),
-            ReturnRule::SameAsArg(n) => {
+            ReturnRule::SameAsArg(n) | ReturnRule::IntegerAsLong(n) => {
+                let widen = matches!(self.returns, ReturnRule::IntegerAsLong(_));
                 let p = self
                     .all_params()
                     .nth(n)
                     .or_else(|| self.all_params().last());
                 match p.map(|p| p.ty) {
+                    Some(
+                        ParamType::Var(TypeClass::Numeric) | ParamType::Class(TypeClass::Numeric),
+                    ) if widen => out.push_str("long or real"),
+                    Some(
+                        ParamType::Var(TypeClass::Integer) | ParamType::Class(TypeClass::Integer),
+                    ) if widen => out.push_str("long"),
                     Some(ParamType::Var(_)) | None => out.push('T'),
                     Some(ParamType::Class(class)) => out.push_str(class.name()),
                 }
@@ -224,6 +235,11 @@ pub struct Resolved<'c> {
     /// parameter's type when the parameter has one exact type or is `T`.
     pub arg_types: Vec<Type>,
     /// The result type.
+    ///
+    /// This can be the internal [`Type::Null`] when only untyped `null`s decide it
+    /// (`abs(null)`, `sum(null)`, `iff(p, null, null)`, `coalesce(null, null)`). It is left for
+    /// the caller because only the caller knows whether the context gives the value a type; the
+    /// binder reports `DS2009` at the `null` argument when it does not (D-038).
     pub return_type: Type,
 }
 
@@ -270,6 +286,8 @@ pub struct ArgTypeError {
 #[derive(Debug)]
 struct Mismatch {
     index: usize,
+    /// How many earlier arguments matched exactly: not `null`, not an error, not widened.
+    exact: usize,
     expected: Expected,
 }
 
@@ -279,6 +297,15 @@ impl FunctionDef {
     ///
     /// [`Type::Error`] arguments match any parameter, so an argument that already has an error
     /// never produces a second one. Arity is still checked: it does not depend on types.
+    ///
+    /// Untyped `null` arguments match any parameter too, and may leave the result type as
+    /// [`Type::Null`] (see [`Resolved::return_type`]).
+    ///
+    /// When no form matches, the error names the argument where the best form failed: the form
+    /// whose earlier arguments matched exactly (not through `null`, an error or widening) most
+    /// often, and among equals the first form. Equally good forms failing at that argument have
+    /// their expectations merged. So `bin(ts, 5)` with `ts: datetime` blames `5` (the datetime
+    /// form matched `ts`), and `bin("x", 1h)` lists every form's first parameter.
     pub fn resolve(&self, args: &[Type]) -> Result<Resolved<'_>, ResolveError> {
         let n = args.len();
         let candidates: Vec<&Signature> = self
@@ -299,6 +326,8 @@ impl FunctionDef {
                     let return_type = match sig.returns {
                         ReturnRule::Fixed(ty) => ty,
                         ReturnRule::SameAsArg(i) => arg_types[i],
+                        ReturnRule::IntegerAsLong(i) if arg_types[i].is_integer() => Type::Long,
+                        ReturnRule::IntegerAsLong(i) => arg_types[i],
                         ReturnRule::Custom { .. } if arg_types.iter().any(|t| t.is_error()) => {
                             Type::Error
                         }
@@ -314,12 +343,19 @@ impl FunctionDef {
                 Err(mismatch) => mismatches.push(mismatch),
             }
         }
-        // Report the argument that the best form reached; merge what the forms failing there
-        // expected.
-        let furthest = mismatches.iter().map(|m| m.index).max().unwrap_or(0);
+        // Report the mismatch of the best form: most exact matches before it, then the first
+        // form. Merge what the equally good forms failing at the same argument expected.
+        let best = mismatches.iter().map(|m| m.exact).max().unwrap_or(0);
+        let index = mismatches
+            .iter()
+            .find(|m| m.exact == best)
+            .map_or(0, |m| m.index);
         let mut classes = Vec::new();
         let mut same_as = None;
-        for mismatch in mismatches.into_iter().filter(|m| m.index == furthest) {
+        for mismatch in mismatches
+            .into_iter()
+            .filter(|m| m.exact == best && m.index == index)
+        {
             match mismatch.expected {
                 Expected::OneOf(cs) => {
                     for class in cs {
@@ -337,8 +373,8 @@ impl FunctionDef {
         };
         Err(ResolveError::ArgType(ArgTypeError {
             function: self.name,
-            index: furthest,
-            found: args[furthest],
+            index,
+            found: args[index],
             expected,
         }))
     }
@@ -367,14 +403,24 @@ fn bind(sig: &Signature, args: &[Type]) -> Result<Vec<Type>, Mismatch> {
     let n = args.len();
     let mut var: Option<(Type, usize)> = None;
     let mut arg_types = Vec::with_capacity(n);
+    let mut exact = 0;
     for (index, &arg) in args.iter().enumerate() {
         let param = sig.param_for(index, n);
         let class = param.ty.class();
         if !class.accepts(arg) {
             return Err(Mismatch {
                 index,
+                exact,
                 expected: Expected::OneOf(vec![class]),
             });
+        }
+        let widened = match param.ty {
+            ParamType::Class(TypeClass::Exact(ty)) => arg != ty,
+            ParamType::Class(_) => false,
+            ParamType::Var(_) => var.is_some_and(|(t, _)| !t.is_null() && t != arg),
+        };
+        if !arg.is_null() && !arg.is_error() && !widened {
+            exact += 1;
         }
         match param.ty {
             ParamType::Class(TypeClass::Exact(ty)) if !arg.is_error() => arg_types.push(ty),
@@ -389,6 +435,7 @@ fn bind(sig: &Signature, args: &[Type]) -> Result<Vec<Type>, Mismatch> {
                         None => {
                             return Err(Mismatch {
                                 index,
+                                exact,
                                 expected: Expected::SameAs {
                                     index: first,
                                     ty: current,
@@ -446,12 +493,35 @@ fn join_or(items: &[String]) -> String {
 
 impl ArityError {
     /// What the function accepts, in words: "2 or 3 arguments", "at least 1 argument",
-    /// "an odd number of arguments, at least 3".
+    /// "an odd number of arguments, at least 3". Forms with a repeated group are described
+    /// after the fixed counts: "1 argument, or at least 3 arguments".
     pub fn describe_accepted(function: &FunctionDef) -> String {
-        if let Some(sig) = function.signatures.iter().find(|s| s.repeat.is_some()) {
+        let mut parts = Vec::new();
+        let mut counts: Vec<usize> = function
+            .signatures
+            .iter()
+            .filter(|s| s.repeat.is_none())
+            .flat_map(|s| s.min_args()..=s.max_args().unwrap_or(s.min_args()))
+            .collect();
+        counts.sort_unstable();
+        counts.dedup();
+        match counts.as_slice() {
+            [] => {}
+            [0] => parts.push("no arguments".to_string()),
+            [n] => parts.push(format!("{n} {}", plural(*n))),
+            [a, b] => parts.push(format!("{a} or {b} arguments")),
+            [first, .., last] if last - first + 1 == counts.len() => {
+                parts.push(format!("{first} to {last} arguments"));
+            }
+            _ => {
+                let all: Vec<String> = counts.iter().map(usize::to_string).collect();
+                parts.push(format!("{} arguments", join_or(&all)));
+            }
+        }
+        for sig in function.signatures.iter().filter(|s| s.repeat.is_some()) {
             let min = sig.min_args();
             let step = sig.repeat.as_ref().map_or(1, |r| r.params.len());
-            return match step {
+            let part = match step {
                 1 => format!("at least {min} {}", plural(min)),
                 2 => {
                     let parity = if min % 2 == 1 { "an odd" } else { "an even" };
@@ -459,25 +529,15 @@ impl ArityError {
                 }
                 _ => format!("at least {min} arguments, in groups of {step}"),
             };
+            if !parts.contains(&part) {
+                parts.push(part);
+            }
         }
-        let mut counts: Vec<usize> = function
-            .signatures
-            .iter()
-            .flat_map(|s| s.min_args()..=s.max_args().unwrap_or(s.min_args()))
-            .collect();
-        counts.sort_unstable();
-        counts.dedup();
-        match counts.as_slice() {
-            [] | [0] => "no arguments".to_string(),
-            [n] => format!("{n} {}", plural(*n)),
-            [a, b] => format!("{a} or {b} arguments"),
-            [first, .., last] if last - first + 1 == counts.len() => {
-                format!("{first} to {last} arguments")
-            }
-            _ => {
-                let all: Vec<String> = counts.iter().map(usize::to_string).collect();
-                format!("{} arguments", join_or(&all))
-            }
+        match parts.as_slice() {
+            [] => "no arguments".to_string(),
+            [one] => one.clone(),
+            // Each part may contain a comma, so join with ", or".
+            [init @ .., last] => format!("{}, or {last}", init.join(", ")),
         }
     }
 
@@ -639,8 +699,9 @@ impl ArgTypeError {
 pub struct UnknownFunction {
     /// Close names in the catalog.
     pub suggestions: Suggestions,
-    /// The DataScript function for a name from SQL, KQL or another language
-    /// (`len` → `strlen`), if known (DIAGNOSTICS.md rule 7).
+    /// The DataScript function for a name from SQL, Python, Excel or another language
+    /// (`len` → `strlen`), if known (DIAGNOSTICS.md rule 7). KQL names need no entry: the
+    /// built-in functions use them.
     pub equivalent: Option<&'static str>,
     /// The milestone that adds this function, if it is in LANGUAGE.md §7 but not built yet
     /// ([`PLANNED`]).
@@ -663,7 +724,8 @@ pub struct FunctionCatalog {
     functions: BTreeMap<&'static str, FunctionDef>,
 }
 
-/// Names users bring from SQL, Python, Excel or KQL, and the DataScript function to use instead.
+/// Names users bring from SQL, Python or Excel, and the DataScript function to use instead.
+/// KQL names are the catalog's own names (D-014).
 const FOREIGN_NAMES: &[(&str, &str)] = &[
     ("any_value", "take_any"),
     ("ceil", "ceiling"),

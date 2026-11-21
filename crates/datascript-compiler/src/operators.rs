@@ -288,11 +288,14 @@ pub fn binary(op: BinaryOp, left: Type, right: Type) -> Result<BinaryTyping, Bin
     Err(BinaryTypeError { op, left, right })
 }
 
-/// The type an untyped `null` operand takes in a row that keeps operand types.
+/// The type an untyped `null` operand takes in a row that keeps operand types: the row's type
+/// for an exact class, `long` for a number class (`null * 1d` scales by a `long`, not by a
+/// `timespan`), and the other operand's type for a class that takes it as is.
 fn resolve_null(ty: Type, class: TypeClass, other: Type) -> Type {
     match (ty, class) {
         (Type::Null, Exact(target)) => target,
-        (Type::Null, _) => other,
+        (Type::Null, Integer | Numeric) => Type::Long,
+        (Type::Null, Comparable | Any) => other,
         _ => ty,
     }
 }
@@ -465,6 +468,18 @@ impl BinaryTypeError {
                 "add a `timespan` to a `datetime`, or subtract two datetimes to get a `timespan`"
                     .to_string(),
             );
+        }
+        // `decimal` mixes with nothing until M2 (D-039).
+        if l == Type::Decimal || r == Type::Decimal {
+            let text = if l == Type::Decimal {
+                left.text
+            } else {
+                right.text
+            };
+            return Some(format!(
+                "`decimal` values do not mix with other types yet; convert first: \
+                 `toreal({text})`"
+            ));
         }
         // One side is a string and the other a type a string converts to.
         let string_side = match (l, r) {
@@ -815,6 +830,162 @@ mod tests {
         assert_eq!(unary(PrefixOp::Not, Null).unwrap().result, Bool);
     }
 
+    /// Every type, including the internal ones.
+    fn all_types() -> impl Iterator<Item = Type> {
+        Type::NAMED.into_iter().chain([Null, Error])
+    }
+
+    /// One operator per group.
+    const ONE_PER_GROUP: [BinaryOp; 16] = [
+        BinaryOp::Or,
+        BinaryOp::And,
+        BinaryOp::Eq,
+        BinaryOp::NotEq,
+        BinaryOp::Lt,
+        BinaryOp::LtEq,
+        BinaryOp::Gt,
+        BinaryOp::GtEq,
+        BinaryOp::EqCi,
+        BinaryOp::NotEqCi,
+        BinaryOp::Add,
+        BinaryOp::Sub,
+        BinaryOp::Mul,
+        BinaryOp::Div,
+        BinaryOp::Mod,
+        HAS,
+    ];
+
+    /// The type a row accepts on one side, if it names a single one.
+    fn sample(class: TypeClass) -> Type {
+        match class {
+            Exact(ty) => ty,
+            Integer | Numeric => Long,
+            Comparable | Any => String,
+        }
+    }
+
+    #[test]
+    fn every_row_with_null_on_each_side() {
+        for rule in BINARY_RULES {
+            for &group in rule.ops {
+                let op = ONE_PER_GROUP
+                    .into_iter()
+                    .find(|&op| OpGroup::of(op) == group)
+                    .unwrap();
+                let (l, r) = (sample(rule.left), sample(rule.right));
+                for (left, right) in [(Null, r), (l, Null)] {
+                    let typing = binary(op, left, right).unwrap_or_else(|_| {
+                        panic!("{left} {} {right} should be well-typed", op_symbol(op))
+                    });
+                    // With one typed operand, `null` always gets a type, and the result is
+                    // never the internal `Null`. (An earlier row may match first: `null + 1`
+                    // is the integer row even when testing the real row.)
+                    let sym = op_symbol(op);
+                    assert!(
+                        !typing.left.is_null() && !typing.right.is_null(),
+                        "{left} {sym} {right}: {typing:?}"
+                    );
+                    assert_ne!(typing.result, Null, "{left} {sym} {right}");
+                    // `null` takes the other operand's type, or one that operator pairs with it.
+                    let again = binary(op, typing.left, typing.right).unwrap();
+                    assert_eq!(again, typing, "{left} {sym} {right}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn null_next_to_a_timespan_is_a_number_in_scaling() {
+        let typing = binary(BinaryOp::Mul, Null, TimeSpan).unwrap();
+        assert_eq!(
+            typing,
+            BinaryTyping {
+                left: Long,
+                right: TimeSpan,
+                result: TimeSpan
+            }
+        );
+        let typing = binary(BinaryOp::Mul, TimeSpan, Null).unwrap();
+        assert_eq!((typing.left, typing.right), (TimeSpan, Long));
+        let typing = binary(BinaryOp::Div, TimeSpan, Null).unwrap();
+        assert_eq!(
+            typing,
+            BinaryTyping {
+                left: TimeSpan,
+                right: Long,
+                result: TimeSpan
+            }
+        );
+        // Rows with an exact type still give `null` that type.
+        let typing = binary(BinaryOp::Add, Null, TimeSpan).unwrap();
+        assert_eq!((typing.left, typing.right), (TimeSpan, TimeSpan));
+        let typing = binary(BinaryOp::Add, Null, DateTime).unwrap();
+        assert_eq!((typing.left, typing.result), (TimeSpan, DateTime));
+    }
+
+    #[test]
+    fn commutative_operators_are_symmetric() {
+        for op in [BinaryOp::Add, BinaryOp::Mul, BinaryOp::Eq, BinaryOp::NotEq] {
+            for l in all_types() {
+                for r in all_types() {
+                    let sym = op_symbol(op);
+                    match (binary(op, l, r), binary(op, r, l)) {
+                        (Ok(a), Ok(b)) => {
+                            assert_eq!(
+                                (a.left, a.right, a.result),
+                                (b.right, b.left, b.result),
+                                "{l} {sym} {r} and {r} {sym} {l} are typed differently"
+                            );
+                        }
+                        (Err(_), Err(_)) => {}
+                        (a, b) => panic!(
+                            "{l} {sym} {r} is {} but {r} {sym} {l} is {}",
+                            if a.is_ok() { "well-typed" } else { "an error" },
+                            if b.is_ok() { "well-typed" } else { "an error" },
+                        ),
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn decimal_mixes_with_nothing_in_m1() {
+        // D-039: `decimal` arithmetic and comparisons with other types are M2.
+        for op in ONE_PER_GROUP {
+            for other in all_types().filter(|t| !matches!(t, Decimal | Null | Error)) {
+                err(op, Decimal, other);
+                err(op, other, Decimal);
+            }
+        }
+        assert_eq!(ok(BinaryOp::Eq, Decimal, Decimal), Bool);
+        assert_eq!(ok(BinaryOp::NotEq, Decimal, Null), Bool);
+        err(BinaryOp::Lt, Decimal, Decimal);
+        err(BinaryOp::Add, Decimal, Decimal);
+        assert!(unary(PrefixOp::Neg, Decimal).is_err());
+    }
+
+    #[test]
+    fn error_short_circuit_gives_bool_for_predicates() {
+        let string_ops = [
+            BinaryOp::EqCi,
+            BinaryOp::NotEqCi,
+            BinaryOp::MatchesRegex,
+            HAS,
+            BinaryOp::String {
+                op: StringOp::StartsWithCs,
+                negated: true,
+            },
+        ];
+        for op in [BinaryOp::And, BinaryOp::Or].into_iter().chain(string_ops) {
+            for ty in all_types() {
+                assert_eq!(ok(op, Error, ty), Bool, "{}", op_symbol(op));
+                assert_eq!(ok(op, ty, Error), Bool, "{}", op_symbol(op));
+            }
+        }
+        assert_eq!(unary(PrefixOp::Not, Error).unwrap().result, Bool);
+    }
+
     fn operand(start: u32, text: &str) -> Operand<'_> {
         Operand {
             span: Span::new(FileId(0), start, start + text.len() as u32),
@@ -940,6 +1111,12 @@ mod tests {
             Some("convert it to a string first: `tostring(code)`")
         );
         assert!(help(BinaryOp::Add, DateTime, DateTime, "a", "b").is_some());
+        assert_eq!(
+            help(BinaryOp::Lt, Real, Decimal, "a", "price").as_deref(),
+            Some(
+                "`decimal` values do not mix with other types yet; convert first: `toreal(price)`"
+            )
+        );
     }
 
     #[test]

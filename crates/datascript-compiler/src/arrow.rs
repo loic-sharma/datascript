@@ -105,6 +105,10 @@ pub fn from_arrow(field: &Field) -> Result<Type, UnsupportedArrowType> {
 
 /// The DataScript type of a column read from a file (LANGUAGE.md §5.1). Engines cast the column
 /// to the canonical type of the result at the scan.
+///
+/// Columns that would be `dynamic` or `guid` (JSON text with `arrow.json`, nested types,
+/// `arrow.uuid`) are unsupported until those types land in M2 (D-039), so they can be projected
+/// but not used in expressions.
 pub fn from_arrow_source(field: &Field) -> Result<Type, UnsupportedArrowType> {
     let ext = field.extension_type_name();
     let ty = match field.data_type() {
@@ -123,13 +127,13 @@ pub fn from_arrow_source(field: &Field) -> Result<Type, UnsupportedArrowType> {
         | DataType::Decimal64(..)
         | DataType::Decimal128(..)
         | DataType::Decimal256(..) => Type::Real,
-        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => {
-            if ext == Some(JSON_EXTENSION) {
-                Type::Dynamic
-            } else {
-                Type::String
-            }
+        // `dynamic` from M2 (M2-03).
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View
+            if ext == Some(JSON_EXTENSION) =>
+        {
+            return Err(unsupported(field));
         }
+        DataType::Utf8 | DataType::LargeUtf8 | DataType::Utf8View => Type::String,
         DataType::Dictionary(_, value)
             if matches!(
                 value.as_ref(),
@@ -140,10 +144,8 @@ pub fn from_arrow_source(field: &Field) -> Result<Type, UnsupportedArrowType> {
         }
         DataType::Timestamp(_, _) | DataType::Date32 | DataType::Date64 => Type::DateTime,
         DataType::Duration(_) => Type::TimeSpan,
-        DataType::FixedSizeBinary(16) if ext == Some(UUID_EXTENSION) => Type::Guid,
-        DataType::Struct(_) | DataType::List(_) | DataType::LargeList(_) | DataType::Map(..) => {
-            Type::Dynamic
-        }
+        // `guid` (M2-10) and `dynamic` (M2-03) are not in M1; nested columns and
+        // `FixedSizeBinary(16)` with `arrow.uuid` fall through to unsupported.
         _ => return Err(unsupported(field)),
     };
     Ok(ty)
@@ -216,15 +218,15 @@ mod tests {
         for ty in Type::NAMED {
             let field = to_arrow("c", ty);
             assert_eq!(from_arrow(&field), Ok(ty), "{ty}");
-            assert_eq!(
-                from_arrow_source(&field),
-                // D-021: `int` reads as `long`; decimals read as `real` in M1.
-                Ok(match ty {
-                    Type::Int => Type::Long,
-                    Type::Decimal => Type::Real,
-                    other => other,
-                })
-            );
+            // D-021: `int` reads as `long`; decimals read as `real` in M1; `guid` and
+            // `dynamic` are unsupported until M2 (D-039).
+            let expected = match ty {
+                Type::Int => Ok(Type::Long),
+                Type::Decimal => Ok(Type::Real),
+                Type::Guid | Type::Dynamic => Err(unsupported(&field)),
+                other => Ok(other),
+            };
+            assert_eq!(from_arrow_source(&field), expected, "{ty}");
         }
     }
 
@@ -340,26 +342,31 @@ mod tests {
     }
 
     #[test]
-    fn read_uuid() {
+    fn uuid_is_unsupported_until_m2() {
         let field = with_ext(
             Field::new("c", DataType::FixedSizeBinary(16), true),
             UUID_EXTENSION,
         );
-        assert_eq!(from_arrow_source(&field), Ok(Type::Guid));
+        assert_eq!(
+            from_arrow_source(&field).unwrap_err().to_string(),
+            "FixedSizeBinary(16) (extension type `arrow.uuid`)"
+        );
         let err = source(DataType::FixedSizeBinary(16)).unwrap_err();
         assert_eq!(err.to_string(), "FixedSizeBinary(16)");
     }
 
     #[test]
-    fn read_json_text_as_dynamic() {
+    fn json_text_is_unsupported_until_m2() {
         for dt in [DataType::Utf8, DataType::LargeUtf8, DataType::Utf8View] {
-            let field = with_ext(Field::new("c", dt, true), JSON_EXTENSION);
-            assert_eq!(from_arrow_source(&field), Ok(Type::Dynamic));
+            let field = with_ext(Field::new("c", dt.clone(), true), JSON_EXTENSION);
+            let err = from_arrow_source(&field).unwrap_err();
+            assert_eq!(err.data_type, dt);
+            assert_eq!(err.extension.as_deref(), Some(JSON_EXTENSION));
         }
     }
 
     #[test]
-    fn read_nested_as_dynamic() {
+    fn nested_is_unsupported_until_m2() {
         let item = Arc::new(Field::new("item", DataType::Int64, true));
         let entries = Arc::new(Field::new(
             "entries",
@@ -375,7 +382,7 @@ mod tests {
             DataType::LargeList(item),
             DataType::Map(entries, false),
         ] {
-            assert_eq!(source(dt), Ok(Type::Dynamic));
+            assert_eq!(source(dt.clone()).unwrap_err().data_type, dt);
         }
     }
 

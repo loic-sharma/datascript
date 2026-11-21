@@ -384,6 +384,24 @@ type. **Aggregate context** is one parameter of expression binding (`Agg`): rows
 place: `where`, `by`, a `let`), `summarize`'s aggregate list (a column outside an aggregate, or an
 item with no aggregate, is DS2005), or inside an aggregate (no nesting). *(M1-05, 2026-11-21.)*
 
+### D-039 — M2 types stay out of M1; integer math is `long` (M1-23)
+**`decimal` mixes with nothing in M1.** The lattice said `decimal` meets `real` at `real`, but the
+operator table's `num` excludes `decimal`, so only `decimal == real` worked. A `decimal` value can
+only come from `decimal(null)` in M1 (files read decimals as `real`), so the lattice was narrowed
+rather than the table widened: `decimal + real`, `decimal < real` and `avg(decimal)` are errors
+with help suggesting `toreal`, and M2-10 decides the conversions. **`dynamic` and `guid` columns
+are unsupported (`DS2008`) until M2**: nested Arrow types, Utf8 with `arrow.json` and
+FixedSizeBinary(16) with `arrow.uuid` read as no type, so they can be projected but not used in
+expressions, instead of producing values no operator or function accepts. **`abs`, `round`,
+`floor`, `ceiling` and `bin` of an integer return `long`**, as `-x` and `sum` do (D-021), so
+`abs(toint(-2147483648))` cannot overflow; the catalog's `IntegerAsLong` return rule covers them
+and `sum`/`sumif`. **An untyped `null` next to a number class is `long`**: `null * 1d` scales by a
+`long` rather than multiplying two timespans. **Overload errors** blame the argument where the
+form that matched most arguments exactly (no `null`, error or widening) failed, the first form on
+ties, rather than the furthest argument any form reached. **Untyped results are not defaulted in
+the catalog**: `Resolved::return_type` may be `Null`, which the binder reports as `DS2009`
+(D-038). *(M1-23, 2026-11-21.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack
