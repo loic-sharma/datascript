@@ -10,7 +10,8 @@ Semi-structured data: the `dynamic` type, member/index access (`d.a.b`, `d[0]`),
 
 ## Scope
 Decide Q-003 (representation) first and record it in DECISIONS.md. Nested Parquet/JSON columns
-should become usable through this type.
+should become usable through this type. Result fields carry the matching canonical extension type
+(`arrow.json`, or the Variant extension type if Q-003 picks it, D-024).
 
 ## Acceptance criteria
 - [ ] Golden cases over `tests/data/events/*.ndjson`.

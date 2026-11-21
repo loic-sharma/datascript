@@ -1,8 +1,9 @@
 # M1-10 — `render` operator semantics
 
 **Status:** todo
-**Depends on:** M1-05, M1-06
+**Depends on:** M1-16, M1-06
 **Crates:** `datascript-compiler` (spec + validation), `datascript-engine` (carries it)
+**Diagnostic codes:** DS5001–DS5049 (D-018)
 
 ## Goal
 Make `render` a validated part of the language that produces a `RenderSpec` frontends can draw.
@@ -14,6 +15,9 @@ Make `render` a validated part of the language that produces a `RenderSpec` fron
 - Default column inference per LANGUAGE.md §6, resolved at compile time so the spec is always explicit.
 - `render` line in golden `run` output (TESTING.md format).
 - CLI behaviour: print the table and DS5001 info once.
+
+Design-review additions: DS5003 unknown render kind and DS5004 unknown or repeated property, both
+with did-you-mean. `render` not last is DS0120 in the parser (M1-03), not here.
 
 ## Acceptance criteria
 - [ ] Golden cases for every chart kind (default inference + explicit props) and every render error.

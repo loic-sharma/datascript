@@ -3,6 +3,7 @@
 **Status:** todo
 **Depends on:** M1-01
 **Crates:** `datascript-syntax`
+**Diagnostic codes:** DS0100–DS0101 (D-018)
 
 ## Goal
 Recursive-descent parser producing a lossless rowan CST with error recovery, plus a typed AST
@@ -22,13 +23,27 @@ layer. See D-001 and ARCHITECTURE.md § Syntax.
 - CST debug dump format used by `mode: syntax` golden tests.
 - Public API: `parse(text) -> Parse { green, errors }`, `Parse::program() -> ast::Program`.
 
+Design-review additions:
+- Contextual keywords: match identifier text where the grammar expects a keyword, so `| where
+  order > 3` and `summarize sum(count) by kind` parse.
+- Hyphenated operator names (D-026): right after `|`, join adjacent `ident` `-` `ident` tokens with
+  no trivia between them into one operator node (`project-away`, `project-rename`,
+  `project-reorder`, `mv-expand`, `make-series`).
+- Typed-null literals `<type>(null)` (LANGUAGE.md §1), not function calls.
+- `right_table` accepts a path string (`join 'customers.csv' on customerId`).
+- `in (...)`, `between (a .. b)`, and non-chaining comparisons (`a < b < c` is an error suggesting
+  `a < b and b < c`).
+- A `let` produces one `LetStmt` node whether its right side is scalar or tabular; the binder
+  decides from the right side (D-020).
+
 ## Out of scope
 Targeted "foreign habit" diagnostics (M1-03). Parse errors in this task may use the generic DS0101,
 but they must name what was expected in words.
 
 ## Acceptance criteria
 - [ ] Golden `syntax` cases for every operator and expression form, including precedence corner
-      cases (`not a == b`, `a - -b`, `x between (1 .. 10)`).
+      cases (`not a == b`, `a - -b`, `x between (1 .. 10)`), `| project-away x`, `| project - away x`
+      (error), and `long(null)`.
 - [ ] Recovery cases: two broken operators in one pipeline produce two errors and a usable tree
       for the rest.
 - [ ] Fuzz/property test: arbitrary input never panics, and the tree text equals the input.

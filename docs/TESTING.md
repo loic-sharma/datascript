@@ -56,10 +56,11 @@ error[DS1001]: unknown column `amout`
 | Key | Values | Default | Meaning |
 |---|---|---|---|
 | `mode` | `syntax`, `check`, `explain`, `run` | `run` | How far the pipeline goes. `syntax` dumps the CST, `explain` prints the logical plan |
-| `order` | `strict`, `any` | `strict` | `any` sorts result rows before comparing (for queries without a defined order) |
+| `order` | `strict`, `any` | `strict` if every query's output order is defined by LANGUAGE.md §3.4 (its last `sort` or `top` is followed only by order-preserving operators such as `take`, `where`, `project`, `extend`, `render`), else `any` | `any` sorts result rows before comparing (D-017) |
 | `now` | ISO datetime | `2024-06-01T00:00:00Z` | Fixed clock for `now()`/`ago()` |
-| `engine` | `datafusion`, … | `datafusion` | Backend under test. Later: run the same case on several engines |
+| `engine` | `datafusion`, … | `datafusion` | Backend under test. A comma-separated list runs the case on each (see "Several engines") |
 | `tables` | `name=path, ...` | | Host-registered tables (simulates `--table`/drag-drop) |
+| `schema` | `name(col: type, ...); ...` | | Schemas for a mock `SchemaProvider`, for `check`/`explain` cases before a real backend exists (M1-05). With `schema`, no files are read |
 | `skip` | reason | | Skip with a reason (e.g. known bug, links a task) |
 
 Lines starting with `#` before the first section are a free-form description.
@@ -73,6 +74,27 @@ Lines starting with `#` before the first section are a free-form description.
 - **Diagnostics** use the *plain* renderer: no color, ASCII only, the file is shown as `query`.
   All diagnostics are printed, errors and warnings, in source order.
 - When a `run` program has warnings and still executes, the warnings print first, then the table.
+- `DS5001` (chart not drawn) is not printed in golden output, because the `render:` line already
+  shows the spec. Every other info diagnostic is printed.
+
+### Determinism
+
+Golden output must be byte-identical across machines and runs (D-017):
+
+- The driver runs DataFusion with `target_partitions = 1` and a fixed batch size, so row order
+  without `sort` and float summation order are stable. Cases still must not depend on them: use
+  `order: any` or a `sort` with tie-breaking keys.
+- `sort` is not stable (LANGUAGE.md §3.4). The fixtures contain ties, so a case that sorts on a
+  tied key must add a tie-breaker or use `order: any`.
+- Absolute paths in output are rewritten: the test file's directory becomes `<test>/`, the
+  repository root `<repo>/`. Directory listings (did-you-mean over nearby files) are sorted.
+- No output may depend on the wall clock, the locale, the time zone, or the environment.
+
+### Several engines
+
+With `engine: datafusion, sql-duckdb`, one `---- expected` section applies to all engines. When an
+engine legitimately differs, add `---- expected[sql-duckdb]` for it and say why in the description.
+`DS_BLESS` writes per-engine sections only when the outputs differ.
 
 ### Blessing
 
@@ -92,6 +114,10 @@ and are documented in `tests/data/README.md`:
 - `customers.csv`: customerId, name, country, signupDate
 - `events/2024-0{1,2,3}.ndjson`: for glob and JSON tests
 - `edge/`: empty file, header-only CSV, nulls, unicode, quoted delimiters
+- `reordered/*.csv`: CSV files with the same columns in different header orders, plus one file
+  with an extra column, for name-based glob merging (LANGUAGE.md §3.1)
+- `types.parquet`: `Timestamp(ns)`, `Date32`, `Int16`, `UInt32`, `Float32`, a dictionary string
+  column and a decimal column, for the read mapping in LANGUAGE.md §5.1
 
 Paths inside `.dstest` files are relative to the test file, like script paths in real use.
 

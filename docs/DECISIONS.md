@@ -21,12 +21,8 @@ WASM boundary). Most candidate engines already speak Arrow.
 ### D-004 — `join` defaults to `kind = inner`; no `innerunique`
 KQL's default `innerunique` deduplicates the left side silently, which surprises users and would
 need a dedicated diagnostic to explain. DataScript uses SQL-like `inner`. Using `innerunique` gives
-an error that explains the divergence and how to get the same effect (`distinct` on the left first).
-
-### D-005 — `sort by` defaults to ascending
-KQL defaults `sort` to descending, which surprises nearly everyone. `top` stays descending by
-default, because top-N is about the largest values.
-*(Divergence from KQL; confirm before M1 ships — see Q-001.)*
+an error (`DS0124`) that explains the divergence and how to get the same effect (`distinct` on the
+left first).
 
 ### D-006 — DuckDB-style file sources
 A string literal at the head of a pipe is a file path or glob (`'data/*.parquet' | ...`), with
@@ -43,11 +39,135 @@ Short to type. If `ds` turns out to clash with common tools, packaging can also 
 ### D-009 — Dual MIT / Apache-2.0 license
 Rust ecosystem convention, compatible with DataFusion (Apache-2.0).
 
-## Proposed (open questions)
+### D-010 — A `let` bound to a bare string is tabular if it is used as a table *(superseded by D-020)*
+`let orders = 'data/*.parquet';` and `let name = "Alice";` have the same syntax. The parser
+produces one `LetStmt` node and the binder decides: the `let` is **tabular** (a source) if any use
+of the name is in a table position (pipe head, right side of `join`/`union`); otherwise it is a
+**scalar** string. A name used both ways gets `DS2007`, with labels on both uses. This keeps the
+README style working without a separate keyword. Alternatives rejected: a path-shaped heuristic
+(extension or glob characters) is fragile; requiring `read_parquet(...)` for every tabular let
+is noisy. *(Design review, 2026-11-20.)*
 
-### Q-001 — Confirm the `sort` default (D-005)
-Ascending is friendlier, but people porting KQL will get the reverse order with no error. An
-alternative is to require an explicit direction (`sort by x` → warning "add asc or desc").
+### D-011 — `Engine` futures are `Send` on native targets, `?Send` on wasm32
+`axum` handlers and the multi-threaded tokio runtime used by the LSP require `Send` futures, while
+DataFusion on wasm32 is single-threaded and its futures are not `Send`. The trait is declared once
+and the bound is chosen per target (`trait-variant` or
+`#[cfg_attr(target_arch = "wasm32", async_trait(?Send))]` / `#[cfg_attr(not(...), async_trait)]`).
+Frontends on native may assume `Send + Sync` engines. *(Design review, 2026-11-20.)*
+
+### D-012 — Source columns are widened to DataScript types on read
+Real files rarely match the canonical Arrow types: pandas writes `Timestamp(ns)`, recent DataFusion
+reads Parquet strings as `Utf8View`, CSV inference yields `Timestamp(s|ms|ns)` and `Date32`, and
+Parquet commonly has `Int16`, `UInt32`, `Float32` and decimals. The table in
+[LANGUAGE.md §5.1](LANGUAGE.md#51-reading-arrow-types) maps every common Arrow type to a DataScript
+type; the backend casts at the scan. Lossy cases (`UInt64` above `i64::MAX`, nanosecond precision)
+are documented there. Only types with no mapping (structs, lists, maps before M2) stay
+projection-only. *(Design review, 2026-11-20.)*
+
+### D-013 — Keywords are contextual
+Words like `by`, `on`, `kind`, `with`, `asc`, `desc`, `count`, `order` and every operator name are
+ordinary identifiers except where the grammar expects them, because columns named `order`, `kind`,
+`count` and `type` are common. Only `let`, `true`, `false`, `null`, `and`, `or`, `not` are reserved.
+See [LANGUAGE.md §1.1](LANGUAGE.md#11-keywords). *(Design review, 2026-11-20.)*
+
+### D-014 — Scalar semantics follow KQL unless marked ≠ KQL
+Where LANGUAGE.md and the function catalog are silent, a function or operator behaves as in KQL.
+Explicit choices: regular expressions use the Rust `regex` syntax (RE2-like: no backreferences or
+lookaround); `long / long` is integer division truncating toward zero; integer division or modulo by
+zero is a runtime error (`DS4003`); integer overflow is a runtime error; `startofweek` starts on
+Sunday (as in KQL). Backends that cannot match a rule emulate it or list it in
+`Capabilities::deviations`, and golden cases record the difference in an `---- expected[<engine>]`
+section. Checked overflow and division by zero are a deliberate cost: DataFusion wraps by default,
+so M1-09 needs checked arithmetic, and SQL engines differ (M6-03). Whether KQL itself errors here
+is open (Q-008). *(Design review, 2026-11-20; amended in design review 2.)*
+
+### D-015 — `now()` is evaluated once per program run
+All statements in one `ds run` (or one REPL submission, or one web UI Run) see the same `now()`,
+so `let cutoff = ago(1d)` means the same instant in every statement. *(Design review, 2026-11-20.)*
+
+### D-016 — `ds ui` confines file sources to its root directory
+`GET /api/files` blocking path traversal is pointless if `/api/run` can read `'/etc/passwd'`. In
+`ds ui`, every path a query resolves (literal, glob, reader call, host table) must canonicalize to a
+location under the root; anything else is `DS3007`. `--allow-outside-root` lifts this for users who
+want it. The CLI and REPL are not sandboxed (the user runs them on their own files).
+*(Design review, 2026-11-20.)*
+
+### D-017 — Golden tests run single-partition and order-insensitive by default
+DataFusion returns rows in no fixed order without a `sort`, and parallel float aggregation can
+change the last digits. The test driver runs with `target_partitions = 1`, and `order` defaults to
+`any` unless every query's output order is defined (its last `sort` or `top` is followed only by
+order-preserving operators, LANGUAGE.md §3.4). See
+[TESTING.md](TESTING.md#header-keys). *(Design review, 2026-11-20.)*
+
+### D-018 — Diagnostic codes are reserved per task before use
+Parallel tasks used to pick the "next free" code and collide. Each task file lists the code block it
+owns (e.g. `DS0120–DS0139` for M1-03); the registry in DIAGNOSTICS.md records the reservation, and
+`codes.rs` is the source of truth once it exists. *(Design review, 2026-11-20.)*
+
+### D-005 — `sort by` defaults to ascending, and omitting the direction warns
+KQL defaults `sort` to descending, which surprises nearly everyone, so DataScript sorts ascending
+by default. `top` stays descending by default, because top-N is about the largest values. The cost
+is that a ported KQL query silently reverses, and that `sort by x | take 10` is not
+`top 10 by x`. To make that visible, a `sort` key without `asc` or `desc` is warning `DS2103`
+(M1-14), with a machine-applicable fix inserting `asc`; the LSP offers it as a quick fix. This
+closes Q-001. *(Design review 2, 2026-11-20.)*
+
+### D-019 — `join ... on key` produces one key column
+With KQL's rule, `orders | join topCustomers on customerId` (the README example) outputs both
+`customerId` and `customerId1`, identical for an inner join, plus a `DS1007` info. DataScript
+follows SQL `USING` instead: `on key` yields one `key` column in the left column's position
+(`rightouter` takes the right value, `fullouter` coalesces). `on $left.a == $right.b` keeps both
+columns. Other name collisions still get KQL's `name1` renaming and `DS1007`. ≠ KQL. See
+[LANGUAGE.md §3.3](LANGUAGE.md#33-column-naming). *(Design review 2, 2026-11-20.)*
+
+### D-020 — String `let`s are scalars; a constant string in table position is a path
+Supersedes D-010. Under D-010 the meaning of `let p = 'x.csv'` depended on later uses, and a
+natural script (`read_csv(p, delimiter = ';')` plus `p | take 5`) was an error (`DS2007`). Now the
+binder decides a `let`'s kind from its right side alone; a string `let` is a scalar. Wherever a
+table is expected, a constant string (literal or a scalar `let` bound to one) is read as a file
+source. The README style keeps working, hover can show a `let`'s type before any use, and there
+is no inference to replicate. `DS2007` is retired before it was ever implemented. *(Design review 2, 2026-11-20.)*
+
+### D-021 — All integers are read as `long`, and integer arithmetic yields `long`
+With `Int8`–`Int32` columns read as `int` and `int * int` staying `int`, everyday Parquet data
+(`qty * price_cents`) would overflow at 2³¹ and raise `DS4003`. Now every integer source column
+widens to `long` at the scan, integer arithmetic always returns `long`, and `sum` of integers is
+`long`. `int` remains as a type for `toint()` and `int(null)` (KQL compatibility). *(Design review 2, 2026-11-20.)*
+
+### D-022 — Sources are resolved by re-binding, not by a pre-pass
+The first design walked the tree in a separate `collect_sources` pass before binding. That pass
+had to repeat name resolution, `let` handling and constant folding, and would drift from the
+binder (more so with UDFs, M2-05). Now the binder asks a synchronous, caching `SchemaProvider`,
+which answers `Pending` on a miss; the binder records `pending_sources`, and the session fetches
+them and binds again. Because sources depend only on constants, two passes suffice. See
+[ARCHITECTURE.md § Source resolution](ARCHITECTURE.md#semantics-datascript-compiler). *(Design review 2, 2026-11-20.)*
+
+### D-023 — Engines report source problems as structured `SourceError`s
+`Engine::schema_of` used to return a `Diagnostic`, but the engine cannot know the span, and one
+source can appear in several places. It now returns a structured `SourceError` (`NotFound { nearby }`,
+`Conflict { files, column, types }`, …). The compiler builds the DS3xxx diagnostic, with the span,
+help and wording rules from DIAGNOSTICS.md, in one place for all backends. *(Design review 2, 2026-11-20.)*
+
+### D-024 — Ambiguous Arrow types carry canonical extension types
+`dynamic` and `string` are both stored as Utf8, and `guid` is a plain `FixedSizeBinary(16)`, so
+frontends could not tell them apart. Result fields use Arrow's canonical extension types
+(`arrow.json`, `arrow.uuid`) in field metadata. If Q-003 picks the Arrow Variant type, its
+canonical extension type replaces `arrow.json`. *(Design review 2, 2026-11-20.)*
+
+### D-025 — JSON diagnostics count positions in UTF-16 code units
+Every consumer of the JSON form is JavaScript (CodeMirror, the WASM API, VS Code webviews), and
+JavaScript strings index in UTF-16. Byte offsets would force every consumer to re-encode the
+source. The JSON form carries UTF-16 offsets and 1-based line/column only; the LSP conversion
+already needs the same mapping. *(Design review 2, 2026-11-20.)*
+
+### D-026 — The lexer is context-free; the parser joins hyphenated operator names
+The first design lexed `project-away` as one token by tracking the previous non-trivia token.
+Now the lexer always emits `project` `-` `away`, and the parser joins them right after `|` when
+they are adjacent with no trivia. Incremental relexing then never depends on earlier tokens, and
+the TextMate grammar (M3-04) can follow the same rule. `| project - away` is `DS0104` with a
+suggestion. *(Design review 2, 2026-11-20.)*
+
+## Proposed (open questions)
 
 ### Q-002 — Web front-end stack
 Proposal: TypeScript + Vite + **CodeMirror 6** (smaller than Monaco, easier to embed in WASM
@@ -64,3 +184,18 @@ Show tabs per result, or stack them? Decide in M4-02.
 ### Q-005 — Quoted identifiers vs path strings
 `['order id']` (KQL bracket syntax) is a column name, while `'orders.csv'` at a pipe head is a
 path. This is unambiguous to the parser, but check with users that it is not confusing.
+
+### Q-006 — Hive-style partitioned directories
+DuckDB users expect `'data/year=*/month=*/*.parquet'` to expose `year` and `month` as columns.
+DataFusion's `ListingTable` supports this. Decide whether it is automatic, opt-in
+(`read_parquet(..., hive = true)`), or later. Not needed for M1.
+
+### Q-007 — Result size limits in UI runtimes
+The CLI streams; the web UI, VS Code panel and WASM must not buffer a 10 GB result. Proposal: UI
+runtimes fetch the first N rows (default 10 000) with a "results truncated" info diagnostic and an
+option to export the full result. Decide in M4-01.
+
+### Q-008 — Does KQL error on integer overflow and integer division by zero?
+D-014 says these are runtime errors and calls that "following KQL". Check real KQL behaviour in
+M1-09. If KQL wraps or returns null, either keep the rule and mark it ≠ KQL in LANGUAGE.md §4.1,
+or follow KQL. Either way, record the answer here.

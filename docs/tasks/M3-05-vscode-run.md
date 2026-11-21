@@ -1,7 +1,7 @@
 # M3-05 — VS Code: Run CodeLens and results panel
 
 **Status:** todo
-**Depends on:** M3-04, M3-02
+**Depends on:** M3-04, M3-02, M4-02 (results grid component from `web/`)
 **Crates:** `editors/vscode`, `datascript-lsp`
 
 ## Goal

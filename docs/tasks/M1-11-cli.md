@@ -2,6 +2,8 @@
 
 **Status:** todo
 **Depends on:** M1-09
+
+Extends the skeleton from M1-15 rather than starting from nothing.
 **Crates:** `datascript-cli`
 
 ## Goal
@@ -16,6 +18,13 @@ The command-line compiler and runner.
 - `--color auto|always|never`, respecting `NO_COLOR`. Terminal diagnostics renderer when on a TTY.
 - Multiple query statements print multiple tables with a header naming the statement's line.
 - Friendly handling of a nonexistent script path, an empty program, and Ctrl-C during execution.
+
+Design-review additions — several query statements in machine formats:
+- `table` prints every result (as above). `json` prints an array with one
+  `{ "statement": <line>, "columns": [...], "rows": [...] }` per query statement.
+- `csv`, `ndjson` and `arrow` need exactly one result. With more, exit 2 with a message suggesting
+  `--statement <n>` (1-based index of the query statement), which runs only that statement and the
+  lets it needs.
 
 ## Acceptance criteria
 - [ ] Integration tests with `assert_cmd` for exit codes, formats, and stdin.

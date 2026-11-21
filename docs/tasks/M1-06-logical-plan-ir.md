@@ -1,11 +1,11 @@
 # M1-06 — Logical plan IR and `explain`
 
 **Status:** todo
-**Depends on:** M1-05
+**Depends on:** M1-16, M1-17
 **Crates:** `datascript-compiler`
 
 ## Goal
-Lower the typed HIR into the engine-neutral relational IR (D-002) and pretty-print it.
+Lower the typed HIR into the engine-neutral relational IR (D-002) and pretty-print it. Extends the skeleton from M1-15 rather than starting from nothing.
 
 ## Scope
 - IR nodes per ARCHITECTURE.md: `Scan, Filter, Project, Aggregate, Sort, Limit, TopN, Join,
@@ -16,7 +16,9 @@ Lower the typed HIR into the engine-neutral relational IR (D-002) and pretty-pri
 - `Program { queries: Vec<QueryPlan> }`, where `QueryPlan { root, output_schema, render: Option<RenderSpec> }`.
   The `RenderSpec` type itself is defined in M1-10. Leave a placeholder field.
 - Deterministic tree printer for `ds explain` and `mode: explain` golden tests.
-- `compile(src, provider) -> Result<Program, Diagnostics>`.
+- `compile(src, provider, caps) -> Result<Program, Vec<Diagnostic>>` (ARCHITECTURE.md).
+- `join ... on key` lowers to an equi-join plus a `Project` that keeps one key column (D-019);
+  `fullouter` projects `coalesce(left.key, right.key)`.
 
 ## Acceptance criteria
 - [ ] Golden `explain` cases covering each operator and the README example.

@@ -28,6 +28,8 @@ targeting the CLI, a local web UI, the browser (WASM), and VS Code (LSP). Read
 - **The spec is the contract.** If an implementation needs to differ from
   [LANGUAGE.md](docs/LANGUAGE.md), update the spec in the same change and record the reason in
   [DECISIONS.md](docs/DECISIONS.md).
+- **Diagnostic codes** come only from the block your task file names (D-018). Never pick the
+  "next free" code outside it.
 - Keep changes scoped to the task. If you find out-of-scope work, add a new task file (next free
   id in the right milestone) and an index row rather than doing it inline.
 

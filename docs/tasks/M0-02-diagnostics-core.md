@@ -3,6 +3,7 @@
 **Status:** todo
 **Depends on:** M0-01
 **Crates:** `datascript-diagnostics`
+**Diagnostic codes:** DS0004, DS9001 (D-018)
 
 ## Goal
 The single diagnostic model and renderers used by every surface. See [DIAGNOSTICS.md](../DIAGNOSTICS.md)
@@ -18,11 +19,19 @@ and the Diagnostics section of [ARCHITECTURE.md](../ARCHITECTURE.md).
     one and record it in DECISIONS.md, or hand-roll it if neither renders the formats in
     DIAGNOSTICS.md well),
   - **plain**: ASCII, no color, stable (used by golden tests, format shown in TESTING.md),
-  - **JSON**: `serde` serialization with line/column (1-based) and byte offsets.
+  - **JSON**: `serde` serialization with UTF-16 offsets and 1-based line/column counted in UTF-16
+    code units (D-025). No byte offsets.
 - Edit-distance helper `did_you_mean(candidate, iter) -> Suggestions` (Damerau-Levenshtein
   plus case-insensitive match), shared by all later stages.
 - Code registry: a `codes.rs` with a constant per code and its summary, matching the table in
   DIAGNOSTICS.md.
+
+Design-review additions:
+- `primary: Option<Label>` (None only for location-less diagnostics such as DS0004), and
+  `Suggestion { edits: Vec<TextEdit>, applicability }` with non-overlapping edits (ARCHITECTURE.md).
+- The JSON form carries `"version": 1`.
+- The collection caps errors at 50 per file and adds one note with the omitted count.
+- Register DS0004 and DS9001 (this task's block).
 
 ## Out of scope
 LSP conversion (M3-01), long-form explanations (M2-08).
@@ -32,7 +41,9 @@ LSP conversion (M3-01), long-form explanations (M2-08).
       counted in characters for display, UTF-16 for LSP).
 - [ ] Snapshot tests (e.g. `insta`) of the terminal and plain renderers for the three examples in
       DIAGNOSTICS.md.
-- [ ] JSON schema documented in a doc comment. Round-trip test.
+- [ ] JSON schema documented in a doc comment. Round-trip test. A test with non-BMP text (emoji)
+      checks UTF-16 positions.
 - [ ] Crate builds for wasm32.
+- [ ] Rendering of a diagnostic with no primary span, and of a multi-edit suggestion, is tested.
 
 ## Follow-ups

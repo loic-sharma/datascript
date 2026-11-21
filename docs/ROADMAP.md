@@ -6,7 +6,8 @@ dependency column in [tasks/README.md](tasks/README.md).
 ## M0 — Foundation
 
 Workspace, CI, the diagnostics core, and the golden-test harness. After M0, every later task can
-write failing `.dstest` cases first.
+write failing `.dstest` cases first. A spike (M0-05) checks early that DataFusion runs on wasm32, because
+M5 depends on it.
 
 **Done when:** `cargo test --workspace` runs an (initially trivial) `.dstest` suite in CI; core
 crates are checked for wasm32 in CI; diagnostics render in terminal, plain, and JSON form.
@@ -14,6 +15,8 @@ crates are checked for wasm32 in CI; diagnostics render in terminal, plain, and 
 ## M1 — Core language + CLI
 
 Parse, check, and run real queries on local CSV/Parquet/JSON files from the command line.
+It starts with a walking skeleton (M1-15): one simple query runs through every layer first,
+then each layer is built out.
 
 **Done when:**
 - The README example runs end to end with `ds run` against fixtures.
@@ -64,5 +67,5 @@ abstraction works.
 
 ## Explicitly later / unscheduled
 
-Remote data sources (S3/HTTP beyond simple URLs), query parameters, notebooks, materialized `let`,
+Remote data sources (S3/HTTP beyond simple URLs), Hive-partitioned directories (Q-006), query parameters, notebooks, materialized `let`,
 additional engines beyond the SQL emitter, and localization of error messages.

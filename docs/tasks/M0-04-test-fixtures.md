@@ -16,6 +16,8 @@ an order whose customer does not exist).
 - Generate them with a committed script (`tests/data/generate.py` or a small Rust bin) using a fixed
   seed, so they can be regenerated. Commit the generated outputs too.
 - `orders.parquet` must contain the same rows as `orders.csv`.
+- `reordered/*.csv` (same columns, different header order, one file with an extra column) and
+  `types.parquet` (the Arrow types listed in TESTING.md § Fixtures).
 
 ## Acceptance criteria
 - [ ] Total size < 1 MB.
