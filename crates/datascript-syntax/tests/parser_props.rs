@@ -327,3 +327,119 @@ fn pathological_nesting_gives_one_error() {
         assert!(matches!(q.operators().last(), Some(Operator::Count(_))));
     }
 }
+
+/// Long flat chains: `a + a + …` and `a.b.b…` are built by folding, one tree level per operator.
+fn chains(terms: usize) -> Vec<String> {
+    vec![
+        format!("t | where a{}", "+a".repeat(terms - 1)),
+        format!("t | where a{}", " + a".repeat(terms - 1)),
+        format!("t | where a{}", ".b".repeat(terms - 1)),
+        format!("t | where a{}", "[0]".repeat(terms - 1)),
+        format!("t | where a{}", " or a".repeat(terms - 1)),
+        format!("t | where a{}", ".b + a".repeat(terms - 1)),
+    ]
+}
+
+#[test]
+fn realistic_chains_parse() {
+    for text in chains(200) {
+        let parse = parse(&text, FileId(0));
+        assert!(parse.errors.is_empty(), "{:?}", parse.errors);
+        check(&text).unwrap();
+    }
+}
+
+#[test]
+fn pathological_chains_give_one_error() {
+    for chain in chains(100_000) {
+        let text = format!("{chain} | take 1; u | count");
+        // `check` walks the typed AST recursively and drops the tree.
+        check(&text).unwrap();
+        let parse = parse(&text, FileId(0));
+        let codes: Vec<String> = parse.errors.iter().map(|d| d.code.to_string()).collect();
+        assert_eq!(codes, ["DS0100"], "{}", &text[..20]);
+        assert_eq!(
+            parse.errors[0].message,
+            "expression is too long",
+            "{}",
+            &text[..20]
+        );
+        let Some(Stmt::Query(q)) = parse.program().statements().nth(1) else {
+            panic!()
+        };
+        assert!(matches!(q.operators().last(), Some(Operator::Count(_))));
+    }
+}
+
+/// A chain inside brackets shares the budget with the brackets around it.
+#[test]
+fn chains_inside_nesting_give_one_error() {
+    let text = format!(
+        "t | where {}a{}{}; u | count",
+        "(".repeat(200),
+        " + a".repeat(100),
+        ")".repeat(200)
+    );
+    check(&text).unwrap();
+    let parse = parse(&text, FileId(0));
+    let codes: Vec<String> = parse.errors.iter().map(|d| d.code.to_string()).collect();
+    assert_eq!(codes, ["DS0100"]);
+}
+
+fn foreign_operator_lines(lines: usize) -> String {
+    "T | where a && b;\n".repeat(lines)
+}
+
+#[test]
+fn many_foreign_operator_lines_parse() {
+    let text = foreign_operator_lines(8_000);
+    check(&text).unwrap();
+    let parse = parse(&text, FileId(0));
+    assert_eq!(parse.errors.len(), 8_000);
+    assert!(parse.errors.iter().all(|d| d.code.to_string() == "DS0111"));
+}
+
+/// Parsing time grows linearly with the input. Timing is noisy in debug builds and under load,
+/// so this is opt-in: `cargo test --release -p datascript-syntax --test parser_props -- --ignored
+/// --nocapture`. Numbers are recorded in the M1-18 task file.
+#[test]
+#[ignore = "timing; run in release with --ignored"]
+fn long_input_parses_in_linear_time() {
+    use std::time::{Duration, Instant};
+
+    fn time(text: &str) -> Duration {
+        (0..3)
+            .map(|_| {
+                let start = Instant::now();
+                drop(parse(text, FileId(0)));
+                start.elapsed()
+            })
+            .min()
+            .unwrap()
+    }
+
+    type Make = Box<dyn Fn(usize) -> String>;
+    let cases: Vec<(&str, Make)> = vec![
+        (
+            "a+a+…",
+            Box::new(|n| format!("t | where a{}", "+a".repeat(n - 1))),
+        ),
+        (
+            "a + a + …",
+            Box::new(|n| format!("t | where a{}", " + a".repeat(n - 1))),
+        ),
+        (
+            "a.b.b…",
+            Box::new(|n| format!("t | where a{}", ".b".repeat(n - 1))),
+        ),
+        ("&& lines", Box::new(|n| foreign_operator_lines(n * 2 / 5))),
+    ];
+    for (name, make) in cases {
+        let small = time(&make(5_000));
+        let large = time(&make(20_000));
+        let ratio = large.as_secs_f64() / small.as_secs_f64().max(1e-6);
+        println!("{name}: 5k {small:?}, 20k {large:?}, ratio {ratio:.1}");
+        // Linear is 4x; quadratic would be 16x.
+        assert!(ratio < 8.0, "{name} looks superlinear: ratio {ratio:.1}");
+    }
+}

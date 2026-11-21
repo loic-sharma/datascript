@@ -191,7 +191,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS0100,
         severity: Some(Severity::Error),
-        summary: "expression nested too deeply for the parser",
+        summary: "expression nested too deeply, or an operator chain too long, for the parser",
         status: CodeStatus::Active,
     },
     CodeInfo {

@@ -839,27 +839,58 @@ struct Comparison {
 
 /// How deeply expressions may nest. The parser is recursive; this keeps it well inside the stack
 /// (including wasm32's 1 MiB default and 2 MiB test threads) on input such as 100,000 `(`.
+///
+/// The budget counts tree depth, not only recursion: each operator folded into a chain
+/// (`a + b + c`, `a.b.c`) wraps the tree built so far in one more node, so it costs one level
+/// too. Otherwise a long flat chain builds a tree deep enough to overflow recursive walkers and
+/// rowan's own drop.
 const MAX_NESTING: u32 = 256;
 
 fn expr_bp(p: &mut Parser<'_>, min_bp: u8) -> Option<CompletedMarker> {
     if p.nesting >= MAX_NESTING {
-        return too_deep(p);
+        return too_deep(p, false);
     }
+    // Folds in this frame (`expr_bp_inner`, `postfix`) add to `nesting`; all of it is given back
+    // here, once the frame's subtree is finished.
+    let saved = p.nesting;
     p.nesting += 1;
     let result = expr_bp_inner(p, min_bp);
-    p.nesting -= 1;
+    p.nesting = saved;
     result
+}
+
+/// Spends one level of the depth budget on an operator about to wrap the tree built so far.
+/// Past the limit, reports DS0100 and skips the rest of the statement; returns `false`.
+/// Checked one level early, so that the operand which follows (`a + …`, `a[…]`) still fits and
+/// the error points at the operator.
+fn fold_level(p: &mut Parser<'_>) -> bool {
+    if p.nesting + 1 >= MAX_NESTING {
+        too_deep(p, true);
+        return false;
+    }
+    p.nesting += 1;
+    true
 }
 
 /// Reports DS0100 and skips the rest of the statement without recursing. Stopping at a `|` would
 /// let the innermost parenthesis take the outer pipeline's operators, and nest too deeply again.
-fn too_deep(p: &mut Parser<'_>) -> Option<CompletedMarker> {
-    let d = Diagnostic::error(codes::DS0100, "expression is nested too deeply")
-        .primary(
+/// `at_operator` is set when the limit is hit by an operator in a chain rather than by a bracket
+/// or prefix, which needs a different explanation.
+fn too_deep(p: &mut Parser<'_>, at_operator: bool) -> Option<CompletedMarker> {
+    let d = if at_operator {
+        Diagnostic::error(codes::DS0100, "expression is too long")
+            .primary(
+                p.current_span(),
+                format!("more than {MAX_NESTING} levels deep at this operator"),
+            )
+            .note("each operator in a chain like `a + b + c` counts as one level of nesting")
+    } else {
+        Diagnostic::error(codes::DS0100, "expression is nested too deeply").primary(
             p.current_span(),
             format!("more than {MAX_NESTING} levels deep here"),
         )
-        .help("split it into smaller parts with `let`");
+    }
+    .help("split it into smaller parts with `let`");
     p.report(d);
     p.too_deep = true;
     if p.at(EOF) {
@@ -879,7 +910,7 @@ fn expr_bp_inner(p: &mut Parser<'_>, min_bp: u8) -> Option<CompletedMarker> {
     let mut lhs = prefix_or_primary(p)?;
     let mut previous: Option<Comparison> = None;
     while let Some((bp, op)) = infix(p) {
-        if bp < min_bp {
+        if bp < min_bp || !fold_level(p) {
             break;
         }
         let op_start = p.pos;
@@ -1048,6 +1079,9 @@ fn at_typed_null(p: &Parser<'_>) -> bool {
 /// Member access `a.b` and indexing `a[0]`.
 fn postfix(p: &mut Parser<'_>, mut lhs: CompletedMarker) -> CompletedMarker {
     loop {
+        if matches!(p.current(), DOT | L_BRACK) && !fold_level(p) {
+            return lhs;
+        }
         match p.current() {
             DOT => {
                 let m = lhs.precede(p);

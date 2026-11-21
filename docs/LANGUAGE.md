@@ -266,7 +266,8 @@ Comparison operators do not chain: `a < b < c` is a syntax error (`DS0101`) sugg
 
 `not` followed by `(` reads like a call and binds like one (as in KQL): `not(x) == y` is
 `(not x) == y`. Without parentheses, `not` is the level-3 prefix: `not x == y` is `not (x == y)`
-(D-029). Expressions may nest at most 256 levels deep (`DS0100`).
+(D-029). Expressions may nest at most 256 levels deep (`DS0100`); each operator in a chain such as
+`a + b + c` or `a.b.c` counts as one level (D-032).
 
 - `x in (1, 2, 3)`: the list is scalar literals or expressions of one type (after widening).
   `in~` compares strings case-insensitively. Tabular `in (T | project a)` is M2.

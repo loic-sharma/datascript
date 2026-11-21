@@ -238,6 +238,16 @@ all its arguments to one type, so `iff(p, 1, 2.5)` is `real`; an untyped `null` 
 type of the first operator row the other operand fits (`dt - null` is `datetime`). *(M1-04,
 2026-11-20.)*
 
+### D-032 — The nesting limit counts operator chains
+D-029's limit of 256 levels counted only recursion, but left-associative chains (`a + b + …`) and
+postfix chains (`a.b.c`, `a[0][1]`) are built by a loop that wraps the tree once per operator.
+A 200,000-term chain parsed into a tree deep enough to overflow recursive walkers and rowan's own
+drop, and rowan's node interning rehashed deep nodes with a recursive hash, which made unspaced
+chains quadratic. **Each folded operator now costs one level of the same budget**, so the
+limit bounds the depth of the tree, not of the parser's stack. A chain of more than about 256
+operators is DS0100 ("expression is too long"); split it with `let`. Parsing stays linear on any
+input. *(M1-18, 2026-11-21.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

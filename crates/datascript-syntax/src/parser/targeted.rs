@@ -696,9 +696,13 @@ impl Parser<'_> {
         };
         let edit = self.word_edit(op, word);
         // Quote the rewrite only if the operands hold no other habit, which it would repeat.
-        let clean = self.tokens[..]
+        // Tokens are sorted by offset: look only at the operands' range, so that a file full of
+        // `&&` stays linear.
+        let first = self.tokens.partition_point(|t| t.start < lhs_start);
+        let last = self.tokens.partition_point(|t| t.end() <= rhs.1);
+        let clean = self.tokens[first..last.max(first)]
             .iter()
-            .filter(|t| t.start >= lhs_start && t.end() <= rhs.1 && t.start != token.start)
+            .filter(|t| t.start != token.start)
             .all(|t| !matches!(t.kind, EQ | LTGT | AMP2 | PIPE2 | BANG));
         let help = match self
             .snippet(lhs_start, token.start)
