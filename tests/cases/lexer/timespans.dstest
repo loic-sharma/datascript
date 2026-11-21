@@ -1,39 +1,53 @@
 # Short-form timespans and timespan(...) bodies.
 mode: syntax
 ---- query
-from 1d 2h 30m 10s 250ms 5us 5µs 3tick 1.5h timespan(1.02:03:04) timespan(null)
+from t | extend x = 1d 2h 30m 10s 250ms 5us 5µs 3tick 1.5h timespan(1.02:03:04) timespan(null)
 ---- expected
-PROGRAM@0..81
-  PIPELINE@0..80
+PROGRAM@0..96
+  PIPELINE@0..95
     IDENT@0..4 "from"
     WHITESPACE@4..5 " "
-    LITERAL@5..7
-      TIMESPAN@5..7 "1d"
-    WHITESPACE@7..8 " "
-    ERROR@8..80
-      TIMESPAN@8..10 "2h"
-      WHITESPACE@10..11 " "
-      TIMESPAN@11..14 "30m"
-      WHITESPACE@14..15 " "
-      TIMESPAN@15..18 "10s"
-      WHITESPACE@18..19 " "
-      TIMESPAN@19..24 "250ms"
-      WHITESPACE@24..25 " "
-      TIMESPAN@25..28 "5us"
-      WHITESPACE@28..29 " "
-      TIMESPAN@29..33 "5µs"
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    EXTEND_OP@9..22
+      IDENT@9..15 "extend"
+      WHITESPACE@15..16 " "
+      NAMED_EXPR@16..22
+        NAME@16..17
+          IDENT@16..17 "x"
+        WHITESPACE@17..18 " "
+        EQ@18..19 "="
+        WHITESPACE@19..20 " "
+        LITERAL@20..22
+          TIMESPAN@20..22 "1d"
+    WHITESPACE@22..23 " "
+    ERROR@23..95
+      TIMESPAN@23..25 "2h"
+      WHITESPACE@25..26 " "
+      TIMESPAN@26..29 "30m"
+      WHITESPACE@29..30 " "
+      TIMESPAN@30..33 "10s"
       WHITESPACE@33..34 " "
-      TIMESPAN@34..39 "3tick"
+      TIMESPAN@34..39 "250ms"
       WHITESPACE@39..40 " "
-      TIMESPAN@40..44 "1.5h"
-      WHITESPACE@44..45 " "
-      TIMESPAN@45..65 "timespan(1.02:03:04)"
-      WHITESPACE@65..66 " "
-      TIMESPAN@66..80 "timespan(null)"
-  WHITESPACE@80..81 "\n"
+      TIMESPAN@40..43 "5us"
+      WHITESPACE@43..44 " "
+      TIMESPAN@44..48 "5µs"
+      WHITESPACE@48..49 " "
+      TIMESPAN@49..54 "3tick"
+      WHITESPACE@54..55 " "
+      TIMESPAN@55..59 "1.5h"
+      WHITESPACE@59..60 " "
+      TIMESPAN@60..80 "timespan(1.02:03:04)"
+      WHITESPACE@80..81 " "
+      TIMESPAN@81..95 "timespan(null)"
+  WHITESPACE@95..96 "\n"
 
 error[DS0101]: expected `|` or `;`, found `2h`
-  --> query:1:9
+  --> query:1:24
   |
-1 | from 1d 2h 30m 10s 250ms 5us 5µs 3tick 1.5h timespan(1.02:03:04) timespan(null)
-  |         ^^
+1 | from t | extend x = 1d 2h 30m 10s 250ms 5us 5µs 3tick 1.5h timespan(1.02:03:04) timespan(null)
+  |                        ^^

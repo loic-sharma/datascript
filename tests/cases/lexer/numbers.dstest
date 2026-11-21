@@ -1,37 +1,51 @@
 # Longs, reals, ranges, and no negative literals.
 mode: syntax
 ---- query
-from 42 1_000_000 3.14 1e-3 .5 1..10 1. -7
+from t | extend x = 42 1_000_000 3.14 1e-3 .5 1..10 1. -7
 ---- expected
-PROGRAM@0..43
-  PIPELINE@0..42
+PROGRAM@0..58
+  PIPELINE@0..57
     IDENT@0..4 "from"
     WHITESPACE@4..5 " "
-    LITERAL@5..7
-      LONG@5..7 "42"
-    WHITESPACE@7..8 " "
-    ERROR@8..42
-      LONG@8..17 "1_000_000"
-      WHITESPACE@17..18 " "
-      REAL@18..22 "3.14"
-      WHITESPACE@22..23 " "
-      REAL@23..27 "1e-3"
-      WHITESPACE@27..28 " "
-      REAL@28..30 ".5"
-      WHITESPACE@30..31 " "
-      LONG@31..32 "1"
-      DOT2@32..34 ".."
-      LONG@34..36 "10"
-      WHITESPACE@36..37 " "
-      LONG@37..38 "1"
-      DOT@38..39 "."
-      WHITESPACE@39..40 " "
-      MINUS@40..41 "-"
-      LONG@41..42 "7"
-  WHITESPACE@42..43 "\n"
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    EXTEND_OP@9..22
+      IDENT@9..15 "extend"
+      WHITESPACE@15..16 " "
+      NAMED_EXPR@16..22
+        NAME@16..17
+          IDENT@16..17 "x"
+        WHITESPACE@17..18 " "
+        EQ@18..19 "="
+        WHITESPACE@19..20 " "
+        LITERAL@20..22
+          LONG@20..22 "42"
+    WHITESPACE@22..23 " "
+    ERROR@23..57
+      LONG@23..32 "1_000_000"
+      WHITESPACE@32..33 " "
+      REAL@33..37 "3.14"
+      WHITESPACE@37..38 " "
+      REAL@38..42 "1e-3"
+      WHITESPACE@42..43 " "
+      REAL@43..45 ".5"
+      WHITESPACE@45..46 " "
+      LONG@46..47 "1"
+      DOT2@47..49 ".."
+      LONG@49..51 "10"
+      WHITESPACE@51..52 " "
+      LONG@52..53 "1"
+      DOT@53..54 "."
+      WHITESPACE@54..55 " "
+      MINUS@55..56 "-"
+      LONG@56..57 "7"
+  WHITESPACE@57..58 "\n"
 
 error[DS0101]: expected `|` or `;`, found `1_000_000`
-  --> query:1:9
+  --> query:1:24
   |
-1 | from 42 1_000_000 3.14 1e-3 .5 1..10 1. -7
-  |         ^^^^^^^^^
+1 | from t | extend x = 42 1_000_000 3.14 1e-3 .5 1..10 1. -7
+  |                        ^^^^^^^^^

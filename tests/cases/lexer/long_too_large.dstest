@@ -1,29 +1,43 @@
 # Long literals above 2^63 do not fit.
 mode: syntax
 ---- query
-from 9223372036854775808 9223372036854775809
+from t | extend x = 9223372036854775808 9223372036854775809
 ---- expected
-PROGRAM@0..45
-  PIPELINE@0..44
+PROGRAM@0..60
+  PIPELINE@0..59
     IDENT@0..4 "from"
     WHITESPACE@4..5 " "
-    LITERAL@5..24
-      LONG@5..24 "9223372036854775808"
-    WHITESPACE@24..25 " "
-    ERROR@25..44
-      LONG@25..44 "9223372036854775809"
-  WHITESPACE@44..45 "\n"
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    EXTEND_OP@9..39
+      IDENT@9..15 "extend"
+      WHITESPACE@15..16 " "
+      NAMED_EXPR@16..39
+        NAME@16..17
+          IDENT@16..17 "x"
+        WHITESPACE@17..18 " "
+        EQ@18..19 "="
+        WHITESPACE@19..20 " "
+        LITERAL@20..39
+          LONG@20..39 "9223372036854775808"
+    WHITESPACE@39..40 " "
+    ERROR@40..59
+      LONG@40..59 "9223372036854775809"
+  WHITESPACE@59..60 "\n"
 
 error[DS0003]: number is too large for a `long`
-  --> query:1:26
+  --> query:1:41
   |
-1 | from 9223372036854775808 9223372036854775809
-  |                          ^^^^^^^^^^^^^^^^^^^ the largest `long` is 9223372036854775807
+1 | from t | extend x = 9223372036854775808 9223372036854775809
+  |                                         ^^^^^^^^^^^^^^^^^^^ the largest `long` is 9223372036854775807
   |
   = help: for numbers this large, use a `real` by adding a fraction: `9223372036854775809.0`
 
 error[DS0101]: expected `|` or `;`, found `9223372036854775809`
-  --> query:1:26
+  --> query:1:41
   |
-1 | from 9223372036854775808 9223372036854775809
-  |                          ^^^^^^^^^^^^^^^^^^^
+1 | from t | extend x = 9223372036854775808 9223372036854775809
+  |                                         ^^^^^^^^^^^^^^^^^^^

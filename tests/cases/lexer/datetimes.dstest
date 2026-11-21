@@ -1,29 +1,43 @@
 # datetime(...) is one literal token when the name is directly followed by `(`.
 mode: syntax
 ---- query
-from datetime(2024-01-31) datetime(2024-01-31T12:00:00Z) datetime(null) datetime (x)
+from t | extend x = datetime(2024-01-31) datetime(2024-01-31T12:00:00Z) datetime(null) datetime (x)
 ---- expected
-PROGRAM@0..85
-  PIPELINE@0..84
+PROGRAM@0..100
+  PIPELINE@0..99
     IDENT@0..4 "from"
     WHITESPACE@4..5 " "
-    LITERAL@5..25
-      DATETIME@5..25 "datetime(2024-01-31)"
-    WHITESPACE@25..26 " "
-    ERROR@26..84
-      DATETIME@26..56 "datetime(2024-01-31T12:00:00Z)"
-      WHITESPACE@56..57 " "
-      DATETIME@57..71 "datetime(null)"
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    EXTEND_OP@9..40
+      IDENT@9..15 "extend"
+      WHITESPACE@15..16 " "
+      NAMED_EXPR@16..40
+        NAME@16..17
+          IDENT@16..17 "x"
+        WHITESPACE@17..18 " "
+        EQ@18..19 "="
+        WHITESPACE@19..20 " "
+        LITERAL@20..40
+          DATETIME@20..40 "datetime(2024-01-31)"
+    WHITESPACE@40..41 " "
+    ERROR@41..99
+      DATETIME@41..71 "datetime(2024-01-31T12:00:00Z)"
       WHITESPACE@71..72 " "
-      IDENT@72..80 "datetime"
-      WHITESPACE@80..81 " "
-      L_PAREN@81..82 "("
-      IDENT@82..83 "x"
-      R_PAREN@83..84 ")"
-  WHITESPACE@84..85 "\n"
+      DATETIME@72..86 "datetime(null)"
+      WHITESPACE@86..87 " "
+      IDENT@87..95 "datetime"
+      WHITESPACE@95..96 " "
+      L_PAREN@96..97 "("
+      IDENT@97..98 "x"
+      R_PAREN@98..99 ")"
+  WHITESPACE@99..100 "\n"
 
 error[DS0101]: expected `|` or `;`, found `datetime(2024-01-31T…`
-  --> query:1:27
+  --> query:1:42
   |
-1 | from datetime(2024-01-31) datetime(2024-01-31T12:00:00Z) datetime(null) datetime (x)
-  |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1 | from t | extend x = datetime(2024-01-31) datetime(2024-01-31T12:00:00Z) datetime(null) datetime (x)
+  |                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
