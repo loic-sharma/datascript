@@ -1,19 +1,30 @@
 //! The driver that runs cases through the real pipeline, as far as it exists.
 
-use datascript_diagnostics::{DiagnosticSink, Diagnostics, FileId, Renderer, SourceMap};
+use std::sync::Arc;
+
+use datascript_compiler::Capabilities;
+use datascript_datafusion::{DataFusionConfig, DataFusionEngine};
+use datascript_diagnostics::{
+    Diagnostic, DiagnosticSink, Diagnostics, FileId, Renderer, SourceFile, SourceMap,
+};
+use datascript_engine::{FixedClock, Session, table::format_table};
 use datascript_syntax::ast::{Operator, Stmt};
 
 use crate::case::Mode;
-use crate::driver::{CaseInput, Driver, DriverResult};
+use crate::driver::{CaseInput, Driver, DriverError, DriverResult};
 use crate::fixes::apply_suggestions;
 
-/// Runs cases through the DataScript pipeline. Modes whose stages do not exist yet are
-/// unsupported, so their cases are ignored.
+/// Runs cases through the DataScript pipeline: syntax, then the compiler, then the
+/// [`Session`] over [`DataFusionEngine`].
 ///
 /// `mode: syntax` prints the CST dump ([`datascript_syntax::debug_tree`]), then the lexical and
 /// syntax diagnostics after a blank line. If any diagnostic has a machine-applicable fix, it then
 /// prints the query with every such fix applied ([`apply_suggestions`]) and the diagnostics of
 /// parsing that text again, so a case shows that its fixes work.
+///
+/// `check` and `explain` cases with a `schema:` header use the
+/// [`MockSchemaProvider`](crate::MockSchemaProvider) and read no file; without one they go through the session, which
+/// reads the files. `run` cases always go through the session.
 #[derive(Debug, Clone)]
 pub struct PipelineDriver {
     engine: String,
@@ -27,13 +38,51 @@ impl PipelineDriver {
     }
 }
 
+/// The query as file `query`, ready to compile and render diagnostics against.
+struct Query {
+    sources: SourceMap,
+    src: SourceFile,
+    file: FileId,
+}
+
+impl Query {
+    fn new(input: &CaseInput<'_>) -> Self {
+        let mut sources = SourceMap::new();
+        let file = sources.add("query", input.query);
+        Query {
+            sources,
+            src: SourceFile::new("query", input.query),
+            file,
+        }
+    }
+
+    fn render(&self, diagnostics: &[Diagnostic]) -> String {
+        Renderer::plain().render_all(diagnostics, &self.sources)
+    }
+}
+
+fn session(input: &CaseInput<'_>) -> Session {
+    let engine = DataFusionEngine::new(DataFusionConfig {
+        target_partitions: input.config.target_partitions,
+        batch_size: input.config.batch_size,
+    });
+    Session::new(Arc::new(engine), Arc::new(FixedClock(input.now_micros)))
+}
+
+fn block_on<F: std::future::Future>(future: F) -> Result<F::Output, DriverError> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .map_err(|e| DriverError::Failed(format!("cannot start the async runtime: {e}")))?;
+    Ok(runtime.block_on(future))
+}
+
 impl Driver for PipelineDriver {
     fn engine(&self) -> &str {
         &self.engine
     }
 
     fn supports(&self, mode: Mode) -> bool {
-        mode == Mode::Syntax
+        matches!(mode, Mode::Syntax | Mode::Check | Mode::Explain | Mode::Run)
     }
 
     fn syntax(&self, input: &CaseInput<'_>) -> DriverResult {
@@ -68,6 +117,59 @@ impl Driver for PipelineDriver {
                 out.push_str("which still has errors:\n\n");
                 out.push_str(&Renderer::plain().render_all(&reparse.errors, &fixed_sources));
             }
+        }
+        Ok(out)
+    }
+
+    fn check(&self, input: &CaseInput<'_>) -> DriverResult {
+        let query = Query::new(input);
+        let analysis = match input.schema {
+            Some(mock) => {
+                datascript_compiler::check(&query.src, query.file, mock, &Capabilities::full())
+            }
+            None => {
+                let session = session(input);
+                let ctx = session.exec_context(input.base_dir());
+                block_on(session.check(&query.src, query.file, &ctx))?
+            }
+        };
+        Ok(query.render(&analysis.diagnostics))
+    }
+
+    fn explain(&self, input: &CaseInput<'_>) -> DriverResult {
+        let query = Query::new(input);
+        let program = match input.schema {
+            Some(mock) => {
+                datascript_compiler::compile(&query.src, query.file, mock, &Capabilities::full())
+            }
+            None => {
+                let session = session(input);
+                let ctx = session.exec_context(input.base_dir());
+                block_on(session.compile(&query.src, query.file, &ctx))?
+            }
+        };
+        Ok(match program {
+            Ok(program) => program.explain(),
+            Err(diagnostics) => query.render(&diagnostics),
+        })
+    }
+
+    fn run(&self, input: &CaseInput<'_>) -> DriverResult {
+        if input.schema.is_some() {
+            return Err(DriverError::Failed(
+                "`run` cases read real files and cannot use `schema:`".to_string(),
+            ));
+        }
+        let query = Query::new(input);
+        let session = session(input);
+        let ctx = session.exec_context(input.base_dir());
+        let output = block_on(session.run(&query.src, query.file, &ctx))?;
+        let mut out = query.render(&output.diagnostics);
+        for (i, result) in output.results.iter().enumerate() {
+            if i > 0 || !out.is_empty() {
+                out.push('\n');
+            }
+            out.push_str(&format_table(&result.schema, &result.batches));
         }
         Ok(out)
     }

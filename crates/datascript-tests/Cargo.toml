@@ -10,6 +10,10 @@ publish.workspace = true
 [dependencies]
 datascript-diagnostics = { path = "../datascript-diagnostics" }
 datascript-syntax = { path = "../datascript-syntax" }
+datascript-compiler = { path = "../datascript-compiler" }
+datascript-datafusion = { path = "../datascript-datafusion" }
+datascript-engine = { path = "../datascript-engine" }
+tokio.workspace = true
 arrow-schema.workspace = true
 libtest-mimic.workspace = true
 similar.workspace = true

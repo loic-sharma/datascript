@@ -115,7 +115,7 @@ impl Signature {
         }
         match &self.repeat {
             None => self.max_args().is_some_and(|max| n <= max),
-            Some(repeat) => (n - self.min_args()) % repeat.params.len().max(1) == 0,
+            Some(repeat) => (n - self.min_args()).is_multiple_of(repeat.params.len().max(1)),
         }
     }
 

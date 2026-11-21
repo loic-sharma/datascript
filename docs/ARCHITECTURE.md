@@ -146,12 +146,17 @@ Public facade (sketch):
 
 ```rust
 pub fn parse(text: &str, file: FileId) -> Parse;           // datascript_syntax::parse: syntax only (LSP fast path)
-pub fn check(src: &SourceFile, schemas: &dyn SchemaProvider, caps: &Capabilities) -> Analysis;
-    // Analysis { hir, diagnostics, stage_schemas, pending_sources }
-pub fn compile(src: &SourceFile, schemas: &dyn SchemaProvider, caps: &Capabilities)
+pub fn check(src: &SourceFile, file: FileId, schemas: &dyn SchemaProvider, caps: &Capabilities)
+    -> Analysis;  // Analysis { hir, diagnostics, stage_schemas, pending_sources }
+pub fn compile(src: &SourceFile, file: FileId, schemas: &dyn SchemaProvider, caps: &Capabilities)
     -> Result<Program, Vec<Diagnostic>>;
+pub fn program_of(analysis: Analysis, file: FileId) -> Result<Program, Vec<Diagnostic>>;
 pub fn complete(analysis: &Analysis, offset: TextSize) -> Vec<Completion>;
 ```
+
+`SourceFile` holds a file's name and text but not its `FileId`, which the caller's `SourceMap`
+assigns, so the entry points take both; diagnostic spans point into `file`. `program_of` plans an
+analysis the caller already has, so the session does not bind a third time.
 
 A `Program` contains one `QueryPlan` per output statement, with an optional `RenderSpec` each.
 
@@ -160,13 +165,19 @@ A `Program` contains one `QueryPlan` per output statement, with an optional `Ren
 ```rust
 // Send on native targets, ?Send on wasm32 (D-011). Declared once, e.g. with `trait-variant`
 // or a pair of cfg_attr'd #[async_trait] attributes.
-pub trait Engine {
+pub trait Engine: MaybeSendSync {          // Send + Sync on native, nothing on wasm32
     fn name(&self) -> &str;
     fn capabilities(&self) -> &Capabilities;  // compiler type: functions, join kinds, formats
-    async fn schema_of(&self, source: &SourceRef) -> Result<Schema, SourceError>;  // no span: D-023
+    async fn schema_of(&self, source: &SourceRef, ctx: &ExecContext)
+        -> Result<SchemaRef, SourceError>;   // no span: D-023
     async fn execute(&self, plan: &QueryPlan, ctx: &ExecContext) -> Result<ResultStream, Diagnostic>;
 }
+pub struct ResultStream { pub schema: SchemaRef, pub batches: BatchStream }  // Send stream on native
 ```
+
+- `schema_of` takes the `ExecContext` too: relative paths resolve against its base directory, and
+  the sandbox (D-016) applies to schema reads as much as to execution. M1-15 declares the trait
+  with a pair of `cfg_attr`'d `#[async_trait]` attributes.
 
 - Why the `Send` split matters: `axum` handlers and the LSP's multi-threaded tokio runtime need
   `Send` futures, while DataFusion on wasm32 is single-threaded. On native, `Session` is
@@ -184,6 +195,9 @@ pub trait Engine {
   not hold one document's text, so the LSP and the web server use one `Session` for many documents
   and concurrent requests. `check` and `run` run the source-resolution loop: bind against the
   schema cache, fetch `pending_sources` through `Engine::schema_of`, bind again (D-022).
+  Its methods are `check`, `compile`, `explain` and `run`, each taking `(src, file, ctx)`.
+  `Session::exec_context(base_dir)` builds the `ExecContext` for one call, reading the clock once
+  (D-015). The schema cache is keyed by base directory and `SourceRef`.
 - **Panics**: frontends call the compiler and engine through a boundary that turns a panic into
   `DS9001` (`catch_unwind` on native, a panic hook on wasm32). The LSP and `ds ui` must survive a
   compiler bug.

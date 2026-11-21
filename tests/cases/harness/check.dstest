@@ -1,6 +1,7 @@
 # Sample `check` case: a typo in a column name gets a did-you-mean.
 # Uses the mock schema provider, so no file is read.
 mode: check
+skip: needs `summarize` and aggregate functions (M1-05, M1-16)
 schema: '../../data/orders.csv'(orderId: string, customerId: string, amount: real, timestamp: datetime)
 ---- query
 '../../data/orders.csv' | summarize sum(amout)

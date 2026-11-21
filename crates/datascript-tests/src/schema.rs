@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use arrow_schema::{DataType, Field, Schema, SchemaRef, TimeUnit};
+use datascript_compiler::{SchemaLookup, SchemaProvider, SourceError, SourceRef};
 use datascript_diagnostics::did_you_mean;
 
 /// DataScript type names accepted in `schema:`.
@@ -21,8 +22,8 @@ const EXTENSION_NAME_KEY: &str = "ARROW:extension:name";
 /// Schemas declared by a case's `schema:` header, keyed by source name.
 ///
 /// The name is a host table name (`orders`) or a quoted path (`'../data/orders.csv'`, stored
-/// without quotes). Once the compiler defines its `SchemaProvider` trait (M1-05), this type
-/// implements it.
+/// without quotes). It implements the compiler's [`SchemaProvider`]: a source it does not declare
+/// is not found, with the declared file names as nearby files.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct MockSchemaProvider {
     tables: BTreeMap<String, SchemaRef>,
@@ -37,6 +38,24 @@ impl MockSchemaProvider {
     /// Declared source names, sorted.
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.tables.keys().map(String::as_str)
+    }
+}
+
+impl SchemaProvider for MockSchemaProvider {
+    fn schema_of(&self, source: &SourceRef) -> SchemaLookup {
+        let SourceRef::Path(path) = source;
+        match self.tables.get(path) {
+            Some(schema) => SchemaLookup::Ready(schema.clone()),
+            None => {
+                let mut nearby: Vec<String> = self
+                    .names()
+                    .map(|name| name.rsplit(['/', '\\']).next().unwrap_or(name).to_string())
+                    .collect();
+                nearby.sort();
+                nearby.dedup();
+                SchemaLookup::Failed(SourceError::NotFound { nearby })
+            }
+        }
     }
 }
 

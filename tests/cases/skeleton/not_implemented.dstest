@@ -1,0 +1,12 @@
+# Walking skeleton (M1-15): operators outside the skeleton give DS9001, never a panic.
+mode: check
+---- query
+'../../data/orders.csv' | summarize sum(amount) by customerId
+---- expected
+error[DS9001]: `summarize` is not implemented yet
+  --> query:1:27
+  |
+1 | '../../data/orders.csv' | summarize sum(amount) by customerId
+  |                           ^^^^^^^^^ not supported by this version of DataScript
+  |
+  = note: this version can only read a `.csv` file and apply `where` with comparisons, `project` of columns and `take`

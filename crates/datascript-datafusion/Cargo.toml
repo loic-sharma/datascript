@@ -8,6 +8,16 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+arrow-schema.workspace = true
+async-trait.workspace = true
+datafusion.workspace = true
+datascript-compiler = { path = "../datascript-compiler" }
+datascript-diagnostics = { path = "../datascript-diagnostics" }
+datascript-engine = { path = "../datascript-engine" }
+futures.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
 
 [lints]
 workspace = true

@@ -1,0 +1,13 @@
+# Walking skeleton (M1-15): a missing file gets the minimal DS3001, and the columns of the
+# missing source cause no further errors.
+mode: check
+---- query
+'../../data/order.csv' | where amount > 100 | project orderId, amount
+---- expected
+error[DS3001]: file `../../data/order.csv` not found
+  --> query:1:1
+  |
+1 | '../../data/order.csv' | where amount > 100 | project orderId, amount
+  | ^^^^^^^^^^^^^^^^^^^^^^ no file at this path
+  |
+  = help: a file with a similar name exists: `../../data/orders.csv`

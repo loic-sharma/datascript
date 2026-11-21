@@ -11,6 +11,13 @@ publish.workspace = true
 arrow-array.workspace = true
 arrow-schema.workspace = true
 arrow-cast.workspace = true
+async-trait.workspace = true
+datascript-compiler = { path = "../datascript-compiler" }
+datascript-diagnostics = { path = "../datascript-diagnostics" }
+futures.workspace = true
+
+[dev-dependencies]
+futures = { workspace = true, features = ["executor"] }
 
 [lints]
 workspace = true

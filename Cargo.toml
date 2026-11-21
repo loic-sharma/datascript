@@ -5,12 +5,12 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.0.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.94"
 license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
-# External crates (DataFusion stays out until M1-08)
+# External crates
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -25,11 +25,23 @@ libtest-mimic = "0.8"
 similar = "3"
 proptest = "1"
 rowan = "0.16"
+# DataFusion 55's MSRV is Rust 1.94 (M0-05). Feature set per docs/spikes/datafusion-wasm.md;
+# M1-08 settles it.
+datafusion = { version = "55.3", default-features = false, features = ["parquet"] }
+async-trait = "0.1"
+futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
+tokio = { version = "1", default-features = false, features = ["rt"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
 missing_debug_implementations = "warn"
+# macOS ld notes that binaries linking DataFusion have an `__eh_frame` over 16 MB (only the
+# compact unwind table is affected). It is not actionable, and CI's `-D warnings` would fail on it.
+linker_messages = "allow"
 
 [workspace.lints.clippy]
 dbg_macro = "warn"
 todo = "warn"
+# `Diagnostic` is the error type of every stage (ARCHITECTURE.md). It is large, but errors are
+# rare and boxing it in every signature would buy nothing.
+result_large_err = "allow"
