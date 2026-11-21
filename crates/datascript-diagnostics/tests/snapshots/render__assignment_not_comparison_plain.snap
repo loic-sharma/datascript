@@ -1,0 +1,11 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: "plain(&d, &sources)"
+---
+error[DS0110]: `=` is assignment, not comparison
+  --> query.ds:2:16
+  |
+2 | | where status = "shipped"
+  |                ^ assignment is not allowed here
+  |
+  = help: use `==` to compare values: `status == "shipped"`

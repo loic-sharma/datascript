@@ -1,0 +1,9 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: out
+---
+error[DS0110]: `=` is assignment, not comparison
+  --> query.ds:2:11
+  |
+2 | |    where    x = 1
+  |                 ^ assignment is not allowed here

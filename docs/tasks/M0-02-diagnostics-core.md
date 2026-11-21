@@ -1,6 +1,6 @@
 # M0-02 — Diagnostics core
 
-**Status:** todo
+**Status:** done — diagnostic model, collection, plain/terminal/JSON renderers, did-you-mean and code registry landed in `datascript-diagnostics`
 **Depends on:** M0-01
 **Crates:** `datascript-diagnostics`
 **Diagnostic codes:** DS0004, DS9001 (D-018)
@@ -37,13 +37,21 @@ Design-review additions:
 LSP conversion (M3-01), long-form explanations (M2-08).
 
 ## Acceptance criteria
-- [ ] Unit tests for multi-line spans, spans at EOF, empty spans, tabs, and non-ASCII text (columns
+- [x] Unit tests for multi-line spans, spans at EOF, empty spans, tabs, and non-ASCII text (columns
       counted in characters for display, UTF-16 for LSP).
-- [ ] Snapshot tests (e.g. `insta`) of the terminal and plain renderers for the three examples in
+- [x] Snapshot tests (e.g. `insta`) of the terminal and plain renderers for the three examples in
       DIAGNOSTICS.md.
-- [ ] JSON schema documented in a doc comment. Round-trip test. A test with non-BMP text (emoji)
+- [x] JSON schema documented in a doc comment. Round-trip test. A test with non-BMP text (emoji)
       checks UTF-16 positions.
-- [ ] Crate builds for wasm32.
-- [ ] Rendering of a diagnostic with no primary span, and of a multi-edit suggestion, is tested.
+- [x] Crate builds for wasm32.
+- [x] Rendering of a diagnostic with no primary span, and of a multi-edit suggestion, is tested.
 
 ## Follow-ups
+- Renderer choice: hand-written (D-027). Tests compare terminal output to the DIAGNOSTICS.md
+  examples and plain output to the TESTING.md example verbatim.
+- `codes.rs` mirrors the whole DIAGNOSTICS.md registry (not only this task's block); a unit test
+  fails if the two disagree, so tasks adding a code must update both.
+- Carets count characters, so lines with wide characters (CJK, emoji) are not visually aligned in
+  a terminal. Use `unicode-width` if that turns out to matter.
+- Lines are split on `\n` only; a lone `\r` is not a line break (LSP treats it as one). Revisit in
+  M3-01 if it matters.

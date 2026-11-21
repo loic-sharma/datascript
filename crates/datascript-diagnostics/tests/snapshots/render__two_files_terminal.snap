@@ -1,0 +1,16 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: "terminal(&d, &sources)"
+---
+error[DS2003]: cannot compare `long` and `string`
+  ┌─ query.ds:5:20
+  │
+1 │ let a = 1;
+  │     - unrelated, but far away
+  ·
+5 │ T | where amount > threshold
+  │                    ^^^^^^^^^ this is `string`
+  ┌─ lib.ds:1:17
+  │
+1 │ let threshold = "10";
+  │                 ---- defined as a string here

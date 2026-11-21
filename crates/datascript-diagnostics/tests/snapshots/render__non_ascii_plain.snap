@@ -1,0 +1,9 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: out
+---
+error[DS1001]: unknown column `prïce`
+  --> query.ds:1:33
+  |
+1 | T | where ville == "Zürich" and prïce > 1
+  |                                 ^^^^^ no column named `prïce` here

@@ -1,0 +1,11 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: "plain(&d, &sources)"
+---
+error[DS0111]: `&&` is not an operator in DataScript
+  --> query.ds:1:17
+  |
+1 | T | where a = 1 && b = 2
+  |                 ^^ use `and` here
+  |
+  = help: write it as `a == 1 and b == 2`

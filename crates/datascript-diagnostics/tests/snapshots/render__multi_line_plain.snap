@@ -1,0 +1,12 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: "plain(&d, &sources)"
+---
+error[DS2002]: `sum` takes 1 argument, but 2 were given
+  --> query.ds:2:21
+  |
+2 | | summarize total = sum(
+  |                     ^^^^
+3 |     amount,
+4 |     price)
+  |     ^^^^^^ called with 2 arguments here

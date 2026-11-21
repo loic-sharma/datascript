@@ -1,0 +1,13 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: "out.replace('\\x1b', \"<ESC>\")"
+---
+<ESC>[1;31merror[DS2003]<ESC>[0m<ESC>[1m: cannot add `string` and `long`<ESC>[0m
+  <ESC>[1;34m┌─<ESC>[0m query.ds:2:18
+  <ESC>[1;34m│<ESC>[0m
+<ESC>[1;34m2 │<ESC>[0m | extend total = price + 1
+  <ESC>[1;34m│<ESC>[0m                  <ESC>[1;31m^^^^^<ESC>[0m   <ESC>[1;34m-<ESC>[0m <ESC>[1;34mthis is `long`<ESC>[0m
+  <ESC>[1;34m│<ESC>[0m                  <ESC>[1;31m│<ESC>[0m
+  <ESC>[1;34m│<ESC>[0m                  <ESC>[1;31mthis is `string` (column `price` was read from products.csv)<ESC>[0m
+  <ESC>[1;34m│<ESC>[0m
+  <ESC>[1;34m= <ESC>[0m<ESC>[1mhelp<ESC>[0m: if `price` holds numbers, convert it first: `toreal(price) + 1`

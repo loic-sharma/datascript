@@ -1,0 +1,48 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: "render_json(&[d], &sources)"
+---
+{
+  "version": 1,
+  "diagnostics": [
+    {
+      "code": "DS2003",
+      "severity": "error",
+      "message": "cannot add `string` and `long`",
+      "file": "query.ds",
+      "primary": {
+        "span": {
+          "file": "query.ds",
+          "start": 32,
+          "end": 37,
+          "line": 2,
+          "column": 18,
+          "endLine": 2,
+          "endColumn": 23
+        },
+        "message": "this is `string` (column `price` was read from products.csv)"
+      },
+      "secondary": [
+        {
+          "span": {
+            "file": "query.ds",
+            "start": 40,
+            "end": 41,
+            "line": 2,
+            "column": 26,
+            "endLine": 2,
+            "endColumn": 27
+          },
+          "message": "this is `long`"
+        }
+      ],
+      "help": [
+        {
+          "message": "if `price` holds numbers, convert it first: `toreal(price) + 1`",
+          "suggestion": null
+        }
+      ],
+      "notes": []
+    }
+  ]
+}

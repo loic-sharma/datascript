@@ -12,6 +12,9 @@ publish = false
 [workspace.dependencies]
 # External crates (DataFusion stays out until M1-08)
 clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+insta = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

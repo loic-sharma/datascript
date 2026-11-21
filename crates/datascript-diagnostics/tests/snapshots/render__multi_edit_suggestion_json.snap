@@ -1,0 +1,75 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: "render_json(&[d], &sources)"
+---
+{
+  "version": 1,
+  "diagnostics": [
+    {
+      "code": "DS0111",
+      "severity": "error",
+      "message": "`&&` is not an operator in DataScript",
+      "file": "query.ds",
+      "primary": {
+        "span": {
+          "file": "query.ds",
+          "start": 16,
+          "end": 18,
+          "line": 1,
+          "column": 17,
+          "endLine": 1,
+          "endColumn": 19
+        },
+        "message": "use `and` here"
+      },
+      "secondary": [],
+      "help": [
+        {
+          "message": "write it as `a == 1 and b == 2`",
+          "suggestion": {
+            "applicability": "maybe-incorrect",
+            "edits": [
+              {
+                "span": {
+                  "file": "query.ds",
+                  "start": 12,
+                  "end": 13,
+                  "line": 1,
+                  "column": 13,
+                  "endLine": 1,
+                  "endColumn": 14
+                },
+                "replacement": "=="
+              },
+              {
+                "span": {
+                  "file": "query.ds",
+                  "start": 16,
+                  "end": 18,
+                  "line": 1,
+                  "column": 17,
+                  "endLine": 1,
+                  "endColumn": 19
+                },
+                "replacement": "and"
+              },
+              {
+                "span": {
+                  "file": "query.ds",
+                  "start": 21,
+                  "end": 22,
+                  "line": 1,
+                  "column": 22,
+                  "endLine": 1,
+                  "endColumn": 23
+                },
+                "replacement": "=="
+              }
+            ]
+          }
+        }
+      ],
+      "notes": []
+    }
+  ]
+}

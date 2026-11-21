@@ -1,0 +1,12 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: "terminal(&d, &sources)"
+---
+error[DS1001]: unknown column `amout`
+  ┌─ top_customers.ds:3:27
+  │
+3 │ | summarize revenue = sum(amout) by customerId
+  │                           ^^^^^ no column named `amout` here
+  │
+  = help: a column with a similar name exists: `amount`
+  = note: columns available at this point: orderId, customerId, amount, timestamp

@@ -1,0 +1,9 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: "plain(&d, &sources)"
+---
+error[DS0103]: `|` with no operator after it
+  --> trailing.ds:2:1
+  |
+2 |
+  | ^ expected an operator here

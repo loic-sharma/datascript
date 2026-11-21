@@ -1,0 +1,13 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: "terminal(&d, &sources)"
+---
+error[DS2003]: cannot add `string` and `long`
+  ┌─ query.ds:2:18
+  │
+2 │ | extend total = price + 1
+  │                  ^^^^^   - this is `long`
+  │                  │
+  │                  this is `string` (column `price` was read from products.csv)
+  │
+  = help: if `price` holds numbers, convert it first: `toreal(price) + 1`

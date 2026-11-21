@@ -203,6 +203,7 @@ pub struct Diagnostic {
     pub primary: Option<Label>,     // span + short label text; None only for diagnostics that
                                     // have no location (DS0004, untraceable engine errors)
     pub secondary: Vec<Label>,
+    pub file: Option<FileId>,       // names the file when `primary` is None (D-027)
     pub notes: Vec<String>,         // "note: ..."
     pub help: Vec<Help>,            // "help: ...", optionally with a machine-applicable Suggestion
 }
@@ -214,7 +215,8 @@ The JSON form has a top-level `"version": 1` field. Bump it on any breaking chan
 `@datascript/wasm` check it. Every JSON consumer is JavaScript (CodeMirror, the WASM API, VS Code
 webviews), so positions in JSON are **UTF-16 code units** (D-025): each span has `start`/`end`
 offsets and 1-based `line`/`column`, all counted in UTF-16. Byte offsets are not part of the JSON
-form. The terminal and plain renderers count columns in characters.
+form. The terminal and plain renderers count columns in characters, and print help messages but
+not suggestion edits (D-027).
 
 Renderers, all fed from the same struct:
 

@@ -1,0 +1,6 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: "plain(&d, &sources)"
+---
+error[DS9001]: internal compiler error
+  = note: this is a bug in DataScript; please report it

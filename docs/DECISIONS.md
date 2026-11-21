@@ -167,6 +167,18 @@ they are adjacent with no trivia. Incremental relexing then never depends on ear
 the TextMate grammar (M3-04) can follow the same rule. `| project - away` is `DS0104` with a
 suggestion. *(Design review 2, 2026-11-20.)*
 
+### D-027 — Diagnostic renderers are hand-written
+The terminal and plain formats in DIAGNOSTICS.md and TESTING.md are a contract: every golden test
+compares plain output byte for byte. `annotate-snippets` and `ariadne` each have their own layout
+(ariadne draws labels differently; neither emits the exact `┌─`/`-->` header, gutter and `= help:`
+lines shown in the docs) and a dependency bump could re-render every `.dstest` file. The renderer
+in `datascript-diagnostics` is under 600 lines including tests, has no dependencies, builds for wasm32, and tests
+check its output against the examples in DIAGNOSTICS.md and TESTING.md verbatim. Two details
+follow from it: text renderers print only the help *message* (a `Suggestion`'s edits are for the
+JSON form and the LSP, so the help text spells out the rewrite, as in the DS0110 example), and a
+location-less diagnostic carries an optional `file` so renderers can name the file (style rule 11).
+*(M0-02, 2026-11-20.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

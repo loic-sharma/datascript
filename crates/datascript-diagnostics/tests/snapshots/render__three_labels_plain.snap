@@ -1,0 +1,13 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: "plain(&d, &sources)"
+---
+error[DS2003]: cannot add these values
+  --> query.ds:1:16
+  |
+1 | T | extend x = a + b + c
+  |                ^   -   - this is `bool`
+  |                |   |
+  |                |   this is `long`
+  |                |
+  |                this is `string`
