@@ -6,3 +6,6 @@
 /.vscode/*
 !/.vscode/extensions.json
 node_modules/
+
+# Spike build outputs
+/spikes/*/target

@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DataFusion wasm spike</title>
+<pre id="out">running…</pre>
+<script type="module">
+  // Serve the spike directory (python3 -m http.server) after scripts/size.sh parquet.
+  import init, { run_spike } from "../target/size/parquet/datafusion_wasm_spike.js";
+  const out = document.getElementById("out");
+  try {
+    const t0 = performance.now();
+    await init();
+    const t1 = performance.now();
+    const result = await run_spike();
+    const t2 = performance.now();
+    out.textContent = `${result}\ninit: ${(t1 - t0).toFixed(0)} ms, queries: ${(t2 - t1).toFixed(0)} ms\n${navigator.userAgent}`;
+  } catch (e) {
+    out.textContent = "ERROR: " + e;
+  }
+</script>

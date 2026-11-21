@@ -1,0 +1,62 @@
+# Throwaway spike for M0-05. Not a workspace member and not maintained.
+# Findings: docs/spikes/datafusion-wasm.md
+[package]
+name = "datafusion-wasm-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["parquet"]
+parquet = ["datafusion/parquet"]
+# Function groups DataScript's M1 catalog maps onto (LANGUAGE.md §7).
+functions = [
+    "datafusion/string_expressions",
+    "datafusion/unicode_expressions",
+    "datafusion/datetime_expressions",
+    "datafusion/regex_expressions",
+    "datafusion/math_expressions",
+]
+# make_list / split / mv-expand (M2).
+nested = ["datafusion/nested_expressions"]
+# Compare binary size with DataFusion's SQL frontend linked in (DataScript does not need it).
+sql = ["datafusion/sql"]
+
+[dependencies]
+datafusion = { version = "55", default-features = false, features = [] }
+object_store = { version = "0.13", default-features = false }
+futures = "0.3"
+url = "2"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"
+console_error_panic_hook = "0.1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# wasm32-unknown-unknown: getrandom needs its JS backend. 0.3 (via ahash) also needs the
+# `getrandom_backend="wasm_js"` cfg, set in .cargo/config.toml. (getrandom 0.4 via tempfile is native-only.)
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+# SessionContext::new calls chrono::Utc::now(); without `wasmbind` that is SystemTime::now(),
+# which panics ("time not implemented on this platform"). `wasmbind` reads JS Date instead.
+chrono = { version = "0.4", default-features = false, features = ["clock", "wasmbind"] }
+
+# Run wasm-opt by hand (scripts/size.sh) so raw and optimized sizes are measured separately.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false

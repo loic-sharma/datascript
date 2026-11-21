@@ -34,7 +34,7 @@ Two shared files are touched by many tasks:
 | [M0-02](M0-02-diagnostics-core.md) | Diagnostics core | M0-01 | done | M0-04 |
 | [M0-03](M0-03-golden-test-harness.md) | Golden test harness | M0-01, M0-02 | done | M0-04 |
 | [M0-04](M0-04-test-fixtures.md) | Test fixture datasets | M0-01 | done | M0-02, M0-03 |
-| [M0-05](M0-05-datafusion-wasm-spike.md) | Spike: DataFusion on wasm32 | M0-01 | todo | M0-02, M0-03, M0-04 |
+| [M0-05](M0-05-datafusion-wasm-spike.md) | Spike: DataFusion on wasm32 | M0-01 | done | M0-02, M0-03, M0-04 |
 
 ## M1 — Core language + CLI
 

@@ -20,6 +20,8 @@ from nothing.
   `Engine::schema_of` returning `SourceError` (D-023), even if only `NotFound` exists yet.
 - IR: `Scan`, `Filter`, `Project`, `Limit`, with spans. `ds explain` prints them.
 - `Engine` trait, `Session` with an injected clock, `ExecContext`, the native `Send` bound (D-011).
+- Adding DataFusion 55 to the workspace raises `rust-version` to at least 1.94 (its MSRV;
+  [M0-05 findings](../spikes/datafusion-wasm.md#versions-and-toolchain)).
 - DataFusion: CSV `ListingTable` and lowering of those four nodes, with the widening at the scan
   for the fixture's columns.
 - CLI: `ds run <file>` printing the ASCII table; `ds check <file>`.

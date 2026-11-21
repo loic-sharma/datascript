@@ -36,7 +36,8 @@ Design-review additions:
   implemented in M4-01, but the hook belongs here). DS3008 for unreadable files.
 - Add a `wasm` feature and the CI step
   `cargo check -p datascript-datafusion --no-default-features --features wasm --target wasm32-unknown-unknown`
-  (use what M0-05 learned).
+  (use what M0-05 learned: [feature set and wasm32 workarounds](../spikes/datafusion-wasm.md#feature-set-for-m1-08).
+  The CI runner needs a wasm-capable `clang` for zstd-sys, plus the getrandom rustflag).
 
 ## Acceptance criteria
 - [ ] Golden `check` cases in `tests/cases/sources/` for every source form and every DS3xxx error.

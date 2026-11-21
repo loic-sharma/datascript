@@ -259,11 +259,12 @@ The `web/` front end talks to a `Runtime` interface (TypeScript) with two implem
 
 ## WASM constraints
 
-- DataFusion is expected to build for `wasm32-unknown-unknown` with default features off: no
-  `parquet` async readers that need tokio fs, single-threaded execution. File bytes are registered
-  into an in-memory `ObjectStore` before queries run. This is the riskiest assumption in the plan,
-  so spike M0-05 checks it (build, a CSV and a Parquet query, binary size) before M1, and CI keeps
-  checking it from M1-08.
+- DataFusion builds for `wasm32-unknown-unknown` with default features off plus `parquet`, and
+  runs with `target_partitions = 1` and no tokio runtime. File bytes are put into an in-memory
+  `ObjectStore` before queries run. Spike M0-05 confirmed this: CSV and Parquet queries ran in Node
+  and Chromium, and the engine module is about 5.8 MB gzipped. Its findings, including the
+  workarounds (a wasm-capable clang for zstd-sys, getrandom `wasm_js`, chrono `wasmbind`), are in
+  [spikes/datafusion-wasm.md](spikes/datafusion-wasm.md). CI keeps checking the build from M1-08.
 - Core crates must avoid `std::fs`, `std::time::SystemTime::now()` (use an injected clock, because
   `now()` and `ago()` need one), and threads.
 - The browser build ships as **two wasm modules** behind one JS API (`@datascript/wasm`): a small

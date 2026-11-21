@@ -25,9 +25,12 @@ Design-review additions:
 - Null placement defaults (asc → nulls first, desc → nulls last). DataFusion's own defaults
   differ, so always lower an explicit null ordering.
 - Checked integer arithmetic (D-014): DataFusion wraps on overflow by default, so use checked
-  kernels or a UDF; use what M0-05 found. Answer Q-008 (does KQL error here?) and record it.
+  kernels or a UDF; use what M0-05 found ([checked arithmetic](../spikes/datafusion-wasm.md#checked-integer-arithmetic-for-m1-09-d-014)). Answer Q-008 (does KQL error here?) and record it.
 - `timespan`: a golden case for every timespan row of LANGUAGE.md §4.1 and for `sum`/`avg`/`min`/
   `max` over durations. Cast DataFusion `Interval` results back to `Duration(µs)` (M0-05 findings).
+  Per the [timespan probe](../spikes/datafusion-wasm.md#timespan-as-durationµs-for-m1-09), `-ts`,
+  `ts * n`, `ts / n`, `ts / ts` and `bin(datetime, ts)` need UDFs or casts. Lower column references
+  with `Column::new`, not `col()`, which lowercases.
 - Result fields carry extension type metadata where needed (D-024).
 - Anything this backend knowingly does not follow goes in `Capabilities::deviations`.
 - Honour `DriverConfig` (`target_partitions = 1`) in the test driver.
