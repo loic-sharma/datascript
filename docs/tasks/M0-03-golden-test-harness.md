@@ -1,6 +1,6 @@
 # M0-03 — Golden test harness
 
-**Status:** todo
+**Status:** done — `.dstest` parser, libtest-mimic runner with a `Driver` trait (all modes ignored until implemented), bless, mock `schema:` provider, path/order normalization, and the Arrow table formatter in `datascript-engine::table`.
 **Depends on:** M0-01, M0-02
 **Crates:** `datascript-tests`
 
@@ -32,9 +32,18 @@ Design-review additions (see TESTING.md § Determinism, D-017):
 - Parse `---- expected[<engine>]` sections now (used from M6-03), even if only one engine exists.
 
 ## Acceptance criteria
-- [ ] `cargo test -p datascript-tests` discovers cases recursively under `tests/cases/`.
-- [ ] Bless mode is idempotent and preserves the file's other content byte for byte.
-- [ ] A malformed `.dstest` fails with a message naming the file and line.
-- [ ] Documented in TESTING.md if anything deviates.
+- [x] `cargo test -p datascript-tests` discovers cases recursively under `tests/cases/`.
+- [x] Bless mode is idempotent and preserves the file's other content byte for byte.
+- [x] A malformed `.dstest` fails with a message naming the file and line.
+- [x] Documented in TESTING.md if anything deviates.
 
 ## Follow-ups
+- `MockSchemaProvider` implements the compiler's `SchemaProvider` trait once M1-05 defines it.
+- The DataScript ↔ Arrow type-name mappings in `datascript-tests::schema` and
+  `datascript-engine::table` are small stand-ins; replace both with M1-04's type mapping.
+- `Drivers::current()` registers only a stub `datafusion` driver. M1-15 adds the real driver
+  (honoring `DriverConfig`) and implements `output_order_defined` from the parser.
+- The `syntax` and `explain` samples have empty expected sections; bless them when M1-02 and
+  M1-06 define the dump formats. The `run` sample's numbers are illustrative until M0-04's
+  fixtures exist.
+- Arrow is pinned to 59 in the workspace to match DataFusion 55; bump both together (M1-08).

@@ -1,0 +1,15 @@
+# Sample `run` case: summarize revenue per customer, sorted.
+mode: run
+order: strict
+---- query
+'../../data/orders.csv'
+| summarize revenue = sum(amount) by customerId
+| sort by revenue desc, customerId asc
+| take 3
+---- expected
+customerId | revenue
+string     | real
+-----------+--------
+c-042      | 1250.5
+c-007      |  980.0
+c-113      |  402.25

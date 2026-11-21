@@ -12,7 +12,8 @@ targeting the CLI, a local web UI, the browser (WASM), and VS Code (LSP). Read
    [ARCHITECTURE.md](docs/ARCHITECTURE.md), [DIAGNOSTICS.md](docs/DIAGNOSTICS.md) and
    [TESTING.md](docs/TESTING.md).
 3. Set the task's status to `in-progress` in both the task file and the index table.
-4. Work on a branch named `task/<id>-<slug>`, e.g. `task/M1-02-parser`.
+<!-- Skip for now, commit and push directly from main. -->
+<!-- 4. Work on a branch named `task/<id>-<slug>`, e.g. `task/M1-02-parser`. -->
 
 ## While working
 

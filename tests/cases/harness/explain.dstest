@@ -1,0 +1,7 @@
+# Sample `explain` case: prints the logical plan.
+# The plan format is defined by M1-06; bless this file once that mode is supported.
+mode: explain
+schema: orders(orderId: string, customerId: string, amount: real, timestamp: datetime)
+---- query
+orders | where amount > 10 | take 5
+---- expected

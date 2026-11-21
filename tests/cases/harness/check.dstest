@@ -1,0 +1,15 @@
+# Sample `check` case: a typo in a column name gets a did-you-mean.
+# Uses the mock schema provider, so no file is read.
+mode: check
+schema: '../../data/orders.csv'(orderId: string, customerId: string, amount: real, timestamp: datetime)
+---- query
+'../../data/orders.csv' | summarize sum(amout)
+---- expected
+error[DS1001]: unknown column `amout`
+  --> query:1:41
+  |
+1 | '../../data/orders.csv' | summarize sum(amout)
+  |                                         ^^^^^ no column named `amout` here
+  |
+  = help: a column with a similar name exists: `amount`
+  = note: columns available at this point: orderId, customerId, amount, timestamp

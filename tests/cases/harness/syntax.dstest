@@ -1,0 +1,6 @@
+# Sample `syntax` case: dumps the CST of a short pipeline.
+# The CST dump format is defined by M1-02; bless this file once that mode is supported.
+mode: syntax
+---- query
+orders | where amount > 10 | take 5
+---- expected

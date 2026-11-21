@@ -65,11 +65,35 @@ error[DS1001]: unknown column `amout`
 
 Lines starting with `#` before the first section are a free-form description.
 
+Harness details (M0-03):
+
+- A section header is exactly `---- ` followed by a name (`query`, `expected`,
+  `expected[<engine>]`). Table separators such as `-----+---` contain no space, so they are never
+  mistaken for one. Unknown keys, sections, modes and engines fail the case with the file, the
+  line and a did-you-mean.
+- Until the parser exists, a case without `order:` uses `any`. Drivers take over the default
+  through `Driver::output_order_defined` once they can tell.
+- The query is passed with trailing blank lines removed and exactly one final newline. Expected
+  sections compare with `\r\n` normalized and trailing blank lines ignored; trailing spaces inside
+  lines are significant (`.editorconfig` keeps them in `.dstest` files).
+- `schema:` names are identifiers or quoted paths (`'../data/x.csv'(n: long)`); column names are
+  identifiers or `['quoted name']`. Types are DataScript type names, mapped to the canonical Arrow
+  types by the harness.
+- Each case is one trial named by its path under `tests/cases/` and tagged with its mode, so
+  `-- operators/where/` and `-- run` both filter. Cases in a mode the engine's driver does not
+  support yet, and `skip:` cases, are **ignored**; forcing them with `-- --ignored` fails them
+  with the reason rather than passing them.
+
 ### Expected output rules
 
 - **Results** print as an ASCII table: header row, type row, separator, data rows. Values are
   formatted deterministically: reals with the shortest round-trip representation, datetimes in
   ISO 8601 UTC, nulls as `null`. Several query statements print several tables separated by blank lines.
+- Table layout (`datascript_engine::table::format_table`, shared with the CLI): `real` columns
+  are aligned on the decimal point, `int`/`long` right-aligned, everything else left-aligned.
+  Columns with no DataScript type show `arrow:<Arrow type>` in the type row. `timespan` values
+  print as `[-][d.]hh:mm:ss[.ffffff]`; fractions of datetimes and timespans drop trailing zeros.
+  Control characters in strings are escaped (`\n`, `\t`, `\u{1b}`). Trailing spaces are trimmed.
 - A `render` adds a line `render: timechart x=month y=[revenue] series=customerId` after the table.
 - **Diagnostics** use the *plain* renderer: no color, ASCII only, the file is shown as `query`.
   All diagnostics are printed, errors and warnings, in source order.
