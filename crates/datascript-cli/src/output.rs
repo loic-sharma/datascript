@@ -1,4 +1,4 @@
-//! Printing results: `ds run --format table|csv|json|ndjson|arrow`.
+//! Printing results: `ds run --format table|csv|json|ndjson|arrow`, and the REPL's results.
 
 use std::fmt;
 use std::fs::File;
@@ -106,9 +106,52 @@ pub fn write_results(
         return Ok(());
     }
     let mut out = destination.open()?;
-    let line = |result: &QueryResult| result.statement.map(|s| src.line_col(s.start).line);
-    let written = match format {
-        RunFormat::Table => write_tables(&mut out, results, line, max_rows),
+    write_to(&mut out, format, results, src, max_rows)
+        .and_then(|()| out.flush())
+        .map_err(|e| OutputError::new(destination, e))
+}
+
+/// Writes the results of one REPL input to `out`. Like [`write_results`], except that `csv`
+/// prints every result, each under its `== query <n> (line <l>) ==` header when there are
+/// several: an interactive user can read them apart (M1-12).
+pub fn write_repl_results(
+    out: &mut dyn Write,
+    format: RunFormat,
+    results: &[QueryResult],
+    src: &SourceFile,
+    max_rows: usize,
+) -> io::Result<()> {
+    if format != RunFormat::Csv || results.len() <= 1 {
+        return write_to(out, format, results, src, max_rows);
+    }
+    for (i, result) in results.iter().enumerate() {
+        if i > 0 {
+            writeln!(out)?;
+        }
+        write_header(out, i, statement_line(result, src))?;
+        write_csv(out, &result.schema, &result.batches)?;
+    }
+    Ok(())
+}
+
+/// The line a result's statement starts on.
+fn statement_line(result: &QueryResult, src: &SourceFile) -> Option<u32> {
+    result.statement.map(|s| src.line_col(s.start).line)
+}
+
+fn write_to(
+    out: &mut dyn Write,
+    format: RunFormat,
+    results: &[QueryResult],
+    src: &SourceFile,
+    max_rows: usize,
+) -> io::Result<()> {
+    if results.is_empty() {
+        return Ok(());
+    }
+    let line = |result: &QueryResult| statement_line(result, src);
+    match format {
+        RunFormat::Table => write_tables(out, results, line, max_rows),
         RunFormat::Json => {
             let array: Vec<Value> = results
                 .iter()
@@ -120,17 +163,22 @@ pub fn write_results(
                     })
                 })
                 .collect();
-            serde_json::to_writer(&mut out, &array)
+            serde_json::to_writer(&mut *out, &array)
                 .map_err(io::Error::from)
                 .and_then(|()| out.write_all(b"\n"))
         }
-        RunFormat::Csv => write_csv(&mut out, &results[0].schema, &results[0].batches),
-        RunFormat::Ndjson => write_ndjson(&mut out, &results[0].schema, &results[0].batches),
-        RunFormat::Arrow => write_arrow(&mut out, &results[0].schema, &results[0].batches),
-    };
-    written
-        .and_then(|()| out.flush())
-        .map_err(|e| OutputError::new(destination, e))
+        RunFormat::Csv => write_csv(out, &results[0].schema, &results[0].batches),
+        RunFormat::Ndjson => write_ndjson(out, &results[0].schema, &results[0].batches),
+        RunFormat::Arrow => write_arrow(out, &results[0].schema, &results[0].batches),
+    }
+}
+
+/// `== query <n> (line <l>) ==`, for the result at `index`.
+fn write_header(out: &mut dyn Write, index: usize, line: Option<u32>) -> io::Result<()> {
+    match line {
+        Some(line) => writeln!(out, "== query {} (line {line}) ==", index + 1),
+        None => writeln!(out, "== query {} ==", index + 1),
+    }
 }
 
 /// One table per result. With several, each gets a header naming its statement.
@@ -145,10 +193,7 @@ fn write_tables(
             if i > 0 {
                 writeln!(out)?;
             }
-            match line(result) {
-                Some(line) => writeln!(out, "== query {} (line {line}) ==", i + 1)?,
-                None => writeln!(out, "== query {} ==", i + 1)?,
-            }
+            write_header(out, i, line(result))?;
         }
         let total: usize = result.batches.iter().map(RecordBatch::num_rows).sum();
         let limit = if max_rows == 0 { total } else { max_rows };

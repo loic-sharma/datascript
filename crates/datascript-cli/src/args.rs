@@ -7,6 +7,8 @@ use clap::{ArgGroup, Args, CommandFactory, Parser, Subcommand, ValueEnum};
 
 const MAIN_EXAMPLES: &str = "\
 Examples:
+  ds                                      start the interactive REPL
+  ds --table orders=data/orders.parquet   the REPL, with a host table
   ds run examples/top_customers.ds
   ds run -e \"from 'orders.csv' | take 10\"
   ds check queries/*.ds
@@ -42,6 +44,8 @@ Examples:
   ds explain -e \"from 'orders.csv' | where amount > 100 | take 5\"";
 
 /// DataScript: a pipe-based query language for local data files.
+///
+/// With no command, `ds` starts the interactive REPL.
 #[derive(Debug, Parser)]
 #[command(name = "ds", version, about, after_help = MAIN_EXAMPLES)]
 pub struct Cli {
@@ -49,8 +53,24 @@ pub struct Cli {
     #[arg(long, value_enum, global = true, default_value_t = ColorChoice::Auto)]
     pub color: ColorChoice,
 
+    /// The REPL's settings, used when there is no command.
+    #[command(flatten)]
+    pub repl: ReplArgs,
+
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
+}
+
+/// The REPL's flags (`ds` with no command).
+#[derive(Debug, Args)]
+pub struct ReplArgs {
+    /// Rows to show per table in the REPL; the rest are counted in a footer. 0 shows every row.
+    /// [default: 100]
+    #[arg(long, value_name = "N")]
+    pub max_rows: Option<usize>,
+
+    #[command(flatten)]
+    pub tables: TableArgs,
 }
 
 #[derive(Debug, Subcommand)]
@@ -201,6 +221,13 @@ fn parse_table(value: &str) -> Result<TableArg, String> {
         _ => Err(format!(
             "expected NAME=PATH, such as `orders=data/orders.csv`, but found `{value}`"
         )),
+    }
+}
+
+impl ReplArgs {
+    /// Whether any REPL flag was given, which is a mistake before a command.
+    pub fn given(&self) -> bool {
+        self.max_rows.is_some() || !self.tables.tables.is_empty()
     }
 }
 

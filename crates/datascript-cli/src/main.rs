@@ -1,6 +1,7 @@
-//! The `ds` command-line tool: `ds check`, `ds run` and `ds explain` (ARCHITECTURE.md
-//! § Frontends).
+//! The `ds` command-line tool: `ds check`, `ds run`, `ds explain`, and the REPL when there is
+//! no command (ARCHITECTURE.md § Frontends).
 //!
+//! - [`repl`]: the interactive REPL, or the same loop over piped standard input.
 //! - [`args`]: the command line, with examples in every `--help`.
 //! - [`script`]: loading a script from a file, `-e` or stdin, and reporting diagnostics.
 //! - [`output`]: printing results as a table, CSV, JSON, NDJSON or Arrow IPC.
@@ -10,6 +11,7 @@
 
 mod args;
 mod output;
+mod repl;
 mod script;
 
 use std::io::Write;
@@ -26,7 +28,9 @@ use datascript_diagnostics::codes::{DS3002, DS5001};
 use datascript_diagnostics::{Diagnostic, JsonReport, Severity};
 use datascript_engine::{QueryResult, Session, SystemClock};
 
-use crate::args::{CheckArgs, CheckFormat, Cli, Command, ExplainArgs, RunArgs, TableArg};
+use crate::args::{
+    CheckArgs, CheckFormat, Cli, ColorChoice, Command, ExplainArgs, RunArgs, TableArg,
+};
 use crate::output::{Destination, OutputError};
 use crate::script::{Reporter, Sources};
 
@@ -39,6 +43,16 @@ const EXIT_INTERRUPTED: u8 = 130;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    let Some(command) = cli.command else {
+        // The REPL handles Ctrl-C per submission instead of exiting (M1-12).
+        return repl::main(cli);
+    };
+    if cli.repl.given() {
+        args::usage_error(
+            "`--table` and `--max-rows` before the command are settings of the REPL",
+            "put them after the command, such as `ds run report.ds --table orders=orders.csv`",
+        );
+    }
     // A worker thread runs the program, so the main thread stays free to notice Ctrl-C even
     // while a query is busy computing.
     let runtime = match tokio::runtime::Builder::new_multi_thread()
@@ -52,7 +66,7 @@ fn main() -> ExitCode {
         }
     };
     runtime.block_on(async {
-        let work = tokio::spawn(run(cli));
+        let work = tokio::spawn(run(command, cli.color));
         tokio::select! {
             joined = work => joined.unwrap_or_else(|e| {
                 eprintln!("error: internal error: {e}");
@@ -69,9 +83,9 @@ fn main() -> ExitCode {
     })
 }
 
-async fn run(cli: Cli) -> ExitCode {
-    let reporter = Reporter::new(cli.color);
-    let code = match cli.command {
+async fn run(command: Command, color: ColorChoice) -> ExitCode {
+    let reporter = Reporter::new(color);
+    let code = match command {
         Command::Check(args) => check(args, &reporter).await,
         Command::Run(args) => run_script(args, &reporter).await,
         Command::Explain(args) => explain(args, &reporter).await,
@@ -81,7 +95,7 @@ async fn run(cli: Cli) -> ExitCode {
 
 /// A session over the DataFusion engine with the `--table` host tables, or the diagnostic for a
 /// table whose format cannot be told.
-fn session(tables: &[TableArg]) -> Result<Session, Diagnostic> {
+pub(crate) fn session(tables: &[TableArg]) -> Result<Session, Diagnostic> {
     let mut engine = DataFusionEngine::default();
     for table in tables {
         if format_of_path(&table.path).is_none() {
@@ -272,7 +286,7 @@ async fn run_script(args: RunArgs, reporter: &Reporter) -> u8 {
 
 /// `DS5001`, once per program run: the CLI prints charts as tables (LANGUAGE.md §6.3). It points
 /// at the first `render` that is not `render table`, with a note counting the others.
-fn chart_not_drawn(results: &[QueryResult]) -> Option<Diagnostic> {
+pub(crate) fn chart_not_drawn(results: &[QueryResult]) -> Option<Diagnostic> {
     let charts: Vec<&QueryResult> = results
         .iter()
         .filter(|r| {

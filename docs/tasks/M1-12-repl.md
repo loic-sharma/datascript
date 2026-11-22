@@ -1,6 +1,6 @@
 # M1-12 — REPL
 
-**Status:** todo
+**Status:** done — `ds` with no command starts a reedline REPL (lets kept as text across inputs, `<repl:N>` snippets, redefinition, `.schema`/`.tables`/`.format`/`.help`/`.quit`, highlighting, completion, history, Ctrl-C cancels a query); piped stdin runs the same loop for scripts and tests.
 **Depends on:** M1-11
 **Crates:** `datascript-cli`
 
@@ -109,23 +109,34 @@ implement them, don't re-decide them.
 highlighting, `OPERATOR_NAMES` for completion).
 
 ## Acceptance criteria
-- [ ] The session logic (`ReplSession`: submit rule, let saving and redefinition, span mapping, meta
+- [x] The session logic (`ReplSession`: submit rule, let saving and redefinition, span mapping, meta
       commands, did-you-mean) has no terminal dependency and is unit-tested on its own, including:
       an error in the new input points at `<repl:N>` line 1; an error in a saved let points at its
       own snippet; a failed input saves nothing; redefining `x` removes its users and says so; two
       `let x` in one input are still `DS1003`; a file created after a `DS3001` is found on the next
       submission.
-- [ ] Validator tests for the submit rule: `;` inside a string or comment, unbalanced brackets, a
+- [x] Validator tests for the submit rule: `;` inside a string or comment, unbalanced brackets, a
       blank line, a meta command.
-- [ ] `assert_cmd` tests in piped mode: lets across inputs, `.schema`, `.tables`, `.format csv`, an
+- [x] `assert_cmd` tests in piped mode: lets across inputs, `.schema`, `.tables`, `.format csv`, an
       unknown meta command with did-you-mean, exit codes 0 and 1.
-- [ ] Ctrl-C cancels a running query without exiting; Ctrl-D exits. (Checked by hand; say so in the
-      task summary.)
+- [x] Ctrl-C cancels a running query without exiting; Ctrl-D exits. (Checked by hand; say so in the
+      task summary.) *Checked by driving `ds` through a pseudo-terminal, not by an automated test:
+      Ctrl-C during a 14-way self-join prints `query cancelled`, the query's CPU use stops within
+      about 2 s, the saved lets still work; Ctrl-C on an empty prompt prints the hint and on
+      multi-line input discards it silently; the continuation prompt, blank-line submit, history
+      file and Ctrl-D (exit 0) behave as specified.*
 - [x] D-048 is recorded and LANGUAGE.md §2 notes the REPL exception to `DS1003` (done in the
       design review). Update both if implementation forces a change.
 
 ## Carried over
-- [ ] (from M1-10) `ds run` prints `DS5001` with `chart_not_drawn` in `crates/datascript-cli/src/main.rs` (once per program run, at the first non-`table` render, with a note counting the others). In the REPL, one submitted input is one program run: call the same helper on each input's results, and add a test that `render table` prints nothing and two charts in one input print one `DS5001`.
-- [ ] (from M1-07) The session caches failed schema lookups too (D-043). Call `Session::invalidate_schemas` before each submission (or on a `.reload` command) so a file created or edited after an error is read again. *(Settled above: before every submission and `.schema`; no `.reload`.)*
+- [x] (from M1-10) `ds run` prints `DS5001` with `chart_not_drawn` in `crates/datascript-cli/src/main.rs` (once per program run, at the first non-`table` render, with a note counting the others). In the REPL, one submitted input is one program run: call the same helper on each input's results, and add a test that `render table` prints nothing and two charts in one input print one `DS5001`.
+- [x] (from M1-07) The session caches failed schema lookups too (D-043). Call `Session::invalidate_schemas` before each submission (or on a `.reload` command) so a file created or edited after an error is read again. *(Settled above: before every submission and `.schema`; no `.reload`.)*
 
 ## Follow-ups
+- Handed to M1-13: the "… N more rows (show them with --max-rows N)" footer names a startup flag in
+  the REPL.
+- Informational: implementation choices beyond the plan (reedline 0.49 for the MSRV, the extra
+  `nu-ansi-term` dependency, worker-thread checking and running for Ctrl-C, no repeated warnings
+  for saved lets, `--table`/`--max-rows` before a command is a usage error) are recorded under
+  D-048's implementation notes. Unit tests: `crates/datascript-cli/src/repl/{session,input,editor}.rs`;
+  piped end-to-end tests: `crates/datascript-cli/tests/repl.rs`.

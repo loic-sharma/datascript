@@ -601,6 +601,22 @@ program location, and the task owns no code block. **Piped stdin** runs the same
 editor and exits 1 if any input failed, which gives end-to-end tests a way in. *(Design review of
 M1-12, 2026-11-21.)*
 
+*Implementation notes (M1-12, 2026-11-22).* **Dependencies**: `reedline` is pinned to 0.49,
+the last release that builds on the workspace MSRV (1.94; 0.50 and later need 1.95), and
+`nu-ansi-term` 0.50 is a third new dependency, because reedline 0.49 does not re-export the
+`Style` type its highlighter API takes. **Ctrl-C**: checking and running are spawned on a worker
+thread (`ReplSession::prepare` / `check_task` / `commit`, then `run_task` / `finish_run`), as in
+`ds run`: polled inline on the main thread, a busy DataFusion query never let the `ctrl_c` race
+fire. Aborting the task drops the query. **Warnings and infos about a saved let are not repeated**
+on later submissions (they were shown when it was entered); errors in saved lets still are. The
+**redefinition info line** only appears when users were removed; replacing a let nobody uses is
+silent. **`.schema` diagnostics** render against an unnumbered `<repl>` snippet holding the meta
+command, since meta commands don't count as inputs. **`.schema` and `.tables` print plain aligned
+tables** without the type row of a result: they show text, not data. **`--table` and
+`--max-rows` before a command** (`ds --table t=x.csv run …`) are a usage error with a tip; clap's
+`args_conflicts_with_subcommands` would also reject the global `--color` there. In piped mode,
+`.quit` stops reading and keeps the exit status so far.
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

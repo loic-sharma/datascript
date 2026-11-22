@@ -29,6 +29,11 @@ similar = "3"
 assert_cmd = "2"
 predicates = "3"
 tempfile = "3"
+# The REPL's line editor and history location (M1-12). Only `datascript-cli` uses them.
+reedline = "0.49"
+dirs = "6"
+# reedline's styling type, for highlighting; keep it at the version reedline uses.
+nu-ansi-term = "0.50"
 proptest = "1"
 rowan = "0.16"
 # DataFusion 55's MSRV is Rust 1.94 (M0-05). Feature set per docs/spikes/datafusion-wasm.md;

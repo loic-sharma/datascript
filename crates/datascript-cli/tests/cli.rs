@@ -63,8 +63,21 @@ fn help_has_examples() {
 }
 
 #[test]
-fn no_subcommand_is_a_usage_error() {
-    ds().assert().code(2).stderr(contains("Usage: ds"));
+fn no_subcommand_starts_the_repl() {
+    // With empty piped input the REPL has nothing to do (tests/repl.rs covers it).
+    ds().write_stdin("").assert().success().stdout("");
+}
+
+#[test]
+fn repl_flags_conflict_with_subcommands() {
+    ds().args(["--max-rows", "5", "run", "-e", "from 'orders.csv'"])
+        .assert()
+        .code(2)
+        .stderr(contains("put them after the command"));
+    ds().args(["--table", "o=orders.csv", "check", "-"])
+        .write_stdin("from o")
+        .assert()
+        .code(2);
 }
 
 // ---- run: formats ----

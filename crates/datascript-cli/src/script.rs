@@ -68,6 +68,11 @@ impl Sources {
         Ok(self.add(&path.display().to_string(), text, base_dir))
     }
 
+    /// Adds a snippet that is not a script file, such as a REPL input.
+    pub fn add_snippet(&mut self, name: &str, text: &str) -> FileId {
+        self.map.add(name, text)
+    }
+
     fn add(&mut self, name: &str, text: String, base_dir: PathBuf) -> Script {
         let file = self.map.add(name, text);
         Script { file, base_dir }
@@ -146,6 +151,13 @@ impl Reporter {
             ColorChoice::Auto | ColorChoice::Never => Renderer::plain(),
         };
         Reporter { renderer }
+    }
+
+    /// The plain ASCII renderer, whatever the terminal: the REPL's piped mode.
+    pub fn plain() -> Self {
+        Reporter {
+            renderer: Renderer::plain(),
+        }
     }
 
     pub fn report(&self, sources: &Sources, diagnostics: &[Diagnostic]) {
