@@ -45,6 +45,32 @@ npm run test:e2e       # the extension in VS Code, trusted and untrusted (needs 
 npm run package        # build datascript-<version>.vsix
 ```
 
+### Trying it locally
+
+Build the server and the extension, then open a VS Code window that loads the extension from this
+folder:
+
+```bash
+cargo build -p datascript-cli          # from the repository root
+npm ci && npm run build                # from editors/vscode
+code --extensionDevelopmentPath="$PWD" ../../examples
+```
+
+In that window, set `datascript.server.path` to the absolute path of `target/debug/ds` and open a
+`.ds` file. After a change:
+
+- **Extension code:** `npm run build` (or keep `npm run watch` running), then **Developer: Reload
+  Window**.
+- **Grammar, snippets or `package.json`:** **Developer: Reload Window**.
+- **Server:** `cargo build -p datascript-cli`, then **DataScript: Restart Language Server**.
+
+Set `datascript.trace.server` to `verbose` to see the LSP messages in the DataScript output
+channel. To try Restricted Mode, run **Workspaces: Manage Workspace Trust** and don't trust the
+folder. To try the packaged extension instead, run `npm run package` and
+`code --install-extension datascript-0.0.1.vsix`.
+
+### Tests
+
 `test:e2e` downloads VS Code unless `VSCODE_EXECUTABLE_PATH` names one, and tests the `ds` in
 `target/debug` unless `DS_PATH` names another. Build it first with `cargo build -p datascript-cli`.
 
