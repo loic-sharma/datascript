@@ -25,7 +25,15 @@ const PROGRAM_FILE: FileId = FileId(u32::MAX);
 const GLUE: &str = "\n;\n";
 
 /// The meta commands, as the user types them.
-pub const COMMANDS: &[&str] = &[".help", ".schema", ".tables", ".format", ".quit", ".exit"];
+pub const COMMANDS: &[&str] = &[
+    ".help",
+    ".schema",
+    ".tables",
+    ".format",
+    ".max-rows",
+    ".quit",
+    ".exit",
+];
 
 /// One piece of the combined program.
 #[derive(Debug, Clone)]
@@ -270,6 +278,8 @@ pub struct ReplSession {
     /// Program inputs submitted so far; meta commands don't count.
     inputs: u32,
     format: RunFormat,
+    /// Rows shown per table; 0 shows every row (`--max-rows`, `.max-rows`).
+    max_rows: usize,
     base_dir: PathBuf,
 }
 
@@ -284,6 +294,7 @@ impl ReplSession {
             saved: Vec::new(),
             inputs: 0,
             format: RunFormat::Table,
+            max_rows: 100,
             base_dir: PathBuf::from("."),
         }
     }
@@ -304,6 +315,16 @@ impl ReplSession {
     /// The output format `.format` set.
     pub fn format(&self) -> RunFormat {
         self.format
+    }
+
+    /// Rows shown per table, as `--max-rows` or `.max-rows` set it; 0 shows every row.
+    pub fn max_rows(&self) -> usize {
+        self.max_rows
+    }
+
+    /// Sets the rows shown per table (from `--max-rows`).
+    pub fn set_max_rows(&mut self, max_rows: usize) {
+        self.max_rows = max_rows;
     }
 
     /// The saved lets, in order.
@@ -494,6 +515,7 @@ impl ReplSession {
             ".tables" if arg.is_empty() => MetaOutcome::Print(self.tables_listing()),
             ".help" | ".quit" | ".exit" | ".tables" => no_argument(name),
             ".format" => self.set_format(arg),
+            ".max-rows" => self.set_max_rows_command(arg),
             ".schema" => {
                 // The argument's offset in the input, for mapping spans onto it.
                 let lead = text.len() - text.trim_start().len();
@@ -502,6 +524,28 @@ impl ReplSession {
                 self.schema(text, arg, len32(&text[..offset])).await
             }
             _ => MetaOutcome::Mistake(unknown_command(name)),
+        }
+    }
+
+    /// `.max-rows [n]`: sets the rows shown per table, or shows the setting.
+    fn set_max_rows_command(&mut self, arg: &str) -> MetaOutcome {
+        if arg.is_empty() {
+            let shown = match self.max_rows {
+                0 => "every row".to_string(),
+                1 => "1 row".to_string(),
+                n => format!("{n} rows"),
+            };
+            return MetaOutcome::Print(format!("tables show {shown}\n"));
+        }
+        match arg.parse::<usize>() {
+            Ok(n) => {
+                self.max_rows = n;
+                MetaOutcome::Print(String::new())
+            }
+            Err(_) => MetaOutcome::Mistake(Mistake::new(
+                format!("`.max-rows` needs a whole number, found `{arg}`"),
+                "use `.max-rows 20`, or `.max-rows 0` to show every row",
+            )),
         }
     }
 
@@ -712,6 +756,7 @@ Commands:
   .tables             the host tables and saved lets
   .format [table|csv|json]
                       set the output format, or show it
+  .max-rows [n]       set the rows shown per table (0 shows every row), or show it
   .quit, .exit        leave the REPL
 
 Keys:
@@ -763,17 +808,23 @@ mod tests {
         (src.name().to_string(), lc.line, lc.column)
     }
 
+    /// `path` as a quoted string literal. Forward slashes, so Windows
+    /// backslashes are not read as escapes.
+    fn quoted(path: &Path) -> String {
+        format!("'{}'", path.display().to_string().replace('\\', "/"))
+    }
+
     fn fixture(name: &str) -> String {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/data")
-            .join(name)
-            .display()
-            .to_string()
+        quoted(
+            &Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../tests/data")
+                .join(name),
+        )
     }
 
     /// `'…/orders.csv'`, quoted for a program.
     fn orders() -> String {
-        format!("'{}'", fixture("orders.csv"))
+        fixture("orders.csv")
     }
 
     #[test]
@@ -808,7 +859,7 @@ mod tests {
         std::fs::write(&path, "x\n1\n").unwrap();
         let mut repl = repl();
         submit(&mut repl, "let one = 1;");
-        let (checked, _) = submit(&mut repl, &format!("let t =\n  from '{}';", path.display()));
+        let (checked, _) = submit(&mut repl, &format!("let t =\n  from {};", quoted(&path)));
         assert!(!checked.failed(), "{:?}", checked.diagnostics);
         std::fs::remove_file(&path).unwrap();
         let (checked, _) = submit(&mut repl, "from t | take 1;");
@@ -876,7 +927,7 @@ mod tests {
     fn a_file_created_after_an_error_is_found_next_time() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("late.csv");
-        let query = format!("from '{}' | count;", path.display());
+        let query = format!("from {} | count;", quoted(&path));
         let mut repl = repl();
         let (checked, _) = submit(&mut repl, &query);
         assert!(checked.diagnostics.iter().any(|d| d.code == DS3001));
@@ -952,7 +1003,7 @@ mod tests {
     fn schema_lists_columns_and_maps_errors_onto_the_argument() {
         let mut repl = repl();
         let path = fixture("orders.csv");
-        let MetaOutcome::Print(text) = runtime().block_on(repl.meta(&format!(".schema '{path}'")))
+        let MetaOutcome::Print(text) = runtime().block_on(repl.meta(&format!(".schema {path}")))
         else {
             panic!("expected a table");
         };
@@ -966,6 +1017,30 @@ mod tests {
             panic!("expected diagnostics");
         };
         assert_eq!(location(&repl, &ds[0]), ("<repl>".to_string(), 1, 10));
+    }
+
+    #[test]
+    fn max_rows_is_set_and_shown() {
+        let mut repl = repl();
+        let rt = runtime();
+        assert_eq!(repl.max_rows(), 100);
+        assert!(
+            matches!(rt.block_on(repl.meta(".max-rows 5")), MetaOutcome::Print(s) if s.is_empty())
+        );
+        assert_eq!(repl.max_rows(), 5);
+        let MetaOutcome::Print(s) = rt.block_on(repl.meta(".max-rows")) else {
+            panic!()
+        };
+        assert_eq!(s, "tables show 5 rows\n");
+        rt.block_on(repl.meta(".max-rows 0"));
+        let MetaOutcome::Print(s) = rt.block_on(repl.meta(".max-rows")) else {
+            panic!()
+        };
+        assert_eq!(s, "tables show every row\n");
+        let MetaOutcome::Mistake(m) = rt.block_on(repl.meta(".max-rows lots")) else {
+            panic!()
+        };
+        assert_eq!(m.message, "`.max-rows` needs a whole number, found `lots`");
     }
 
     #[test]

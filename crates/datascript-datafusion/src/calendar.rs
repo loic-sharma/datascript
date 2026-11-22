@@ -3,6 +3,8 @@
 //! Hand-written rather than through chrono so the rules are visible: weeks start on Sunday
 //! (D-014), `week_of_year` is the ISO 8601 week, and every result is checked for overflow.
 
+use datascript_compiler::arg_values::unknown_format_specifier;
+
 use crate::errors::Fail;
 
 pub(crate) const MICROS_PER_SECOND: i64 = 1_000_000;
@@ -123,46 +125,8 @@ fn year_range(year: i64) -> Result<(), Fail> {
 }
 
 /// The parts `datetime_part` and `datetime_diff` accept.
-pub(crate) const PART_NAMES: &str = "\"year\", \"quarter\", \"month\", \"week_of_year\", \"week\", \
-     \"day\", \"dayofyear\", \"hour\", \"minute\", \"second\", \"millisecond\", \"microsecond\", \
-     \"nanosecond\"";
-
-/// A part name, case-insensitively.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Part {
-    Year,
-    Quarter,
-    Month,
-    WeekOfYear,
-    Day,
-    DayOfYear,
-    Hour,
-    Minute,
-    Second,
-    Millisecond,
-    Microsecond,
-    Nanosecond,
-}
-
-impl Part {
-    pub(crate) fn parse(name: &str) -> Option<Part> {
-        Some(match name.to_ascii_lowercase().as_str() {
-            "year" => Part::Year,
-            "quarter" => Part::Quarter,
-            "month" => Part::Month,
-            "week_of_year" | "week" => Part::WeekOfYear,
-            "day" => Part::Day,
-            "dayofyear" => Part::DayOfYear,
-            "hour" => Part::Hour,
-            "minute" => Part::Minute,
-            "second" => Part::Second,
-            "millisecond" => Part::Millisecond,
-            "microsecond" => Part::Microsecond,
-            "nanosecond" => Part::Nanosecond,
-            _ => return None,
-        })
-    }
-}
+/// Part names are a language rule, shared with the binder's check of constant parts.
+pub(crate) use datascript_compiler::arg_values::DatetimePart as Part;
 
 /// `datetime_part(part, us)`.
 pub(crate) fn part_of(part: Part, us: i64) -> i64 {
@@ -260,13 +224,10 @@ pub(crate) fn format(us: i64, format: &str) -> Result<String, Fail> {
             ('F', 1..=7) => fraction(micros, n).trim_end_matches('0').to_string(),
             ('t', 2) => if hour < 12 { "AM" } else { "PM" }.to_string(),
             _ => {
+                // `arg_values::is_format_specifier` lists the same specifiers as this match.
                 let run: String = std::iter::repeat_n(c, n).collect();
-                return Err(Fail::invalid(
-                    format!("`{run}` is not a datetime format specifier"),
-                    "the specifiers are yyyy, yy, y, MM, M, dd, d, HH, H, hh, h, mm, m, ss, s, \
-                     f to fffffff, F to FFFFFFF and tt; other characters that are not letters \
-                     are copied",
-                ));
+                let e = unknown_format_specifier(&run);
+                return Err(Fail::invalid(e.message, e.note));
             }
         };
         out.push_str(&text);
@@ -284,6 +245,22 @@ fn fraction(micros: i64, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use datascript_compiler::arg_values::is_format_specifier;
+
+    /// `format` and the binder's check (`arg_values`) accept exactly the same letter runs.
+    #[test]
+    fn format_specifiers_match_the_shared_rule() {
+        for c in ('a'..='z').chain('A'..='Z') {
+            for n in 1..=8 {
+                let run = c.to_string().repeat(n);
+                assert_eq!(
+                    format(0, &run).is_ok(),
+                    is_format_specifier(c, n),
+                    "`{run}`"
+                );
+            }
+        }
+    }
 
     fn us(y: i64, m: i64, d: i64) -> i64 {
         days_from_civil(y, m, d) * MICROS_PER_DAY

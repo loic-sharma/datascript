@@ -106,7 +106,7 @@ pub fn write_results(
         return Ok(());
     }
     let mut out = destination.open()?;
-    write_to(&mut out, format, results, src, max_rows)
+    write_to(&mut out, format, results, src, max_rows, MoreRows::Flag)
         .and_then(|()| out.flush())
         .map_err(|e| OutputError::new(destination, e))
 }
@@ -122,7 +122,7 @@ pub fn write_repl_results(
     max_rows: usize,
 ) -> io::Result<()> {
     if format != RunFormat::Csv || results.len() <= 1 {
-        return write_to(out, format, results, src, max_rows);
+        return write_to(out, format, results, src, max_rows, MoreRows::Command);
     }
     for (i, result) in results.iter().enumerate() {
         if i > 0 {
@@ -139,19 +139,29 @@ fn statement_line(result: &QueryResult, src: &SourceFile) -> Option<u32> {
     result.statement.map(|s| src.line_col(s.start).line)
 }
 
+/// How a table cut at `max_rows` says to show the rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MoreRows {
+    /// `ds run`: the `--max-rows` flag.
+    Flag,
+    /// The REPL: the `.max-rows` command.
+    Command,
+}
+
 fn write_to(
     out: &mut dyn Write,
     format: RunFormat,
     results: &[QueryResult],
     src: &SourceFile,
     max_rows: usize,
+    more: MoreRows,
 ) -> io::Result<()> {
     if results.is_empty() {
         return Ok(());
     }
     let line = |result: &QueryResult| statement_line(result, src);
     match format {
-        RunFormat::Table => write_tables(out, results, line, max_rows),
+        RunFormat::Table => write_tables(out, results, line, max_rows, more),
         RunFormat::Json => {
             let array: Vec<Value> = results
                 .iter()
@@ -187,6 +197,7 @@ fn write_tables(
     results: &[QueryResult],
     line: impl Fn(&QueryResult) -> Option<u32>,
     max_rows: usize,
+    more_rows: MoreRows,
 ) -> io::Result<()> {
     for (i, result) in results.iter().enumerate() {
         if results.len() > 1 {
@@ -203,9 +214,13 @@ fn write_tables(
             let shown = first_rows(&result.batches, limit);
             out.write_all(format_table(&result.schema, &shown).as_bytes())?;
             let more = total - limit;
+            let how = match more_rows {
+                MoreRows::Flag => "--max-rows",
+                MoreRows::Command => ".max-rows",
+            };
             writeln!(
                 out,
-                "… {} (show them with --max-rows {total})",
+                "… {} (show them with {how} {total})",
                 count(more, "more row", "more rows")
             )?;
         }

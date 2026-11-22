@@ -26,7 +26,7 @@ pub use diagnostic::{
     Suggestion, TextEdit,
 };
 pub use json::{JsonReport, render_json};
-pub use render::Renderer;
+pub use render::{Renderer, text_width};
 pub use source::{LineCol, SourceFile, SourceMap};
 pub use span::{FileId, Span};
 pub use suggest::{Suggestions, did_you_mean};

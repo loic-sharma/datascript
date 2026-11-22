@@ -1,0 +1,92 @@
+# Common mistakes with the string functions: arguments in the wrong order or of the wrong type, and
+# wrong argument counts.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv'
+| project
+    a = strlen(qty),
+    b = tolower(amount),
+    c = toupper(),
+    d = trim(customerId),
+    e = substring(customerId),
+    f = strcat(),
+    g = replace_string(customerId, 'c-'),
+    h = indexof(qty, '1'),
+    i = extract('(\\d+)', customerId, 1)
+---- expected
+error[DS2006]: argument `source` of `strlen` must be `string`, found `long`
+  --> query:3:16
+  |
+3 |     a = strlen(qty),
+  |                ^^^ this is `long` (column `qty` was read from orders.csv)
+  |
+  = help: convert it first if that is what you meant: `tostring(qty)`
+  = note: signature: `strlen(source: string) -> long`
+
+error[DS2006]: argument `source` of `tolower` must be `string`, found `real`
+  --> query:4:17
+  |
+4 |     b = tolower(amount),
+  |                 ^^^^^^ this is `real` (column `amount` was read from orders.csv)
+  |
+  = help: convert it first if that is what you meant: `tostring(amount)`
+  = note: signature: `tolower(source: string) -> string`
+
+error[DS2002]: `toupper` takes 1 argument, found 0
+  --> query:5:9
+  |
+5 |     c = toupper(),
+  |         ^^^^^^^^^ missing `source`
+  |
+  = note: signature: `toupper(source: string) -> string`
+
+error[DS2002]: `trim` takes 2 arguments, found 1
+  --> query:6:9
+  |
+6 |     d = trim(customerId),
+  |         ^^^^^^^^^^^^^^^^ missing `source`
+  |
+  = note: signature: `trim(regex: string, source: string) -> string`
+
+error[DS2002]: `substring` takes 2 or 3 arguments, found 1
+  --> query:7:9
+  |
+7 |     e = substring(customerId),
+  |         ^^^^^^^^^^^^^^^^^^^^^ missing `start`
+  |
+  = note: signature: `substring(source: string, start: integer[, length: integer]) -> string`
+
+error[DS2002]: `strcat` takes at least 1 argument, found 0
+  --> query:8:9
+  |
+8 |     f = strcat(),
+  |         ^^^^^^^^ called with 0 arguments
+  |
+  = note: signature: `strcat(value: any, ...) -> string`
+
+error[DS2002]: `replace_string` takes 3 arguments, found 2
+  --> query:9:9
+  |
+9 |     g = replace_string(customerId, 'c-'),
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `rewrite`
+  |
+  = note: signature: `replace_string(source: string, lookup: string, rewrite: string) -> string`
+
+error[DS2006]: argument `source` of `indexof` must be `string`, found `long`
+   --> query:10:17
+   |
+10 |     h = indexof(qty, '1'),
+   |                 ^^^ this is `long` (column `qty` was read from orders.csv)
+   |
+   = help: convert it first if that is what you meant: `tostring(qty)`
+   = note: signature: `indexof(source: string, lookup: string[, start: integer[, length: integer[, occurrence: integer]]]) -> long`
+
+error[DS2006]: argument `group` of `extract` must be an integer (`int` or `long`), found `string`
+   --> query:11:27
+   |
+11 |     i = extract('(\\d+)', customerId, 1)
+   |                           ^^^^^^^^^^ this is `string` (column `customerId` was read from orders.csv)
+   |
+   = help: the arguments may be in the wrong order: `extract('(\\d+)', 1, customerId)`
+   = note: signature: `extract(regex: string, group: integer, source: string) -> string`

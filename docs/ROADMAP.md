@@ -18,13 +18,14 @@ Parse, check, and run real queries on local CSV/Parquet/JSON files from the comm
 It starts with a walking skeleton (M1-15): one simple query runs through every layer first,
 then each layer is built out.
 
-**Done when:**
-- The README example runs end to end with `ds run` against fixtures.
-- All ● operators and the M1 function set in [LANGUAGE.md](LANGUAGE.md) work, each with happy-path
-  and error golden tests.
-- `ds check` reports multiple independent errors per file with did-you-mean suggestions.
-- `ds` (REPL) supports multi-line queries, history, and `.schema`.
-- `render` is parsed, validated, and shown as an info note in the CLI.
+**Done when** (all checked by M1-13, 2026-11-22):
+- [x] The README example runs end to end with `ds run` against fixtures
+  (`tests/cases/examples/readme.dstest`, `examples/top_customers.ds`).
+- [x] All ● operators and the M1 function set in [LANGUAGE.md](LANGUAGE.md) work, each with
+  happy-path and error golden tests (`tests/cases/operators/`, `tests/cases/functions/*/`).
+- [x] `ds check` reports multiple independent errors per file with did-you-mean suggestions.
+- [x] `ds` (REPL) supports multi-line queries, history, and `.schema`.
+- [x] `render` is parsed, validated, and shown as an info note in the CLI.
 
 ## M2 — Language breadth
 

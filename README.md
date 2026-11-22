@@ -17,8 +17,63 @@ from orders
 | render timechart
 ```
 
-> **Status: pre-alpha, design phase.** Nothing works yet. The documents below describe the plan.
-> Work is tracked in [`docs/tasks/`](docs/tasks/README.md).
+> **Status: pre-alpha.** Milestone M1 is done: the `ds` command line checks and runs queries
+> on local CSV, Parquet and JSON files, and has a REPL. The editor extension, the web UI and the
+> browser runtime are planned (see below). The language may still change. Work is tracked in
+> [`docs/tasks/`](docs/tasks/README.md).
+
+## Getting started
+
+Build `ds` from source (see [Building](#building)) and run it from the repository root:
+
+```bash
+cargo install --path crates/datascript-cli   # installs `ds`; or use `cargo run -p datascript-cli --`
+ds run examples/top_customers.ds             # the example above, on the test fixtures
+```
+
+Run a query given on the command line:
+
+```bash
+ds run -e "from 'tests/data/orders.csv' | summarize orders = count(), revenue = sum(amount) by customerId | top 3 by revenue desc"
+```
+
+```
+customerId | orders | revenue
+string     | long   | real
+-----------+--------+--------
+c-042      |      7 | 1250.5
+c-007      |      6 |  980.0
+c-113      |      4 |  402.25
+```
+
+Check a script without running it. Every independent error is reported, with a fix when one is
+likely:
+
+```
+$ ds check typo.ds
+error[DS1001]: unknown column `amout`
+  --> typo.ds:1:46
+  |
+1 | from 'tests/data/orders.csv' | summarize sum(amout)
+  |                                              ^^^^^ no column named `amout` here
+  |
+  = help: a column with a similar name exists: `amount`
+  = note: columns available at this point: orderId, customerId, amount, timestamp
+```
+
+Start the REPL with `ds`. Statements end with `;` or a blank line, `let`s are kept for the
+session, and `.help` lists the commands (`.schema 'orders.csv'`, `.tables`, `.format`,
+`.max-rows`). Other commands:
+
+| Command | What it does |
+|---|---|
+| `ds run script.ds [--format table\|csv\|json\|ndjson\|arrow] [--max-rows N]` | Run each query and print its result |
+| `ds check script.ds [--deny-warnings]` | Report diagnostics without running |
+| `ds explain script.ds` | Print each query's logical plan |
+| `ds --table orders=data/orders.parquet` | Start the REPL with `orders` as a table name |
+
+Paths in a script are relative to the script's file. The language is described in
+[docs/LANGUAGE.md](docs/LANGUAGE.md).
 
 ## Core principles
 
@@ -34,12 +89,12 @@ from orders
 - **Local files first.** Query CSV, Parquet, and JSON straight from disk, DuckDB-style:
   `from 'logs/*.csv' | where level == "error"`.
 
-## Ways to run it (planned)
+## Ways to run it
 
 | Surface | Command / package | Milestone |
 |---|---|---|
-| CLI compiler / checker | `ds check query.ds`, `ds run query.ds` | M1 |
-| REPL | `ds` | M1 |
+| CLI compiler / checker | `ds check query.ds`, `ds run query.ds` | M1 (done) |
+| REPL | `ds` | M1 (done) |
 | Language server + VS Code extension | `ds lsp`, `editors/vscode` | M3 |
 | Local web UI (like DuckDB UI) | `ds ui` → opens `http://127.0.0.1:…` | M4 |
 | In-browser runtime (WASM) | `@datascript/wasm` | M5 |

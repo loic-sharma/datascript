@@ -1,0 +1,23 @@
+# A `take` or `top` count may be a scalar `let` bound to a whole number; `take 0` keeps no rows.
+mode: run
+---- query
+let n = 2;
+from '../../../data/orders.csv' | sort by orderId asc | take n | project orderId;
+from '../../../data/orders.csv' | top n by amount desc | project orderId, amount;
+from '../../../data/orders.csv' | take 0 | project orderId
+---- expected
+orderId
+string
+-------
+o-0001
+o-0002
+
+orderId | amount
+string  | real
+--------+-------
+o-0006  | 251.75
+o-0028  | 245.75
+
+orderId
+string
+-------

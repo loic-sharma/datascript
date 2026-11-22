@@ -36,13 +36,13 @@ error[DS2041]: `infer_rows` must be a whole number of at least 1
 2 | from read_csv('x.csv', header = 'yes', delimiter = ';;', infer_rows = 0) | take 1;
   |                                                                       ^ this is 0
 
-error[DS2041]: `format` must be one of 'ndjson', 'array'
+error[DS2041]: `format` must be `'ndjson'` or `'array'`
   --> query:3:35
   |
 3 | from read_json('x.json', format = 'ndjsn') | take 1;
-  |                                   ^^^^^^^ 'ndjsn' is not one of them
+  |                                   ^^^^^^^ `'ndjsn'` is not one of them
   |
-  = help: did you mean 'ndjson'?
+  = help: did you mean `'ndjson'`?
 
 error[DS2043]: option `header` is given twice
   --> query:4:39
@@ -52,7 +52,7 @@ error[DS2043]: option `header` is given twice
   |                        |
   |                        first given here
   |
-  = help: keep one of them
+  = help: remove one of them
 
 error[DS3003]: reader option `schema` is not available yet
   --> query:5:24

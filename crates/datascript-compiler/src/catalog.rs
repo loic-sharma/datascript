@@ -11,7 +11,9 @@ use std::collections::BTreeMap;
 use std::fmt::{self, Write as _};
 use std::sync::OnceLock;
 
-use datascript_diagnostics::{Diagnostic, Span, Suggestions, codes, did_you_mean};
+use datascript_diagnostics::{
+    Applicability, Diagnostic, Span, Suggestion, Suggestions, TextEdit, codes, did_you_mean,
+};
 
 use crate::operators::Operand;
 use crate::types::{Type, TypeClass};
@@ -153,6 +155,15 @@ impl Signature {
     /// The signature as shown to users: `substring(source: string, start: integer[, length:
     /// integer]) -> string`.
     pub fn display(&self, name: &str) -> String {
+        let mut out = self.display_code(name);
+        if let Some(var) = self.type_var() {
+            let _ = write!(out, ", {var}");
+        }
+        out
+    }
+
+    /// The signature without the `where T is …` clause, which [`Signature::type_var`] gives.
+    fn display_code(&self, name: &str) -> String {
         let param = |p: &Param| match p.ty {
             ParamType::Class(class) => format!("{}: {}", p.name, class.name()),
             ParamType::Var(_) => format!("{}: T", p.name),
@@ -198,14 +209,17 @@ impl Signature {
             }
             ReturnRule::Custom { display, .. } => out.push_str(display),
         }
-        let var_class = self.all_params().find_map(|p| match p.ty {
-            ParamType::Var(class) if class != TypeClass::Any => Some(class),
-            _ => None,
-        });
-        if let Some(class) = var_class {
-            let _ = write!(out, ", where T is {}", class.describe());
-        }
         out
+    }
+
+    /// `where T is a number`, when the signature has a type variable with a constraint.
+    fn type_var(&self) -> Option<String> {
+        self.all_params().find_map(|p| match p.ty {
+            ParamType::Var(class) if class != TypeClass::Any => {
+                Some(format!("where T is {}", class.describe()))
+            }
+            _ => None,
+        })
     }
 }
 
@@ -281,6 +295,9 @@ pub struct ArgTypeError {
     pub found: Type,
     /// What it should have been.
     pub expected: Expected,
+    /// Another argument that, swapped with this one, makes the call type-check: the arguments
+    /// are probably in the wrong order (`datetime_part(ts, 'year')`).
+    pub swap_with: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -371,11 +388,23 @@ impl FunctionDef {
             Some(same) if classes.is_empty() => same,
             _ => Expected::OneOf(classes),
         };
+        let swap_with = if args.iter().any(|t| t.is_error() || *t == Type::Null) {
+            None
+        } else {
+            (0..n)
+                .filter(|&j| j != index && args[j] != args[index])
+                .find(|&j| {
+                    let mut swapped = args.to_vec();
+                    swapped.swap(index, j);
+                    candidates.iter().any(|sig| bind(sig, &swapped).is_ok())
+                })
+        };
         Err(ResolveError::ArgType(ArgTypeError {
             function: self.name,
             index,
             found: args[index],
             expected,
+            swap_with,
         }))
     }
 
@@ -387,13 +416,20 @@ impl FunctionDef {
             .collect()
     }
 
+    /// The signatures for a note, with each `where T is …` outside the code, since it may
+    /// name types in backticks: `` `min(x: T) -> T`, where T is a number or `string` ``.
     fn signatures_note(&self) -> String {
-        match self.signature_lines().as_slice() {
-            [one] => format!("signature: `{one}`"),
-            many => {
-                let list: Vec<String> = many.iter().map(|s| format!("`{s}`")).collect();
-                format!("`{}` has these forms: {}", self.name, list.join("; "))
-            }
+        let shown: Vec<String> = self
+            .signatures
+            .iter()
+            .map(|sig| match sig.type_var() {
+                Some(var) => format!("`{}`, {var}", sig.display_code(self.name)),
+                None => format!("`{}`", sig.display_code(self.name)),
+            })
+            .collect();
+        match shown.as_slice() {
+            [one] => format!("signature: {one}"),
+            many => format!("`{}` has these forms: {}", self.name, many.join("; ")),
         }
     }
 }
@@ -557,14 +593,20 @@ impl ArityError {
             Some(max) if n > max && !call.args.is_empty() => {
                 let extra = n - max;
                 let span = call.args[max].span.to(call.args[n - 1].span);
-                let label = if max == 0 {
-                    format!("`{}` takes no arguments", self.function)
-                } else if extra == 1 {
+                let label = if extra == 1 {
                     "this argument is not expected".to_string()
                 } else {
                     format!("these {extra} arguments are not expected")
                 };
-                diagnostic.primary(span, label)
+                diagnostic = diagnostic.primary(span, label);
+                if self.function == "count" && n == 1 {
+                    let arg = call.args[0].text;
+                    diagnostic = diagnostic.help(format!(
+                        "`count()` counts rows; to count the rows where `{arg}` is not null, \
+                         use `countif(isnotnull({arg}))`"
+                    ));
+                }
+                diagnostic
             }
             _ => {
                 // The form needing the fewest more arguments says what is missing.
@@ -656,7 +698,24 @@ impl ArgTypeError {
         {
             diagnostic = diagnostic.secondary(other.span, format!("this is `{ty}`"));
         }
-        if let Some(help) = arg.and_then(|arg| self.help(arg)) {
+        if let (Some(arg), Some(other)) = (arg, self.swap_with.and_then(|j| call.args.get(j))) {
+            let mut texts: Vec<&str> = call.args.iter().map(|a| a.text).collect();
+            texts.swap(self.index, self.swap_with.unwrap_or(self.index));
+            diagnostic = diagnostic.help_with(
+                format!(
+                    "the arguments may be in the wrong order: `{}({})`",
+                    function.name,
+                    texts.join(", ")
+                ),
+                Suggestion::new(
+                    vec![
+                        TextEdit::new(arg.span, other.text),
+                        TextEdit::new(other.span, arg.text),
+                    ],
+                    Applicability::MaybeIncorrect,
+                ),
+            );
+        } else if let Some(help) = arg.and_then(|arg| self.help(arg)) {
             diagnostic = diagnostic.help(help);
         }
         diagnostic.note(function.signatures_note())
@@ -678,20 +737,39 @@ impl ArgTypeError {
         let [target] = targets.as_slice() else {
             return None;
         };
-        let conversion = match target {
-            Type::String => "tostring",
-            Type::Bool => "tobool",
-            Type::Int | Type::Long => "tolong",
-            Type::Real => "toreal",
-            Type::DateTime => "todatetime",
-            Type::TimeSpan => "totimespan",
+        let found = self.found;
+        let text = arg.text;
+        // Only suggest a conversion that gives a value: a `datetime` or `timespan` converted to
+        // a number is null, and only strings convert to a `datetime` or `timespan` (§7).
+        let conversion = match (target, found) {
+            (Type::String, _) => "tostring",
+            (Type::Bool, ty) if ty.is_numeric() => {
+                return Some(format!(
+                    "to test whether it is not zero, compare it: `{text} != 0`"
+                ));
+            }
+            (Type::Bool, Type::String) => "tobool",
+            (Type::Int | Type::Long, ty) if converts_to_number(ty) => "tolong",
+            (Type::Real, ty) if converts_to_number(ty) => "toreal",
+            (Type::DateTime, Type::String) => "todatetime",
+            (Type::TimeSpan, Type::String) => "totimespan",
+            (Type::TimeSpan, ty) if ty.is_numeric() => {
+                return Some(
+                    "write a timespan with its unit, such as `1d`, `2h`, `30m` or `10s`"
+                        .to_string(),
+                );
+            }
             _ => return None,
         };
         Some(format!(
-            "convert it first if that is what you meant: `{conversion}({})`",
-            arg.text
+            "convert it first if that is what you meant: `{conversion}({text})`"
         ))
     }
+}
+
+/// Whether `tolong`/`toreal` of a value of this type can give a number.
+fn converts_to_number(ty: Type) -> bool {
+    ty.is_numeric() || matches!(ty, Type::String | Type::Decimal | Type::Bool)
 }
 
 /// A name that is not in the catalog.

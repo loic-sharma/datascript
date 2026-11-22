@@ -496,6 +496,34 @@ fn arity_diagnostic_missing_argument() {
 }
 
 #[test]
+fn swapped_arguments_are_suggested() {
+    let e = arg_error("datetime_part", &[DateTime, String]);
+    assert_eq!(e.swap_with, Some(1));
+    let args = operands(&["timestamp", "'year'"]);
+    let d = e.diagnostic(def("datetime_part"), call(&args));
+    assert_eq!(
+        d.help[0].message,
+        "the arguments may be in the wrong order: `datetime_part('year', timestamp)`"
+    );
+    assert!(d.help[0].suggestion.is_some());
+    // No swap makes `strlen(long)` valid.
+    assert_eq!(arg_error("strlen", &[Long]).swap_with, None);
+}
+
+#[test]
+fn conversion_help_only_when_the_conversion_gives_a_value() {
+    let args = operands(&["timestamp"]);
+    let d = arg_error("sqrt", &[DateTime]).diagnostic(def("sqrt"), call(&args));
+    assert!(d.help.is_empty(), "{:?}", d.help);
+    let args = operands(&["qty"]);
+    let d = arg_error("iff", &[Long, Long, Long]).diagnostic(def("iff"), call(&args));
+    assert_eq!(
+        d.help[0].message,
+        "to test whether it is not zero, compare it: `qty != 0`"
+    );
+}
+
+#[test]
 fn arity_diagnostic_extra_arguments() {
     let args = operands(&["a", "b", "c"]);
     let d = arity_error("strlen", &[String, String, String]).diagnostic(def("strlen"), call(&args));
@@ -507,7 +535,15 @@ fn arity_diagnostic_extra_arguments() {
     let args = operands(&["1h"]);
     let d = arity_error("count", &[TimeSpan]).diagnostic(def("count"), call(&args));
     assert_eq!(d.message, "`count` takes no arguments, found 1");
-    assert_eq!(d.primary.unwrap().message, "`count` takes no arguments");
+    assert_eq!(
+        d.primary.as_ref().unwrap().message,
+        "this argument is not expected"
+    );
+    assert_eq!(
+        d.help[0].message,
+        "`count()` counts rows; to count the rows where `1h` is not null, use \
+         `countif(isnotnull(1h))`"
+    );
 
     let args = operands(&["s", "0", "1", "2"]);
     let d = arity_error("substring", &[String, Long, Long, Long])
@@ -536,6 +572,7 @@ fn arg_type_error_points_at_the_argument() {
             index: 0,
             found: Long,
             expected: Expected::OneOf(vec![TypeClass::Exact(String)]),
+            swap_with: None,
         }
     );
     let args = operands(&["orderId"]);
@@ -710,6 +747,7 @@ fn arg_type_error_for_mismatched_type_variable() {
             index: 2,
             found: String,
             expected: Expected::SameAs { index: 1, ty: Long },
+            swap_with: None,
         }
     );
     let args = operands(&["p", "1", "\"x\""]);

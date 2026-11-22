@@ -1,0 +1,13 @@
+# `project-away` drops columns by name and by wildcard; the rest keep their order.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| sort by orderId asc
+| take 2
+| project-away customer*, amount
+---- expected
+orderId | timestamp
+string  | datetime
+--------+---------------------
+o-0001  | 2023-12-02T08:26:08Z
+o-0002  | 2023-12-07T21:01:50Z

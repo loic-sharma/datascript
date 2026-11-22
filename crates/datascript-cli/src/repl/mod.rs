@@ -45,11 +45,9 @@ pub fn main(cli: Cli) -> ExitCode {
         Ok(session) => session,
         Err(d) => return ExitCode::from(reporter.fail_usage(&Sources::new(), &d)),
     };
-    let repl = ReplSession::new(session, cli.repl.tables.tables.clone());
-    let printer = Printer {
-        reporter,
-        max_rows: cli.repl.max_rows.unwrap_or(100),
-    };
+    let mut repl = ReplSession::new(session, cli.repl.tables.tables.clone());
+    repl.set_max_rows(cli.repl.max_rows.unwrap_or(100));
+    let printer = Printer { reporter };
     let code = if interactive {
         editor::run(repl, printer, &runtime, cli.color)
     } else {
@@ -102,7 +100,6 @@ async fn submit(repl: &mut ReplSession, printer: &Printer, text: &str) -> Step {
 #[derive(Debug)]
 pub struct Printer {
     reporter: Reporter,
-    max_rows: usize,
 }
 
 impl Printer {
@@ -124,7 +121,7 @@ impl Printer {
             repl.format(),
             &ran.results,
             repl.source(checked.file),
-            self.max_rows,
+            repl.max_rows(),
         )
         .and_then(|()| out.flush());
         if let Err(e) = written

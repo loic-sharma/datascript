@@ -1112,8 +1112,15 @@ fn sort_key(p: &mut Parser<'_>) {
         p.check_sort_direction_case();
         p.bump();
     }
-    if p.eat_kw("nulls") && !p.eat_kw("first") && !p.eat_kw("last") {
-        p.error_expected("`first` or `last` after `nulls`");
+    if p.at(IDENT) && p.nth_text(0).eq_ignore_ascii_case("nulls") {
+        // `NULLS FIRST` in SQL's capitals is reported, then parsed as if lowercase.
+        p.check_nulls_case();
+        p.bump();
+        if p.at(IDENT) && ["first", "last"].contains(&p.nth_text(0).to_lowercase().as_str()) {
+            p.bump();
+        } else {
+            p.error_expected("`first` or `last` after `nulls`");
+        }
     }
     m.complete_if_nonempty(p, SORT_KEY);
 }

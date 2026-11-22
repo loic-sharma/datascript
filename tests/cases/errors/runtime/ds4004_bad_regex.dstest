@@ -1,13 +1,14 @@
-# A regular expression that does not compile is DS4004 at the call.
+# A computed regular expression that does not compile is DS4004 at the call when the query
+# runs (a constant one is reported by `check`: errors/types/ds4004_constant_args).
 mode: run
 ---- query
 from '../../../data/orders.csv'
-| where orderId matches regex '(o-'
+| where orderId matches regex strcat('(o', '-')
 ---- expected
 error[DS4004]: `(o-` is not a valid regular expression
   --> query:2:9
   |
-2 | | where orderId matches regex '(o-'
-  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ in this call of `matches regex`
+2 | | where orderId matches regex strcat('(o', '-')
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ in this call of `matches regex`
   |
   = note: unclosed group (regexes use Rust `regex` syntax)

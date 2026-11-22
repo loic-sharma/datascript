@@ -14,6 +14,7 @@ use datafusion::logical_expr::{
     Accumulator, AggregateUDF, AggregateUDFImpl, Signature, Volatility,
 };
 use datafusion::scalar::ScalarValue;
+use datascript_compiler::arg_values;
 use datascript_diagnostics::Span;
 
 use crate::errors::{Fail, RuntimeError};
@@ -302,15 +303,12 @@ impl Accumulator for PercentileAccumulator {
         let Some(p) = self.p.filter(|_| n > 0) else {
             return ScalarValue::try_from(&self.ret);
         };
-        if !(0.0..=100.0).contains(&p) {
+        if let Err(e) = arg_values::check_percentage(p) {
             return Err(located(
                 self.span,
                 "`percentile`",
                 "",
-                Fail::invalid(
-                    format!("percentile {p} is outside 0 to 100"),
-                    "the second argument of `percentile` is a percentage from 0 to 100",
-                ),
+                Fail::invalid(e.message, e.note),
             ));
         }
         let rank = ((p / 100.0) * n as f64).ceil() as usize;

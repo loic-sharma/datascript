@@ -1,0 +1,167 @@
+# Each SQL join written as an operator gets the matching `join kind`; `CROSS JOIN` has none.
+mode: syntax
+---- query
+from 'a.csv' | inner join 'b.csv' on k;
+from 'a.csv' | FULL OUTER JOIN 'b.csv' on k;
+from 'a.csv' | right join 'b.csv' on k;
+from 'a.csv' | LEFT ANTI JOIN 'b.csv' on k;
+from 'a.csv' | CROSS JOIN 'b.csv'
+---- expected
+PROGRAM@0..203
+  PIPELINE@0..38
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    LITERAL@5..12
+      STRING@5..12 "'a.csv'"
+    WHITESPACE@12..13 " "
+    PIPE@13..14 "|"
+    WHITESPACE@14..15 " "
+    ERROR@15..38
+      IDENT@15..20 "inner"
+      WHITESPACE@20..21 " "
+      IDENT@21..25 "join"
+      WHITESPACE@25..26 " "
+      STRING@26..33 "'b.csv'"
+      WHITESPACE@33..34 " "
+      IDENT@34..36 "on"
+      WHITESPACE@36..37 " "
+      IDENT@37..38 "k"
+  SEMICOLON@38..39 ";"
+  WHITESPACE@39..40 "\n"
+  PIPELINE@40..83
+    IDENT@40..44 "from"
+    WHITESPACE@44..45 " "
+    LITERAL@45..52
+      STRING@45..52 "'a.csv'"
+    WHITESPACE@52..53 " "
+    PIPE@53..54 "|"
+    WHITESPACE@54..55 " "
+    ERROR@55..83
+      IDENT@55..59 "FULL"
+      WHITESPACE@59..60 " "
+      IDENT@60..65 "OUTER"
+      WHITESPACE@65..66 " "
+      IDENT@66..70 "JOIN"
+      WHITESPACE@70..71 " "
+      STRING@71..78 "'b.csv'"
+      WHITESPACE@78..79 " "
+      IDENT@79..81 "on"
+      WHITESPACE@81..82 " "
+      IDENT@82..83 "k"
+  SEMICOLON@83..84 ";"
+  WHITESPACE@84..85 "\n"
+  PIPELINE@85..123
+    IDENT@85..89 "from"
+    WHITESPACE@89..90 " "
+    LITERAL@90..97
+      STRING@90..97 "'a.csv'"
+    WHITESPACE@97..98 " "
+    PIPE@98..99 "|"
+    WHITESPACE@99..100 " "
+    ERROR@100..123
+      IDENT@100..105 "right"
+      WHITESPACE@105..106 " "
+      IDENT@106..110 "join"
+      WHITESPACE@110..111 " "
+      STRING@111..118 "'b.csv'"
+      WHITESPACE@118..119 " "
+      IDENT@119..121 "on"
+      WHITESPACE@121..122 " "
+      IDENT@122..123 "k"
+  SEMICOLON@123..124 ";"
+  WHITESPACE@124..125 "\n"
+  PIPELINE@125..167
+    IDENT@125..129 "from"
+    WHITESPACE@129..130 " "
+    LITERAL@130..137
+      STRING@130..137 "'a.csv'"
+    WHITESPACE@137..138 " "
+    PIPE@138..139 "|"
+    WHITESPACE@139..140 " "
+    ERROR@140..167
+      IDENT@140..144 "LEFT"
+      WHITESPACE@144..145 " "
+      IDENT@145..149 "ANTI"
+      WHITESPACE@149..150 " "
+      IDENT@150..154 "JOIN"
+      WHITESPACE@154..155 " "
+      STRING@155..162 "'b.csv'"
+      WHITESPACE@162..163 " "
+      IDENT@163..165 "on"
+      WHITESPACE@165..166 " "
+      IDENT@166..167 "k"
+  SEMICOLON@167..168 ";"
+  WHITESPACE@168..169 "\n"
+  PIPELINE@169..202
+    IDENT@169..173 "from"
+    WHITESPACE@173..174 " "
+    LITERAL@174..181
+      STRING@174..181 "'a.csv'"
+    WHITESPACE@181..182 " "
+    PIPE@182..183 "|"
+    WHITESPACE@183..184 " "
+    ERROR@184..202
+      IDENT@184..189 "CROSS"
+      WHITESPACE@189..190 " "
+      IDENT@190..194 "JOIN"
+      WHITESPACE@194..195 " "
+      STRING@195..202 "'b.csv'"
+  WHITESPACE@202..203 "\n"
+
+error[DS0105]: `inner join` is SQL, not DataScript
+  --> query:1:16
+  |
+1 | from 'a.csv' | inner join 'b.csv' on k;
+  |                ^^^^^^^^^^ this is SQL
+  |
+  = help: the join kind goes after `join`: `join kind = inner`
+
+error[DS0105]: `FULL OUTER JOIN` is SQL, not DataScript
+  --> query:2:16
+  |
+2 | from 'a.csv' | FULL OUTER JOIN 'b.csv' on k;
+  |                ^^^^^^^^^^^^^^^ this is SQL
+  |
+  = help: the join kind goes after `join`: `join kind = fullouter`
+
+error[DS0105]: `right join` is SQL, not DataScript
+  --> query:3:16
+  |
+3 | from 'a.csv' | right join 'b.csv' on k;
+  |                ^^^^^^^^^^ this is SQL
+  |
+  = help: the join kind goes after `join`: `join kind = rightouter`
+
+error[DS0105]: `LEFT ANTI JOIN` is SQL, not DataScript
+  --> query:4:16
+  |
+4 | from 'a.csv' | LEFT ANTI JOIN 'b.csv' on k;
+  |                ^^^^^^^^^^^^^^ this is SQL
+  |
+  = help: the join kind goes after `join`: `join kind = leftanti`
+
+error[DS0105]: `CROSS JOIN` is SQL, not DataScript
+  --> query:5:16
+  |
+5 | from 'a.csv' | CROSS JOIN 'b.csv'
+  |                ^^^^^^^^^^ this is SQL
+  |
+  = help: DataScript has no cross join; to pair every row with every row, add the same constant column to both sides with `extend` and join on it
+  = note: the kinds are `inner`, `leftouter`, `rightouter`, `fullouter`, `leftsemi`, `leftanti`, `rightsemi` and `rightanti`
+
+with the machine-applicable fixes applied:
+    from 'a.csv' | join kind = inner 'b.csv' on k;
+    from 'a.csv' | join kind = fullouter 'b.csv' on k;
+    from 'a.csv' | join kind = rightouter 'b.csv' on k;
+    from 'a.csv' | join kind = leftanti 'b.csv' on k;
+    from 'a.csv' | CROSS JOIN 'b.csv'
+which still has errors:
+
+error[DS0105]: `CROSS JOIN` is SQL, not DataScript
+  --> fixed:5:16
+  |
+5 | from 'a.csv' | CROSS JOIN 'b.csv'
+  |                ^^^^^^^^^^ this is SQL
+  |
+  = help: DataScript has no cross join; to pair every row with every row, add the same constant column to both sides with `extend` and join on it
+  = note: the kinds are `inner`, `leftouter`, `rightouter`, `fullouter`, `leftsemi`, `leftanti`, `rightsemi` and `rightanti`

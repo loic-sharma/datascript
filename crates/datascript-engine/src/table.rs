@@ -204,8 +204,9 @@ fn split_decimal(cell: &str) -> (&str, &str) {
     }
 }
 
+/// Terminal columns taken by a cell, so wide (CJK) characters and combining marks line up.
 fn char_len(s: &str) -> usize {
-    s.chars().count()
+    datascript_diagnostics::text_width(s)
 }
 
 fn pad_left_aligned(s: &str, width: usize) -> String {

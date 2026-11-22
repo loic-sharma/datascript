@@ -172,5 +172,5 @@ Every task that adds language surface adds, at minimum:
 2. An error case for each diagnostic it introduces, showing the full rendered message.
 3. A recovery case: a program with two independent errors reports both.
 
-The case directory mirrors the language: `tests/cases/{lexer,syntax,expressions,let,operators/<op>,functions/<group>,sources,render,errors}/`.
+The case directory mirrors the language: `tests/cases/{lexer,syntax,expressions,let,operators/<op>,functions/<group>,sources,render,errors}/`. `tests/cases/examples/` runs the programs shown in the README.
 Error cases are grouped by area under `errors/` (`syntax`, `names`, `types`, `recovery`).

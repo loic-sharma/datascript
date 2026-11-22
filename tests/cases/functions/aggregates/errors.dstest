@@ -1,0 +1,119 @@
+# Common mistakes with each aggregate: a wrong argument type (DS2006) or count (DS2002). Each is
+# reported on its own.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv'
+| summarize
+    countif(amount),
+    sum(customerId),
+    sumif(amount, customerId),
+    avg(amount > 1),
+    min(),
+    max(amount, 2),
+    dcount(),
+    percentile(amount),
+    stdev(customerId),
+    variance(timestamp),
+    take_any(),
+    count(amount)
+---- expected
+error[DS2006]: argument `predicate` of `countif` must be `bool`, found `real`
+  --> query:3:13
+  |
+3 |     countif(amount),
+  |             ^^^^^^ this is `real` (column `amount` was read from orders.csv)
+  |
+  = help: to test whether it is not zero, compare it: `amount != 0`
+  = note: signature: `countif(predicate: bool) -> long`
+
+error[DS2006]: argument `x` of `sum` must be a number or `timespan`, found `string`
+  --> query:4:9
+  |
+4 |     sum(customerId),
+  |         ^^^^^^^^^^ this is `string` (column `customerId` was read from orders.csv)
+  |
+  = note: `sum` has these forms: `sum(x: T) -> long or real`, where T is a number; `sum(x: timespan) -> timespan`
+
+error[DS2006]: argument `predicate` of `sumif` must be `bool`, found `string`
+  --> query:5:19
+  |
+5 |     sumif(amount, customerId),
+  |                   ^^^^^^^^^^ this is `string` (column `customerId` was read from orders.csv)
+  |
+  = help: convert it first if that is what you meant: `tobool(customerId)`
+  = note: `sumif` has these forms: `sumif(x: T, predicate: bool) -> long or real`, where T is a number; `sumif(x: timespan, predicate: bool) -> timespan`
+
+error[DS2006]: argument `x` of `avg` must be a number or `timespan`, found `bool`
+  --> query:6:9
+  |
+6 |     avg(amount > 1),
+  |         ^^^^^^^^^^ this is `bool`
+  |
+  = note: `avg` has these forms: `avg(x: number) -> real`; `avg(x: timespan) -> timespan`
+
+error[DS2002]: `min` takes 1 argument, found 0
+  --> query:7:5
+  |
+7 |     min(),
+  |     ^^^^^ missing `x`
+  |
+  = note: signature: `min(x: T) -> T`, where T is a number, `string`, `datetime`, `timespan` or `bool`
+
+error[DS2002]: `max` takes 1 argument, found 2
+  --> query:8:17
+  |
+8 |     max(amount, 2),
+  |                 ^ this argument is not expected
+  |
+  = note: signature: `max(x: T) -> T`, where T is a number, `string`, `datetime`, `timespan` or `bool`
+
+error[DS2002]: `dcount` takes 1 argument, found 0
+  --> query:9:5
+  |
+9 |     dcount(),
+  |     ^^^^^^^^ missing `x`
+  |
+  = note: signature: `dcount(x: any) -> long`
+
+error[DS2002]: `percentile` takes 2 arguments, found 1
+   --> query:10:5
+   |
+10 |     percentile(amount),
+   |     ^^^^^^^^^^^^^^^^^^ missing `percentage`
+   |
+   = note: `percentile` has these forms: `percentile(x: T, percentage: number) -> T`, where T is a number; `percentile(x: datetime, percentage: number) -> datetime`; `percentile(x: timespan, percentage: number) -> timespan`
+
+error[DS2006]: argument `x` of `stdev` must be a number, found `string`
+   --> query:11:11
+   |
+11 |     stdev(customerId),
+   |           ^^^^^^^^^^ this is `string` (column `customerId` was read from orders.csv)
+   |
+   = help: convert it first if that is what you meant: `toreal(customerId)`
+   = note: signature: `stdev(x: number) -> real`
+
+error[DS2006]: argument `x` of `variance` must be a number, found `datetime`
+   --> query:12:14
+   |
+12 |     variance(timestamp),
+   |              ^^^^^^^^^ this is `datetime` (column `timestamp` was read from orders.csv)
+   |
+   = note: signature: `variance(x: number) -> real`
+
+error[DS2002]: `take_any` takes 1 argument, found 0
+   --> query:13:5
+   |
+13 |     take_any(),
+   |     ^^^^^^^^^^ missing `x`
+   |
+   = note: signature: `take_any(x: T) -> T`
+
+error[DS2002]: `count` takes no arguments, found 1
+   --> query:14:11
+   |
+14 |     count(amount)
+   |           ^^^^^^ this argument is not expected
+   |
+   = help: `count()` counts rows; to count the rows where `amount` is not null, use `countif(isnotnull(amount))`
+   = note: signature: `count() -> long`

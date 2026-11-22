@@ -1,0 +1,37 @@
+# SQL's `LEFT JOIN` written as an operator: DS0105 with a fix to `join kind = leftouter`.
+mode: syntax
+---- query
+from 'orders.csv' | LEFT JOIN 'customers.csv' on customerId
+---- expected
+PROGRAM@0..60
+  PIPELINE@0..59
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    LITERAL@5..17
+      STRING@5..17 "'orders.csv'"
+    WHITESPACE@17..18 " "
+    PIPE@18..19 "|"
+    WHITESPACE@19..20 " "
+    ERROR@20..59
+      IDENT@20..24 "LEFT"
+      WHITESPACE@24..25 " "
+      IDENT@25..29 "JOIN"
+      WHITESPACE@29..30 " "
+      STRING@30..45 "'customers.csv'"
+      WHITESPACE@45..46 " "
+      IDENT@46..48 "on"
+      WHITESPACE@48..49 " "
+      IDENT@49..59 "customerId"
+  WHITESPACE@59..60 "\n"
+
+error[DS0105]: `LEFT JOIN` is SQL, not DataScript
+  --> query:1:21
+  |
+1 | from 'orders.csv' | LEFT JOIN 'customers.csv' on customerId
+  |                     ^^^^^^^^^ this is SQL
+  |
+  = help: the join kind goes after `join`: `join kind = leftouter`
+
+with the machine-applicable fixes applied:
+    from 'orders.csv' | join kind = leftouter 'customers.csv' on customerId
+which parses without errors

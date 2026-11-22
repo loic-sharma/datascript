@@ -1,0 +1,149 @@
+# Common mistakes with the datetime functions: a string or number where a datetime or timespan is
+# needed, arguments in the wrong order, and wrong argument counts.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv'
+| project
+    a = ago(1),
+    b = now('1d'),
+    c = bin(timestamp),
+    d = startofday('2024-01-01'),
+    e = startofweek(qty),
+    f = startofmonth(),
+    g = startofyear(amount),
+    h = endofday(customerId),
+    i = endofweek(),
+    j = endofmonth(qty),
+    k = endofyear(1d),
+    l = datetime_part(timestamp, 'year'),
+    m = dayofweek(customerId),
+    n = format_datetime('yyyy', timestamp),
+    o = datetime_diff('day', timestamp)
+---- expected
+error[DS2006]: argument `span` of `ago` must be `timespan`, found `long`
+  --> query:3:13
+  |
+3 |     a = ago(1),
+  |             ^ this is `long`
+  |
+  = help: write a timespan with its unit, such as `1d`, `2h`, `30m` or `10s`
+  = note: signature: `ago(span: timespan) -> datetime`
+
+error[DS2006]: argument `offset` of `now` must be `timespan`, found `string`
+  --> query:4:13
+  |
+4 |     b = now('1d'),
+  |             ^^^^ this is `string`
+  |
+  = help: convert it first if that is what you meant: `totimespan('1d')`
+  = note: signature: `now([offset: timespan]) -> datetime`
+
+error[DS2002]: `bin` takes 2 arguments, found 1
+  --> query:5:9
+  |
+5 |     c = bin(timestamp),
+  |         ^^^^^^^^^^^^^^ missing `size`
+  |
+  = note: `bin` has these forms: `bin(value: T, size: T) -> long or real`, where T is a number; `bin(value: datetime, size: timespan) -> datetime`; `bin(value: timespan, size: timespan) -> timespan`
+
+error[DS2006]: argument `date` of `startofday` must be `datetime`, found `string`
+  --> query:6:20
+  |
+6 |     d = startofday('2024-01-01'),
+  |                    ^^^^^^^^^^^^ this is `string`
+  |
+  = help: convert it first if that is what you meant: `todatetime('2024-01-01')`
+  = note: signature: `startofday(date: datetime[, offset: integer]) -> datetime`
+
+error[DS2006]: argument `date` of `startofweek` must be `datetime`, found `long`
+  --> query:7:21
+  |
+7 |     e = startofweek(qty),
+  |                     ^^^ this is `long` (column `qty` was read from orders.csv)
+  |
+  = note: signature: `startofweek(date: datetime[, offset: integer]) -> datetime`
+
+error[DS2002]: `startofmonth` takes 1 or 2 arguments, found 0
+  --> query:8:9
+  |
+8 |     f = startofmonth(),
+  |         ^^^^^^^^^^^^^^ missing `date`
+  |
+  = note: signature: `startofmonth(date: datetime[, offset: integer]) -> datetime`
+
+error[DS2006]: argument `date` of `startofyear` must be `datetime`, found `real`
+  --> query:9:21
+  |
+9 |     g = startofyear(amount),
+  |                     ^^^^^^ this is `real` (column `amount` was read from orders.csv)
+  |
+  = note: signature: `startofyear(date: datetime[, offset: integer]) -> datetime`
+
+error[DS2006]: argument `date` of `endofday` must be `datetime`, found `string`
+   --> query:10:18
+   |
+10 |     h = endofday(customerId),
+   |                  ^^^^^^^^^^ this is `string` (column `customerId` was read from orders.csv)
+   |
+   = help: convert it first if that is what you meant: `todatetime(customerId)`
+   = note: signature: `endofday(date: datetime[, offset: integer]) -> datetime`
+
+error[DS2002]: `endofweek` takes 1 or 2 arguments, found 0
+   --> query:11:9
+   |
+11 |     i = endofweek(),
+   |         ^^^^^^^^^^^ missing `date`
+   |
+   = note: signature: `endofweek(date: datetime[, offset: integer]) -> datetime`
+
+error[DS2006]: argument `date` of `endofmonth` must be `datetime`, found `long`
+   --> query:12:20
+   |
+12 |     j = endofmonth(qty),
+   |                    ^^^ this is `long` (column `qty` was read from orders.csv)
+   |
+   = note: signature: `endofmonth(date: datetime[, offset: integer]) -> datetime`
+
+error[DS2006]: argument `date` of `endofyear` must be `datetime`, found `timespan`
+   --> query:13:19
+   |
+13 |     k = endofyear(1d),
+   |                   ^^ this is `timespan`
+   |
+   = note: signature: `endofyear(date: datetime[, offset: integer]) -> datetime`
+
+error[DS2006]: argument `part` of `datetime_part` must be `string`, found `datetime`
+   --> query:14:23
+   |
+14 |     l = datetime_part(timestamp, 'year'),
+   |                       ^^^^^^^^^ this is `datetime` (column `timestamp` was read from orders.csv)
+   |
+   = help: the arguments may be in the wrong order: `datetime_part('year', timestamp)`
+   = note: signature: `datetime_part(part: string, date: datetime) -> long`
+
+error[DS2006]: argument `date` of `dayofweek` must be `datetime`, found `string`
+   --> query:15:19
+   |
+15 |     m = dayofweek(customerId),
+   |                   ^^^^^^^^^^ this is `string` (column `customerId` was read from orders.csv)
+   |
+   = help: convert it first if that is what you meant: `todatetime(customerId)`
+   = note: signature: `dayofweek(date: datetime) -> timespan`
+
+error[DS2006]: argument `date` of `format_datetime` must be `datetime`, found `string`
+   --> query:16:25
+   |
+16 |     n = format_datetime('yyyy', timestamp),
+   |                         ^^^^^^ this is `string`
+   |
+   = help: the arguments may be in the wrong order: `format_datetime(timestamp, 'yyyy')`
+   = note: signature: `format_datetime(date: datetime, format: string) -> string`
+
+error[DS2002]: `datetime_diff` takes 3 arguments, found 2
+   --> query:17:9
+   |
+17 |     o = datetime_diff('day', timestamp)
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `date2`
+   |
+   = note: signature: `datetime_diff(part: string, date1: datetime, date2: datetime) -> long`

@@ -23,7 +23,7 @@ error[DS0001]: names with non-ASCII characters must be quoted: `naïve`
   --> query:1:18
   |
 1 | from t | project naïve
-  |                  ^^^^^^ unquoted name with non-ASCII characters
+  |                  ^^^^^ unquoted name with non-ASCII characters
   |
   = help: quote the name: `['naïve']`
   = note: unquoted names use only the letters A-Z and a-z, digits and `_`

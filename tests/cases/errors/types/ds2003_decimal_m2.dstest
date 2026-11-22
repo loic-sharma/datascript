@@ -33,4 +33,4 @@ error[DS2006]: argument `x` of `round` must be a number, found `decimal`
   |                                 ^^^^^^^^^^^^^ this is `decimal`
   |
   = help: convert it first if that is what you meant: `toreal(decimal(null))`
-  = note: signature: `round(x: T[, digits: integer]) -> long or real, where T is a number`
+  = note: signature: `round(x: T[, digits: integer]) -> long or real`, where T is a number
