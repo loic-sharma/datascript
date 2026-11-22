@@ -10,6 +10,7 @@
 //! - [`ir`]: the logical plan IR and its `explain` printout.
 //! - [`lints`]: warnings for programs that run but probably not as intended (M1-14).
 //! - [`check`] and [`compile`]: the entry points that parse, bind and plan a program.
+//! - [`ide`]: completion, hover and signature help over an [`Analysis`] (M3-02).
 //!
 //! This crate does not depend on DataFusion, tokio or the filesystem, and builds for
 //! `wasm32-unknown-unknown`.
@@ -21,6 +22,7 @@ mod builtins;
 pub mod capabilities;
 pub mod catalog;
 pub mod hir;
+pub mod ide;
 pub mod ir;
 pub mod lints;
 pub mod operators;

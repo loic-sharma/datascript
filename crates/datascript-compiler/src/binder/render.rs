@@ -100,6 +100,36 @@ impl Prop {
     }
 }
 
+/// The properties that apply to `kind` (all of them when the kind is not known), in the order
+/// of LANGUAGE.md §6.1, for completion.
+pub(crate) fn property_names(kind: Option<ChartKind>) -> Vec<&'static str> {
+    Prop::ALL
+        .into_iter()
+        .filter(|p| kind.is_none_or(|k| p.applies_to(k)))
+        .map(Prop::name)
+        .collect()
+}
+
+/// The bare words property `name` takes (`legend`, `kind`), for completion.
+pub(crate) fn property_words(name: &str) -> &'static [&'static str] {
+    match Prop::from_name(name) {
+        Some(Prop::Legend) => LEGEND_WORDS,
+        Some(Prop::Kind) => STACKING_WORDS,
+        _ => &[],
+    }
+}
+
+/// Whether property `name` takes column names.
+pub(crate) fn property_takes_columns(name: &str) -> bool {
+    matches!(
+        Prop::from_name(name),
+        Some(Prop::XColumn | Prop::YColumns | Prop::Series)
+    )
+}
+
+const LEGEND_WORDS: &[&str] = &["visible", "hidden"];
+const STACKING_WORDS: &[&str] = &["default", "unstacked", "stacked", "stacked100"];
+
 /// What the user wrote for one role.
 #[derive(Debug, Clone, Default)]
 enum Given {
@@ -500,7 +530,7 @@ impl Binder<'_> {
                 if !self.one_value(name, values) {
                     return false;
                 }
-                let word = self.bare_word(name, first, &["visible", "hidden"]);
+                let word = self.bare_word(name, first, LEGEND_WORDS);
                 props.legend = match word {
                     Some("visible") => Some(Legend::Visible),
                     Some("hidden") => Some(Legend::Hidden),
@@ -512,11 +542,7 @@ impl Binder<'_> {
                 if !self.one_value(name, values) {
                     return false;
                 }
-                let word = self.bare_word(
-                    name,
-                    first,
-                    &["default", "unstacked", "stacked", "stacked100"],
-                );
+                let word = self.bare_word(name, first, STACKING_WORDS);
                 props.stacking = match word {
                     Some("default" | "unstacked") => Some(Stacking::Default),
                     Some("stacked") => Some(Stacking::Stacked),

@@ -13,5 +13,6 @@ and UDFs, rename, document symbols, semantic tokens, and formatting (after M2-07
 
 ## Carried over
 - [ ] (from M3-04) Semantic tokens must work in syntax-only mode (D-053): they come from the parse alone, or skip what needs the binder. Map the token types onto the TextMate scopes in `editors/vscode/syntaxes/datascript.tmLanguage.json` (`keyword.control.operator`, `variable.other`, `entity.name.function`, …) so themes color both the same. They should fix what the grammar cannot know: contextual keywords (`by`, `on`, `has`, …) used as column names.
+- [ ] (from M3-02) Completion gaps left by M3-02: an `extend` item does not yet see the columns made by the items before it (D-040), and `$left.` / `$right.` in `join` conditions offer nothing. Both are in `datascript_compiler::ide::complete`.
 
 ## Follow-ups

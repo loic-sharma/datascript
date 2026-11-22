@@ -61,8 +61,9 @@ use crate::ir::{BinaryOp, RenderNumber, Value};
 use crate::operators::{self, Operand};
 use crate::source::{SchemaLookup, SchemaProvider, SourceRef};
 pub(crate) use ops::unique_name;
+pub(crate) use render::{property_names, property_takes_columns, property_words};
 
-/// The schema after one pipeline stage (for column completion, later).
+/// The schema after one pipeline stage (for column completion and hover).
 #[derive(Debug, Clone, PartialEq)]
 pub struct StageSchema {
     /// The stage: the source or the operator.

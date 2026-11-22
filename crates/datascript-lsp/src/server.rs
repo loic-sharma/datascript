@@ -12,16 +12,19 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Mutex;
 use tower_lsp_server::jsonrpc::{self, Result};
 use tower_lsp_server::ls_types::{
-    self as lsp, CodeLens, CodeLensOptions, CodeLensParams, DidChangeTextDocumentParams,
-    DidChangeWatchedFilesParams, DidChangeWatchedFilesRegistrationOptions,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, FileSystemWatcher, GlobPattern,
-    InitializeParams, InitializeResult, InitializedParams, Registration, ServerCapabilities,
-    ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Uri,
+    self as lsp, CodeLens, CodeLensOptions, CodeLensParams, CompletionOptions, CompletionParams,
+    CompletionResponse, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+    DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, FileSystemWatcher, GlobPattern, HoverParams,
+    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, Registration,
+    ServerCapabilities, ServerInfo, SignatureHelpOptions, SignatureHelpParams,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Uri,
 };
 use tower_lsp_server::{Client, ClientSocket, LanguageServer, LspService, Server};
 
 use crate::convert;
-use crate::document::apply_changes;
+use crate::document::{apply_changes, offset_at};
+use crate::ide;
 use crate::run::{self, RUN_METHOD, RunParams, RunResult};
 
 /// The JSON-RPC error code for a request the server refuses (LSP `RequestFailed`).
@@ -74,6 +77,8 @@ struct State {
     can_watch: AtomicBool,
     /// Report only lexical and syntax errors, never reading a file ([`InitOptions`]).
     syntax_only: AtomicBool,
+    /// Whether the client expands snippets in completion items.
+    snippets: AtomicBool,
     /// Source of [`Doc::generation`] values.
     generations: AtomicU64,
 }
@@ -143,6 +148,7 @@ pub fn service(session: Arc<Session>, config: Config) -> (LspService<Backend>, C
             root: std::sync::Mutex::new(None),
             can_watch: AtomicBool::new(false),
             syntax_only: AtomicBool::new(false),
+            snippets: AtomicBool::new(false),
             generations: AtomicU64::new(0),
         }),
     })
@@ -191,6 +197,15 @@ impl LanguageServer for Backend {
             .and_then(|w| w.dynamic_registration)
             .unwrap_or(false);
         self.state.can_watch.store(can_watch, Ordering::Relaxed);
+        let snippets = params
+            .capabilities
+            .text_document
+            .as_ref()
+            .and_then(|t| t.completion.as_ref())
+            .and_then(|c| c.completion_item.as_ref())
+            .and_then(|i| i.snippet_support)
+            .unwrap_or(false);
+        self.state.snippets.store(snippets, Ordering::Relaxed);
         let options = InitOptions::from_json(params.initialization_options.as_ref());
         self.state
             .syntax_only
@@ -206,6 +221,20 @@ impl LanguageServer for Backend {
                 )),
                 code_lens_provider: Some(CodeLensOptions {
                     resolve_provider: Some(false),
+                }),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: Some(
+                        ["|", "(", ",", "=", "'", "\"", "/"]
+                            .map(String::from)
+                            .to_vec(),
+                    ),
+                    ..CompletionOptions::default()
+                }),
+                hover_provider: Some(HoverProviderCapability::Simple(true)),
+                signature_help_provider: Some(SignatureHelpOptions {
+                    trigger_characters: Some(vec!["(".into(), ",".into()]),
+                    retrigger_characters: None,
+                    work_done_progress_options: Default::default(),
                 }),
                 ..ServerCapabilities::default()
             },
@@ -321,9 +350,87 @@ impl LanguageServer for Backend {
         let file = SourceFile::new(self.state.display_name(&uri), text);
         Ok(Some(run::code_lenses(&file, FILE, &uri)))
     }
+
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let at = params.text_document_position;
+        let Some(cursor) = self.state.analyze(&at.text_document.uri, at.position).await else {
+            return Ok(None);
+        };
+        let completions = match catch_panic(Some(FILE), "completing", || {
+            datascript_compiler::ide::complete(&cursor.file, &cursor.analysis, cursor.offset)
+        }) {
+            Ok(completions) => completions,
+            Err(crash) => {
+                self.log_crash(&crash).await;
+                return Ok(None);
+            }
+        };
+        // A syntax-only server lists no files (D-053).
+        let base_dir =
+            (!self.state.syntax_only.load(Ordering::Relaxed)).then_some(&cursor.base_dir);
+        let items = ide::completion_items(
+            &cursor.file,
+            FILE,
+            completions,
+            self.state.snippets.load(Ordering::Relaxed),
+            base_dir.map(PathBuf::as_path),
+        );
+        Ok(Some(CompletionResponse::Array(items)))
+    }
+
+    async fn hover(&self, params: HoverParams) -> Result<Option<lsp::Hover>> {
+        let at = params.text_document_position_params;
+        let Some(cursor) = self.state.analyze(&at.text_document.uri, at.position).await else {
+            return Ok(None);
+        };
+        match catch_panic(Some(FILE), "finding what to show on hover", || {
+            datascript_compiler::ide::hover(&cursor.file, &cursor.analysis, cursor.offset)
+        }) {
+            Ok(found) => Ok(found.map(|h| ide::hover(&cursor.file, FILE, h))),
+            Err(crash) => {
+                self.log_crash(&crash).await;
+                Ok(None)
+            }
+        }
+    }
+
+    async fn signature_help(
+        &self,
+        params: SignatureHelpParams,
+    ) -> Result<Option<lsp::SignatureHelp>> {
+        let at = params.text_document_position_params;
+        let Some(cursor) = self.state.analyze(&at.text_document.uri, at.position).await else {
+            return Ok(None);
+        };
+        match catch_panic(Some(FILE), "finding the signature", || {
+            datascript_compiler::ide::signature_help(&cursor.file, &cursor.analysis, cursor.offset)
+        }) {
+            Ok(found) => Ok(found.map(ide::signature_help)),
+            Err(crash) => {
+                self.log_crash(&crash).await;
+                Ok(None)
+            }
+        }
+    }
+}
+
+/// A document checked for a request at a position.
+struct AtCursor {
+    file: SourceFile,
+    analysis: datascript_compiler::Analysis,
+    /// The byte offset of the position.
+    offset: usize,
+    base_dir: PathBuf,
 }
 
 impl Backend {
+    /// Tells the client about a compiler bug a request ran into; the request answers nothing.
+    async fn log_crash(&self, crash: &Diagnostic) {
+        self.client
+            .log_message(lsp::MessageType::ERROR, crash.message.clone())
+            .await;
+    }
+
     /// `datascript/run`: runs the server's text of an open document as `ds run` would, and
     /// publishes the runtime error, if any, next to the check's diagnostics.
     ///
@@ -415,6 +522,32 @@ impl Backend {
 }
 
 impl State {
+    /// Checks the server's text of `uri` for a request at `position`. A syntax-only server
+    /// checks without schemas, so it reads no files and knows no columns (D-053).
+    async fn analyze(&self, uri: &Uri, position: lsp::Position) -> Option<AtCursor> {
+        let text = self.text_of(uri).await?;
+        let offset = offset_at(&text, position);
+        let file = SourceFile::new(self.display_name(uri), text);
+        let path = file_path(uri);
+        let base_dir = self.base_dir(path.as_deref());
+        let analysis = if self.syntax_only.load(Ordering::Relaxed) {
+            let caps = self.session.engine().capabilities();
+            catch_panic(Some(FILE), "checking the program", || {
+                datascript_compiler::check(&file, FILE, &datascript_compiler::NoSchemas, caps)
+            })
+            .ok()?
+        } else {
+            let ctx = self.session.exec_context(&base_dir);
+            self.session.check(&file, FILE, &ctx).await
+        };
+        Some(AtCursor {
+            file,
+            analysis,
+            offset,
+            base_dir,
+        })
+    }
+
     /// Checks the document if `generation` is still its latest, publishing syntax diagnostics
     /// first when the full check is slow.
     async fn check(&self, client: &Client, uri: Uri, generation: u64) {

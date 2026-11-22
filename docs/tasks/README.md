@@ -98,7 +98,7 @@ Two shared files are touched by many tasks:
 | ID | Task | Depends on | Status |
 |---|---|---|---|
 | [M3-01](M3-01-lsp-diagnostics.md) | LSP core and diagnostics | M1-13 | done |
-| [M3-02](M3-02-lsp-completion-hover.md) | LSP completion, hover, signature help | M3-01 | in-progress |
+| [M3-02](M3-02-lsp-completion-hover.md) | LSP completion, hover, signature help | M3-01 | done |
 | [M3-03](M3-03-lsp-navigation-fixes.md) | LSP quick fixes, navigation, semantic tokens | M3-01, M2-13 | todo |
 | [M3-04](M3-04-vscode-extension.md) | VS Code extension | M3-01 | done |
 | [M3-05](M3-05-vscode-run.md) | VS Code Run CodeLens with CLI-style output | M3-04 | done |
