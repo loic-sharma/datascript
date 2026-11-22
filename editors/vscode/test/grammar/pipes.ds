@@ -1,0 +1,9 @@
+// Operator names are read only right after `|`, and hyphenated ones only without spaces.
+from t | where a - b > 0 | project - away x | project-away y | project -away z
+| project-foo q | mv-expand e | make-series s = sum(x) on ts step 1d
+||where x
+from from | take 1;
+let from = 1;
+from t | where from > 3 and count > 1 | summarize sum(count) by kind
+| extend x = from - 1, order = 3 | let | 5
+let y = (from t | count);

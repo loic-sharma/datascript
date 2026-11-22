@@ -1,0 +1,14 @@
+// Text the lexer rejects, and tokens lexed only to report a better error.
+from t
+| where a <> b && c || d
+| where !x and !has_error and !in_x
+| where # comment? ^ \ ? $ $foo @ &
+| where `order id` == 1 and ` ` == 2 and `unclosed
+| where naïve == 1 and café == 2 and 日本 == 3
+| where x == "smart" and y == “quoted”
+| extend ['']
+| extend ['a', 'b'], [ 'x' ], ['open
+| where a = 1 and b === 2 and c ~ d
+| where a=b==c!=d<=e>=f<g>h
+| where a​b and c == d and e　== f
+/* never closed

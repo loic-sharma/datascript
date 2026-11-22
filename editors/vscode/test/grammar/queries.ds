@@ -1,0 +1,36 @@
+// A realistic script: every operator of the language, as an editor shows it.
+/* Block comments
+   span lines. */
+let threshold = 100;
+let big = from 'orders.csv' | where amount > threshold;
+from big
+| summarize total = sum(amount), n = count() by customerId
+| sort by total desc, customerId asc nulls last
+| top 10 by total
+| take 5;
+from read_csv('x.txt', delimiter = ';', header = false)
+| project-away col*, b
+| project-rename new_name = old_name
+| project a, ['order id'], ["it's"], c = a + b * 2 - 3 / 4 % 5
+| extend d = iff(a >= 1 and b <= 2 or not(c), "yes", 'no')
+| join kind = leftouter (from 'customers.csv' | where active == true) on $left.id == $right.cid
+| union 'more.csv', (from other | take 1)
+| distinct *
+| where name =~ "bob" or name !~ 'alice' or x != null or y < 1 or z > 2
+| where tag in ("a", "b") and tag in~ ("A") and tag !in ("c") and tag !in~ ("C")
+| where n between (1 .. 10) and n !between (2 .. 3)
+| where msg has "error" and msg !has "warn" and msg contains_cs "X" and msg !startswith "a"
+| where msg matches regex "^a.*b$"
+| where m.field == x[0] and d == { }
+| getschema
+| count
+| render timechart with (title = "Totals", xcolumn = ts);
+from 'logs/*.parquet'
+|
+  // the operator may follow on a later line
+  where ts > ago(1d)
+| /* or after a comment */ project-reorder ts
+| mv-expand tags
+| make-series s = sum(x) on ts step 1h
+| take 1;
+datatable(a: long, b: string) [1, "x", 2, "y"]

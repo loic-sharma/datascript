@@ -6,6 +6,9 @@
 //! cached by the [`Session`](datascript_engine::Session); when the client reports a changed data
 //! file, the cache is cleared and open documents are checked again.
 //!
+//! With the `initializationOptions` `{ "syntaxOnly": true }` it reports only lexical and syntax
+//! errors and reads no files, for workspaces the user does not trust.
+//!
 //! The server does not pick an engine: the frontend that starts it passes a session over one.
 
 pub mod convert;

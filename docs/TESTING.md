@@ -12,6 +12,8 @@ are behaviour, and they are reviewed in diffs like any other output.
 | Unit tests | `#[cfg(test)]` in each crate | Lexer edge cases, type rules, small algorithms |
 | Parser snapshots | `tests/cases/syntax/*.dstest` with `mode: syntax` | CST dumps for tricky parses and recovery: one line per node (`KIND@start..end`) or token (`KIND@start..end "text"`), children indented two spaces, trivia included; then the lexical and syntax diagnostics, and, if any has a machine-applicable fix, the query with the fixes applied and the result of parsing it again. Targeted syntax diagnostics live in `tests/cases/errors/syntax/` |
 | LSP tests | `crates/datascript-lsp/tests` (M3) | Request/response scripts against an in-process server |
+| Grammar tests | `editors/vscode/test/grammar` (`npm run test:grammar`) | The TextMate grammar against the lexer's tokens for the fixture files, in `tokens.json` (written by `datascript-syntax/tests/textmate_tokens.rs`, `DS_BLESS=1` to update), plus operator-name cases (D-053) |
+| Extension tests | `editors/vscode/test/e2e` (`npm run test:e2e`) | The extension in a real VS Code with `target/debug/ds`, once trusted and once in Restricted Mode |
 | Web/WASM tests | `web/` (Vitest + Playwright, M4/M5) | UI flows and runtime parity with the CLI |
 
 ## The `.dstest` format
