@@ -7,3 +7,6 @@ target/
 /.vscode/*
 !/.vscode/extensions.json
 node_modules/
+
+# Test fixtures are generated and committed verbatim; never let a global ignore (e.g. *.gz) drop one.
+!/tests/data/**
