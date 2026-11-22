@@ -1,4 +1,4 @@
-# CLAUDE.md — working agreement
+# AGENTS.md — working agreement
 
 DataScript is a KQL-inspired, pipe-based query language in Rust, running on Apache DataFusion,
 targeting the CLI, a local web UI, the browser (WASM), and VS Code (LSP). Read

@@ -2,7 +2,7 @@
 
 One file per unit of work. Each task should fit in a single focused agent session.
 
-**How to use this** (also in [CLAUDE.md](../../CLAUDE.md)):
+**How to use this** (also in [AGENTS.md](../../AGENTS.md)):
 
 1. Pick a `todo` task whose dependencies are all `done`.
 2. Set it to `in-progress` here *and* in the task file. Work on branch `task/<id>-<slug>`.

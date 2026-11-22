@@ -55,7 +55,7 @@ from orders
 | [docs/TESTING.md](docs/TESTING.md) | The `.dstest` golden-file format and test strategy |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Design decisions made so far, and open questions |
 | [docs/tasks/](docs/tasks/README.md) | Task breakdown: one file per unit of work |
-| [CLAUDE.md](CLAUDE.md) | Working agreement for contributors and coding agents |
+| [AGENTS.md](AGENTS.md) | Working agreement for contributors and coding agents |
 
 ## Repository layout (target)
 
