@@ -111,9 +111,15 @@ fn unreadable(path: &Path, error: &std::io::Error) -> Diagnostic {
         .collect();
     let suggestions = did_you_mean(&file_name, nearby.iter().map(String::as_str));
     if let Some(best) = suggestions.single() {
+        // Keep the directory part exactly as the user typed it, separators included, so the
+        // suggestion can be pasted back (`Path::with_file_name` would add `\` on Windows).
+        let typed = shown.to_string();
+        let prefix = match typed.rfind(['/', '\\']) {
+            Some(i) => &typed[..=i],
+            None => "",
+        };
         d = d.help(format!(
-            "a file with a similar name exists: `{}`",
-            path.with_file_name(best).display()
+            "a file with a similar name exists: `{prefix}{best}`"
         ));
     } else if !dir.exists() {
         d = d.note(format!("the directory `{}` does not exist", dir.display()));
