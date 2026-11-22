@@ -99,7 +99,13 @@ Harness details (M0-03):
   Columns with no DataScript type show `arrow:<Arrow type>` in the type row. `timespan` values
   print as `[-][d.]hh:mm:ss[.ffffff]`; fractions of datetimes and timespans drop trailing zeros.
   Control characters in strings are escaped (`\n`, `\t`, `\u{1b}`). Trailing spaces are trimmed.
-- A `render` adds a line `render: timechart x=month y=[revenue] series=customerId` after the table.
+- A `render` adds a line `render: timechart x=month y=[revenue] series=[customerId]` after the
+  table: the kind, then the fields that are set, in this order: `x`, `y`, `series`, `title`,
+  `xtitle`, `ytitle`, `legend`, `ymin`, `ymax`, `stacking`. Lists are in brackets separated by
+  `, `. Column names print as in the language (bare, or `['order id']`), strings in double quotes
+  with the escapes of table cells, numbers as table cells print them. `series` is left out when
+  empty, `legend` unless it is `hidden`, `stacking` unless it is not `default`. `ds explain` prints
+  the same line after the plan (D-047).
 - **Diagnostics** use the *plain* renderer: no color, ASCII only, the file is shown as `query`.
 - **Fixes** (`mode: syntax`, M1-03): when a diagnostic carries a machine-applicable suggestion,
   the output ends with `with the machine-applicable fixes applied:`, the fixed query indented four

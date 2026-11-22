@@ -253,10 +253,47 @@ The web UI renders JSON diagnostics in the editor and can show the same snippet 
 ## Render layer
 
 - `render <kind> [with (title = "...", xcolumn = ..., ycolumns = ..., series = ...)]` must be the
-  last operator of a query (enforced by the parser, `DS0120`). It does not change the data. It attaches a
-  `RenderSpec { kind, x, y: Vec<_>, series, title, … }` to the result.
+  last operator of a query statement (`DS0120` in the parser, `DS5008` in the binder). It does not
+  change the data. The planner puts an explicit `ir::RenderSpec` (defaults resolved, LANGUAGE.md §6)
+  on `QueryPlan::render`, and the session copies it to `QueryResult::render`.
 - The compiler validates the spec against the output schema, e.g. "`timechart` needs a datetime
   column for the x-axis, but the result has none".
+- **RenderSpec JSON** (serde, the contract with `web/` and VS Code; D-047). Keys are camelCase;
+  fields that are not set are absent, never `null`. Columns are output column names (unique after
+  §3.3 naming); frontends take their types from the result schema.
+
+  ```json
+  {
+    "kind": "timechart",
+    "x": "month",
+    "y": ["revenue"],
+    "series": ["customerId"],
+    "title": "Revenue",
+    "xtitle": "Month",
+    "ytitle": "EUR",
+    "legend": "visible",
+    "ymin": 0,
+    "ymax": 1000,
+    "stacking": "default"
+  }
+  ```
+
+  | Key | Type | Present |
+  |---|---|---|
+  | `kind` | one of the kinds in LANGUAGE.md §6, as written | always |
+  | `x` | string | kinds with an x role |
+  | `y` | array of strings, at least one | every kind except `table` (for `card`, all typed columns) |
+  | `series` | array of strings, may be empty | kinds that take `series` |
+  | `title`, `xtitle`, `ytitle` | string | when given |
+  | `legend` | `"visible"` or `"hidden"` | every kind except `table` and `card` (default `"visible"`) |
+  | `ymin`, `ymax` | number | when given |
+  | `stacking` | `"default"`, `"stacked"` or `"stacked100"` (the `kind` property; `unstacked` becomes `"default"`) | `areachart`, `barchart`, `columnchart` |
+
+  `x` is always the category axis, also for `barchart`, whose bars are horizontal: the frontend
+  turns the chart (KQL's docs call that axis y for `barchart`).
+
+  The Rust type is `#[non_exhaustive]`; new keys are only ever added, and frontends ignore keys they
+  do not know.
 - Frontends decide what to do with it:
   - Web UI and VS Code results panel: draw the chart.
   - CLI and REPL: print the table and an info line saying the chart was not drawn here. Later:

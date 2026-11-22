@@ -206,8 +206,12 @@ design decision and implemented by the task named in the allocation table.
 | DS4002 | error | engine runtime error |
 | DS4003 | error | arithmetic error: integer division by zero, overflow, or out-of-range value (D-014) |
 | DS4004 | error | invalid argument value at runtime: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100 |
-| DS5001 | info | chart not drawn in this runtime |
-| DS5002 | error | chart needs a column of a kind the result lacks |
-| DS5003 | error | unknown render kind (did-you-mean) |
-| DS5004 | error | unknown or repeated render property (did-you-mean) |
+| DS5001 | info | chart not drawn in this runtime (once per program run, not for `render table`) |
+| DS5002 | error | chart role cannot be filled: no column of the type the kind needs, or an explicit column of the wrong type (names the role and lists the result's columns) |
+| DS5003 | error | unknown render kind (did-you-mean; a KQL kind DataScript does not support yet says so instead) |
+| DS5004 | error | unknown or repeated render property (did-you-mean; a KQL property DataScript does not support yet says so instead) |
+| DS5005 | error | bad value for a render property: wrong form or count, unknown `legend`/`kind` word (did-you-mean), `ymin` not below `ymax` |
+| DS5006 | error | render property does not apply to this chart kind (says which properties the kind accepts; `kind = map` says map charts are not supported yet) |
+| DS5007 | error | one column used in two chart roles (x, y, series) |
+| DS5008 | error | `render` outside a query statement (in a tabular `let`, a parenthesized pipeline, or the right side of `join`/`union`) |
 | DS9001 | error | internal compiler error (also used for caught panics) |

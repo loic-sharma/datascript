@@ -261,7 +261,7 @@ M1 operators are marked ●, M2 operators ○.
 | ● `distinct` | `distinct a, b` or `distinct *` | Column names only (`DS1032`) |
 | ● `join` | `join kind = inner (right) on key` or `on $left.a == $right.b` | Kinds: `inner` (default), `leftouter`, `rightouter`, `fullouter`, `leftsemi`, `leftanti`, `rightsemi`, `rightanti`. ≠ KQL: no `innerunique` (`DS0124`), and the default is `inner`. Unknown kinds are `DS0123`. Decision D-004 |
 | ● `union` | `union t2, t3` | By column name, columns in order of first appearance. Missing columns become null. Type conflicts widen per §4.2 or give `DS2003` |
-| ● `render` | `render timechart [with (title = "...")]` | Must be last (`DS0120`). See §6 |
+| ● `render` | `render timechart [with (title = "...")]` | Must be last (`DS0120`), and only in a query statement (`DS5008`). Passes its input columns through. See §6 |
 | ● `getschema` | `getschema` | Returns the table `ColumnName: string, ColumnOrdinal: long, DataType: string`. Ordinals start at 0; a column with no DataScript type shows its Arrow type (D-042) |
 | ○ `lookup` | `lookup (dim) on key` | |
 | ○ `mv-expand` | `mv-expand tags` | Needs `dynamic` |
@@ -450,20 +450,105 @@ DIAGNOSTICS.md allows it because it comes from the user's file).
 ... | render <kind> [with ( <prop> = <value>, ... )]
 ```
 
+`render` asks the frontend to draw the result as a chart. It does not change the data: its output
+columns are its input columns. It must be the last operator of a **query statement**: after
+another operator it is `DS0120` (parser), and inside a tabular `let`, a parenthesized pipeline, or
+the right side of `join`/`union` it is `DS5008`, because only a query statement's result is shown
+(KQL does not say).
+
 Kinds: `table`, `timechart`, `linechart`, `areachart`, `barchart` (horizontal), `columnchart`
-(vertical), `piechart`, `scatterchart`, `card` (single value). An unknown kind is `DS5003`.
+(vertical), `piechart`, `scatterchart`, `card` (single record). Kind names are case-sensitive, like
+all keywords. An unknown kind is `DS5003` (did-you-mean). The KQL kinds `anomalychart`,
+`stackedareachart`, `ladderchart`, `pivotchart`, `timepivot` and `treemap` are not supported yet:
+they are `DS5003` too, with a message that says so instead of a did-you-mean.
 
-Properties: `title`, `xcolumn`, `ycolumns`, `series`, `xtitle`, `ytitle`, `legend` (`visible`/`hidden`),
-`ymin`, `ymax`, `kind` (`default`/`stacked`/`stacked100`). An unknown or repeated property is
-`DS5004`.
+The compiler resolves every chart **at compile time** into an explicit `RenderSpec` (the columns
+it plots, with defaults filled in), so frontends never guess. ≠ KQL, which leaves unspecified
+properties to the client ("user agents are free to guess"). Its JSON form is in ARCHITECTURE.md,
+"Render layer". Decision D-047.
 
-Defaults when properties are omitted (validated by the compiler):
+### 6.1 Properties
 
-- `timechart`: x = first datetime column; y = all numeric columns; series = remaining string columns.
-- `barchart`/`columnchart`/`piechart`: x = first string column; y = first numeric column.
-- `scatterchart`: x = first numeric column; y = second numeric column.
+| Property | Value | Applies to |
+|---|---|---|
+| `title` | constant string | all kinds |
+| `xcolumn` | one column name | every kind except `table` and `card` |
+| `ycolumns` | one or more column names | every kind except `table` and `card` |
+| `series` | one or more column names | every kind except `table`, `card` and `piechart` |
+| `xtitle`, `ytitle` | constant string | every kind except `table` and `card` |
+| `legend` | `visible` (default) or `hidden` | every kind except `table` and `card` |
+| `ymin`, `ymax` | constant number | `timechart`, `linechart`, `areachart`, `barchart`, `columnchart`, `scatterchart`; with both, `ymin < ymax` |
+| `kind` | `default`, `unstacked` (same as `default`), `stacked` or `stacked100` | `areachart`, `barchart`, `columnchart` |
 
-Runtimes without a UI ignore the chart, show the data, and print an info diagnostic once (`DS5001`).
+- A **constant string** or **constant number** is a literal (a number may have a leading `-`) or a
+  scalar `let` bound to one, as for paths (D-020).
+- A **column name** is a bare name or `['quoted name']` naming an output column of the pipeline
+  before `render`. It is not an expression. An unknown column is `DS1001` (did-you-mean over the
+  output columns), the same code as anywhere else.
+- `legend` and `kind` values are bare words; anything else is `DS5005` (did-you-mean).
+- An unknown property, or one given twice, is `DS5004` (did-you-mean). The KQL properties
+  `accumulate`, `xaxis`, `yaxis`, `ysplit` and `anomalycolumns` are not supported yet: they are
+  `DS5004` with a message that says so. A known property on a kind it does not apply to is
+  `DS5006`, which says what the kind accepts; for `kind = map` on a `piechart` or `scatterchart`
+  (KQL map charts) it says map charts are not supported yet. A value of the wrong form
+  (`title = 1`, `xcolumn = a, b`, two `ycolumns` on a `piechart`, `ymin` not below `ymax`) is
+  `DS5005`.
+- One column may fill only one role (x, y or series); a column named in two is `DS5007` (KQL
+  does not say).
+- ≠ KQL: KQL does not say what happens with an unknown property or one that does not apply to
+  the kind (clients ignore them). DataScript reports them, so a typo never draws a different chart
+  than intended. KQL also lists `series` for `piechart`, which has no meaning there; it is `DS5006`.
+
+### 6.2 Column roles and defaults
+
+Each chart fills up to three **roles**. A role given explicitly is checked against the types below;
+a role left out is filled by the default, which never picks a column already used by another role.
+Defaults look at columns in output order.
+
+Type classes: **numeric** is `int`, `long`, `real`, `decimal`. `timespan` is not numeric for
+charts in M1. Columns with no DataScript type (§5.1) fill no role.
+
+| Kind | x: accepts / default | y: accepts / default | series: default |
+|---|---|---|---|
+| `table` | none | none | none |
+| `timechart` | `datetime` / first `datetime` | numeric / all numeric | all remaining `string` columns |
+| `linechart`, `areachart` | `datetime` or numeric / first `datetime`, else first numeric | numeric / all remaining numeric | all remaining `string` columns |
+| `barchart`, `columnchart` | any typed column / first `string` | numeric / all numeric | none |
+| `piechart` | any typed column / first `string` | numeric, exactly one / first numeric | (no series) |
+| `scatterchart` | `datetime` or numeric / first numeric | numeric / all remaining numeric | none |
+| `card` | none | all typed columns (not settable) | (no series) |
+
+- x is the **category axis** for `barchart` too, although the bars are horizontal (KQL's docs call
+  it the y-axis there). The frontend turns the chart; the spec does not.
+- `card` shows the first row's values, labelled with their column names.
+- An explicit `series` accepts `string`, `bool`, `int` and `long` columns.
+- Columns that fill no role are left out of the chart (they stay in the table).
+- When a required role cannot be filled, or an explicit column has the wrong type, the error is
+  `DS5002`. It names the role, what the kind needs, and the result's columns with their types:
+  "`timechart` needs a `datetime` column for the x-axis, but the result has none".
+
+Differences from KQL's defaults:
+
+- ≠ KQL: defaults are chosen **by type**, not by position. KQL's per-chart docs say x is the first
+  column (for `timechart`, "should be a datetime"); its `render` page says the first datetime
+  column. `customerId, month, revenue` draws a timechart over `month` here.
+- ≠ KQL: `linechart` and `areachart` accept a `datetime` x; KQL's docs ask for a numeric first
+  column.
+- ≠ KQL: `timechart`, `linechart` and `areachart` make series from **all** remaining `string`
+  columns (frontends combine their values into one series key). KQL groups by one string column
+  and ignores the others, which silently drops data.
+- ≠ KQL: `timespan` columns are not plotted as numbers (frontends would need a unit).
+
+For the README example, `summarize revenue = sum(amount) by customerId, month = ...` gives
+`customerId: string, month: datetime, revenue: real`, so `render timechart` resolves to x =
+`month`, y = `[revenue]`, series = `[customerId]`.
+
+### 6.3 Runtimes without charts
+
+A runtime that cannot draw charts (the CLI, the REPL) shows the data as a table and prints the
+info diagnostic `DS5001` **once per program run**, pointing at the first `render` whose kind is not
+`table`; a note says how many other charts were not drawn when there are several. `render table`
+never gives `DS5001`. The CLI prints it on stderr whatever the `--format`.
 
 ## 7. Functions (M1 core set)
 
@@ -533,6 +618,7 @@ join_op        = "join" [ "kind" "=" ident ] right_table "on" join_cond { "," jo
 join_cond      = ident | "$left" "." ident "==" "$right" "." ident ;
 union_op       = "union" right_table { "," right_table } ;
 render_op      = "render" ident [ "with" "(" prop { "," prop } ")" ] ;
+prop           = ident "=" scalar_expr { "," scalar_expr } ;  (* the binder checks the value, §6.1 *)
 in_expr        = scalar_expr ( "in" | "!in" | "in~" | "!in~" ) "(" scalar_expr { "," scalar_expr } ")" ;
 between_expr   = scalar_expr ( "between" | "!between" ) "(" scalar_expr ".." scalar_expr ")" ;
 typed_null     = type_name "(" "null" ")" ;                         (* §1, not a call *)

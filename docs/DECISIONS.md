@@ -554,6 +554,29 @@ all) cuts only tables, after the whole result is collected, so the footer can sa
 were left out; `csv`, `json`, `ndjson` and `arrow` always hold every row. Nothing is written (and
 no `--output` file created) when there are no results. A closed pipe (`ds run … | head`) exits 0.
 
+### D-047 — `render` semantics and RenderSpec (M1-10)
+The design review of M1-10 found LANGUAGE.md §6 too thin to implement without inventing rules, so
+they are settled up front. **Resolved at compile time**: the compiler fills every default and puts
+an explicit spec on the plan, so the CLI, web UI, VS Code and WASM never disagree on what a chart
+plots. **Roles and types** (§6.2): every kind gets defaults (the old text covered four of nine);
+defaults never reuse a column; `timespan` is not numeric for charts in M1 because frontends would
+need a unit, and can be added later without breaking specs. **KQL alignment** (checked against
+Microsoft's render docs, 2026-11-21): y defaults to all numeric columns for bar, column and scatter
+charts; `card` shows the first row and takes only `title`; `kind = unstacked` is `default`;
+`piechart` takes `xtitle`, `ytitle` and `legend`. KQL kinds and properties DataScript lacks
+(`anomalychart`, `ysplit`, `xaxis`, …) get a "not supported yet" message, not a did-you-mean.
+**Deliberate ≠ KQL**, marked in §6: defaults by type rather than position (KQL's own pages
+disagree on this), a `datetime` x for line and area charts, series from all string columns rather
+than one (KQL silently drops the others), `series` not on `piechart`. **Properties are strict**: a property
+that does not apply to the kind is an error (`DS5006`), not silently ignored as in KQL, so a typo'd
+intent never draws a different chart than the user expects; values are bare column names, not
+expressions. **Unknown columns reuse `DS1001`**, as D-046 reuses codes for the same problem.
+**`render` only in query statements** (`DS5008`): elsewhere its chart could never be shown.
+**`DS5001` once per program run**, not per query, so a script with five charts prints one line;
+`render table` is drawn by every runtime and never gives it. **Golden and `explain` output** share
+one summary line so plan and run cases agree. **JSON**: camelCase, absent rather than `null`,
+additive only (ARCHITECTURE.md, "Render layer").
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack
