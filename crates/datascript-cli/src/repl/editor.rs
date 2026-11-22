@@ -89,14 +89,14 @@ async fn submit(repl: &mut ReplSession, printer: &Printer, text: &str) -> Step {
     if printer.checked(repl, &checked) {
         return Step::Continue { failed: false };
     }
-    let Some(task) = repl.run_task(&checked) else {
+    let Some(task) = repl.run_task(&checked, Box::new(std::io::stdout())) else {
         return Step::Continue { failed: false };
     };
-    let Some(output) = interruptible(task).await else {
+    let Some(report) = interruptible(task).await else {
         return cancelled();
     };
-    let ran = repl.finish_run(&checked, output);
-    printer.ran(repl, &checked, &ran);
+    let ran = repl.finish_run(&checked, report);
+    printer.ran(repl, &ran);
     Step::Continue { failed: false }
 }
 

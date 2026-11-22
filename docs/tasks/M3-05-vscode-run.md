@@ -47,6 +47,7 @@ grid and charts comes later (M3-06) and reuses the same request (D-054).
       read it.
 
 ## Carried over
+- [ ] (from M2-11) `ds run` now prints by streaming: `stream_results` in `crates/datascript-cli/src/output.rs` reads a `RunStream` (`Session::start`) and writes to a `Sink`, which can wrap any `Write` (a `Vec<u8>` for the LSP). Cut tables say `… at least N more rows` when the rest was not counted (D-055). To return the same text from `datascript/run`, move that printer to a crate the LSP can depend on rather than copying it.
 - [ ] (from M3-04) No Run in an untrusted workspace (ARCHITECTURE.md § Frontends, D-053): show no Run CodeLens when `vscode.workspace.isTrusted` is false, and have the server reject `datascript/run` when it was started with `initializationOptions.syntaxOnly`. Add both to `editors/vscode/test/e2e/suite/untrusted.test.ts` and `crates/datascript-lsp/tests/lsp.rs`. A syntax-only server returns no CodeLens either.
 
 ## Follow-ups

@@ -761,6 +761,44 @@ incremental sync. It does not pick an engine; `ds lsp` passes a `Session` over D
   code; M3-06 adds a data format to the same request.
 *(Planning, 2026-11-22.)*
 
+### D-055 — How `ds run` and the REPL stream results (M2-11)
+**Accepted.**
+
+- **One streaming API for every frontend.** `Session::start(src, file, ctx)` checks and plans
+  once and returns a `RunStream`: the diagnostics `run` would give before running (warnings,
+  `DS0004`, or the errors that stop it), the selected `QueryPlan`s (`select(index)` replaces
+  `run_statement`), and `next_query()`, which starts one query and hands back a `QueryStream`
+  (schema, `render` spec, spans and a `BatchStream`). It owns its engine handle and context, so
+  it is `Send` on native targets and can move into a spawned task (the REPL, and M4-01's
+  WebSocket). `Session::run` is now `start` plus `QueryStream::collect`, so golden tests are
+  unchanged. **Panic boundary**: checking and `Engine::execute` run under `catch_panic_async`,
+  and each batch stream is wrapped so a panic while producing a batch becomes a `DS9001` item
+  that ends the stream.
+- **Tables buffer up to `--max-rows` rows**, print them at once, then count what is left only
+  while it is cheap: at most 10,000 more rows are read (not kept). If the result ends within that
+  budget, the footer is unchanged: `… 48 more rows (show them with --max-rows 50)`. Otherwise
+  reading stops, which cancels the query, and the footer says
+  `… at least 16381 more rows (show them all with --max-rows 0)` (`.max-rows 0` in the REPL).
+  The count is a lower bound because rows arrive in whole batches. Counting without a budget
+  would keep memory flat but run the whole query; dropping the count entirely would change every
+  existing footer.
+- **CSV, NDJSON, Arrow and JSON are written batch by batch**, byte for byte as before (checked
+  against the M1 binary over every fixture). JSON writes each result's
+  `{"statement", "columns"` head with `serde_json` and then the rows, so the bytes match the
+  collected document.
+- **A runtime error no longer hides earlier output.** Results already written stay written; the
+  error is reported after them and the exit code is 1. A query that fails on its first batch
+  writes nothing for itself, and `--output` is not created until the first result has something
+  to write, so a run that fails before any output still creates no file. A cut table stops
+  reading, so an error past its last counted row is never seen: the program is only run as far
+  as needed to show what was asked.
+- **`DS5001` is given before anything runs**, from the plans' `render` specs, so it comes out
+  ahead of the tables in `ds run` (in the REPL, after them, with the other run diagnostics). It is
+  given even when a later runtime error stops the program.
+- **Ctrl-C** is unchanged: the program runs on a worker task, exiting (or aborting the REPL's
+  task) drops the `RunStream`, which cancels the query, and `ds run` exits 130.
+*(M2-11, 2026-11-22.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

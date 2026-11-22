@@ -198,6 +198,9 @@ pub struct ResultStream { pub schema: SchemaRef, pub batches: BatchStream }  // 
   and concurrent requests. `check` and `run` run the source-resolution loop: bind against the
   schema cache, fetch `pending_sources` through `Engine::schema_of`, bind again (D-022).
   Its methods are `check`, `compile`, `explain` and `run`, each taking `(src, file, ctx)`.
+  `start` is the streaming form of `run` (D-055): it returns a `RunStream` that starts one query
+  at a time and hands back its batches as the engine produces them, behind the same panic
+  boundary. `ds run` and the REPL print from it; `run` collects it.
   `Session::exec_context(base_dir)` builds the `ExecContext` for one call, reading the clock once
   (D-015). The schema cache is keyed by base directory, sandbox and `SourceRef`, holds failed
   lookups too, and is cleared with `invalidate_schemas` / `invalidate_source` (D-043). The session

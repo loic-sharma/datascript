@@ -13,7 +13,7 @@ mod editor;
 mod input;
 mod session;
 
-use std::io::{self, IsTerminal, Read, Write};
+use std::io::{self, IsTerminal, Read};
 use std::process::ExitCode;
 
 use crate::args::Cli;
@@ -89,9 +89,9 @@ async fn submit(repl: &mut ReplSession, printer: &Printer, text: &str) -> Step {
     if printer.checked(repl, &checked) {
         return Step::Continue { failed: true };
     }
-    let ran = repl.run_checked(&checked).await;
+    let ran = repl.run_checked(&checked, Box::new(io::stdout())).await;
     Step::Continue {
-        failed: printer.ran(repl, &checked, &ran),
+        failed: printer.ran(repl, &ran),
     }
 }
 
@@ -112,23 +112,12 @@ impl Printer {
         checked.failed()
     }
 
-    /// Prints the outcome of running. Returns whether it failed.
-    fn ran(&self, repl: &ReplSession, checked: &Checked, ran: &Ran) -> bool {
-        self.reporter.report(repl.sources(), &ran.diagnostics);
-        let mut out = io::stdout().lock();
-        let written = output::write_repl_results(
-            &mut out,
-            repl.format(),
-            &ran.results,
-            repl.source(checked.file),
-            repl.max_rows(),
-        )
-        .and_then(|()| out.flush());
-        if let Err(e) = written
-            && e.kind() != io::ErrorKind::BrokenPipe
-        {
-            eprintln!("error: cannot write to standard output: {e}");
+    /// Prints what running found, after the results it wrote. Returns whether it failed.
+    fn ran(&self, repl: &ReplSession, ran: &Ran) -> bool {
+        if let Some(message) = &ran.write_error {
+            eprintln!("error: {message}");
         }
+        self.reporter.report(repl.sources(), &ran.diagnostics);
         ran.failed()
     }
 

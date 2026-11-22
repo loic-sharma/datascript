@@ -23,6 +23,7 @@ datascript-engine = { path = "../datascript-engine" }
 datascript-lsp = { path = "../datascript-lsp" }
 datascript-syntax = { path = "../datascript-syntax" }
 dirs.workspace = true
+futures.workspace = true
 nu-ansi-term.workspace = true
 reedline.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
@@ -30,6 +31,7 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "signal", "macros"] }
 
 [dev-dependencies]
+futures = { workspace = true, features = ["executor"] }
 assert_cmd.workspace = true
 predicates.workspace = true
 tempfile.workspace = true

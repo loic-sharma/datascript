@@ -6,6 +6,8 @@
 //! - [`Session`]: what frontends call. It holds the engine, a schema cache and a [`Clock`], and
 //!   offers `check`, `compile`, `explain` and `run` over a source file, running the
 //!   source-resolution loop (D-022) behind a panic boundary ([`catch_panic`]).
+//!   [`Session::start`] is the streaming form of `run`: a [`RunStream`] hands out one
+//!   [`QueryStream`] per query, whose batches arrive as the engine produces them.
 //! - [`ExecContext`]: per-run settings: the clock value, the base directory for relative paths,
 //!   an optional sandbox and an optional row limit.
 //! - [`table`] and [`writers`]: the ASCII result table, CSV and JSON, shared by the frontends and
@@ -24,11 +26,11 @@ use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use datascript_compiler::ir::RenderSpec;
 use datascript_compiler::{Capabilities, SourceError, SourceRef};
-use datascript_diagnostics::{Diagnostic, Span};
+use datascript_diagnostics::{Diagnostic, FileId, Span};
 use futures::{Stream, StreamExt};
 
 pub use boundary::{catch_panic, catch_panic_async};
-pub use session::{RunOutput, Session};
+pub use session::{RunOutput, RunStream, Session};
 
 /// `Send + Sync` on native targets, nothing on wasm32 (D-011).
 #[cfg(not(target_arch = "wasm32"))]
@@ -127,6 +129,65 @@ impl ResultStream {
             truncated,
         })
     }
+}
+
+/// One query of a [`RunStream`], running. Its batches come from the engine as it produces them,
+/// behind the panic boundary: a panic while producing one becomes a `DS9001` item and ends the
+/// stream. Dropping it (or its `batches`) cancels the query.
+///
+/// An `Err` item means the query, and so the program, failed: stop reading, and do not start
+/// the next query.
+pub struct QueryStream {
+    /// The result schema, in canonical Arrow types.
+    pub schema: SchemaRef,
+    pub batches: BatchStream,
+    /// What a final `render` asks frontends to draw; `None` without one.
+    pub render: Option<RenderSpec>,
+    /// The `render` operator of [`QueryStream::render`], for `DS5001`.
+    pub render_span: Option<Span>,
+    /// The query statement this is the result of.
+    pub statement: Span,
+}
+
+impl fmt::Debug for QueryStream {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("QueryStream")
+            .field("schema", &self.schema)
+            .field("statement", &self.statement)
+            .finish_non_exhaustive()
+    }
+}
+
+impl QueryStream {
+    /// Reads every batch, or the first `row_limit` rows, as [`ResultStream::collect`] does, and
+    /// keeps the query's `render` spec and spans.
+    pub async fn collect(self, row_limit: Option<usize>) -> Result<QueryResult, Diagnostic> {
+        let stream = ResultStream {
+            schema: self.schema,
+            batches: self.batches,
+        };
+        let mut result = stream.collect(row_limit).await?;
+        result.render = self.render;
+        result.render_span = self.render_span;
+        result.statement = Some(self.statement);
+        Ok(result)
+    }
+}
+
+/// `batches`, with a panic while producing one turned into a `DS9001` item that ends the stream.
+pub(crate) fn guard_panics(file: FileId, batches: BatchStream) -> BatchStream {
+    Box::pin(
+        std::panic::AssertUnwindSafe(batches)
+            .catch_unwind()
+            .map(move |item| match item {
+                Ok(item) => item,
+                Err(payload) => Err(boundary::panic_diagnostic(
+                    Some(file),
+                    "running the program",
+                    &*payload,
+                )),
+            }),
+    )
 }
 
 /// The complete result of one query.

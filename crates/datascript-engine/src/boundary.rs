@@ -37,7 +37,11 @@ pub async fn catch_panic_async<F: Future>(
         .map_err(|payload| panic_diagnostic(file, what, &*payload))
 }
 
-fn panic_diagnostic(file: Option<FileId>, what: &str, payload: &(dyn Any + Send)) -> Diagnostic {
+pub(crate) fn panic_diagnostic(
+    file: Option<FileId>,
+    what: &str,
+    payload: &(dyn Any + Send),
+) -> Diagnostic {
     let mut diagnostic = Diagnostic::error(
         DS9001,
         format!("internal error: DataScript crashed while {what}"),

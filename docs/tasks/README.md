@@ -88,7 +88,7 @@ Two shared files are touched by many tasks:
 | [M2-08](M2-08-error-explanations.md) | Long-form error explanations | M1-13 | todo |
 | [M2-09](M2-09-schema-overrides.md) | Reader schema overrides | M1-13 | todo |
 | [M2-10](M2-10-decimal-guid.md) | `decimal` and `guid` types | M1-13 | todo |
-| [M2-11](M2-11-streaming-run.md) | Stream results in `ds run` | M1-13 | todo |
+| [M2-11](M2-11-streaming-run.md) | Stream results in `ds run` | M1-13 | done |
 | [M2-12](M2-12-runtime-source-errors.md) | Name the file in runtime read errors | M1-13 | todo |
 
 ## M3 — Editor experience

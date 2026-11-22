@@ -21,12 +21,12 @@ use std::sync::Arc;
 
 use clap::Parser;
 use datascript_compiler::SourceRef;
-use datascript_compiler::ir::ChartKind;
+use datascript_compiler::ir::{ChartKind, QueryPlan, RenderSpec};
 use datascript_compiler::source::format_of_path;
 use datascript_datafusion::DataFusionEngine;
 use datascript_diagnostics::codes::{DS3002, DS5001};
-use datascript_diagnostics::{Diagnostic, JsonReport, Severity};
-use datascript_engine::{QueryResult, Session, SystemClock};
+use datascript_diagnostics::{Diagnostic, JsonReport, Severity, Span};
+use datascript_engine::{Session, SystemClock};
 
 use crate::args::{
     CheckArgs, CheckFormat, Cli, ColorChoice, Command, ExplainArgs, RunArgs, TableArg,
@@ -244,19 +244,16 @@ async fn run_script(args: RunArgs, reporter: &Reporter) -> u8 {
     let src = sources.file(&script);
     let ctx = session.exec_context(&script.base_dir);
 
-    // Formats that hold one result, and `--statement`, need the number of queries before
-    // anything runs. Schemas are cached, so compiling twice reads each source once.
-    let mut selected = None;
+    // Checked once; then queries run one at a time, each streamed as it computes (M2-11).
+    let mut run = session.start(src, script.file, &ctx).await;
+    if run.has_errors() {
+        reporter.report(&sources, &run.diagnostics);
+        return EXIT_ERRORS;
+    }
+    // Formats that hold one result, and `--statement`, need the number of queries first.
     if args.statement.is_some() || args.format.single_result() {
-        let program = match session.compile(src, script.file, &ctx).await {
-            Ok(program) => program,
-            Err(diagnostics) => {
-                reporter.report(&sources, &diagnostics);
-                return EXIT_ERRORS;
-            }
-        };
-        let lines: Vec<u32> = program
-            .queries
+        let lines: Vec<u32> = run
+            .queries()
             .iter()
             .map(|q| src.line_col(q.span.start).line)
             .collect();
@@ -268,7 +265,7 @@ async fn run_script(args: RunArgs, reporter: &Reporter) -> u8 {
                 ),
                 &statement_help(&lines),
             ),
-            Some(n) => selected = Some(n.get() - 1),
+            Some(n) => run.select(n.get() - 1),
             None if lines.len() > 1 => args::usage_error(
                 &format!(
                     "`--format {}` prints one result, but the program has {} query statements",
@@ -284,43 +281,55 @@ async fn run_script(args: RunArgs, reporter: &Reporter) -> u8 {
         }
     }
 
-    let output = match selected {
-        Some(index) => session.run_statement(src, script.file, &ctx, index).await,
-        None => session.run(src, script.file, &ctx).await,
-    };
-    let mut diagnostics = output.diagnostics.clone();
-    diagnostics.extend(chart_not_drawn(&output.results));
+    let mut diagnostics = std::mem::take(&mut run.diagnostics);
+    diagnostics.extend(chart_not_drawn(charts_of(run.queries())));
     reporter.report(&sources, &diagnostics);
-    let failed = output.diagnostics.iter().any(Diagnostic::is_error);
-    let written = output::write_results(
-        &destination,
-        args.format,
-        &output.results,
-        src,
-        args.max_rows,
-    );
-    match written {
-        Ok(()) if failed => EXIT_ERRORS,
-        Ok(()) => 0,
-        Err(e) => e.exit_code(),
+    let layout = output::Layout {
+        format: args.format,
+        max_rows: args.max_rows,
+        frontend: output::Frontend::Run,
+    };
+    let mut sink = output::Sink::new(destination);
+    let line_of = |span: Span| Some(src.line_col(span.start).line);
+    let streamed = output::stream_results(&mut sink, layout, &mut run, &line_of).await;
+    // Stop the program before reporting: a write error leaves the current query running.
+    drop(run);
+    let streamed = match streamed.and_then(|streamed| sink.finish().map(|()| streamed)) {
+        Ok(streamed) => streamed,
+        Err(e) => return e.exit_code(),
+    };
+    match streamed.error {
+        Some(error) => {
+            reporter.report(&sources, &[error]);
+            EXIT_ERRORS
+        }
+        None => 0,
     }
 }
 
-/// `DS5001`, once per program run: the CLI prints charts as tables (LANGUAGE.md §6.3). It points
-/// at the first `render` that is not `render table`, with a note counting the others.
-pub(crate) fn chart_not_drawn(results: &[QueryResult]) -> Option<Diagnostic> {
-    let charts: Vec<&QueryResult> = results
+/// The `render` specs of `queries`, with their spans, for [`chart_not_drawn`].
+pub(crate) fn charts_of(
+    queries: &[QueryPlan],
+) -> impl Iterator<Item = (&RenderSpec, Option<Span>)> {
+    queries
         .iter()
-        .filter(|r| {
-            r.render
-                .as_ref()
-                .is_some_and(|spec| spec.kind != ChartKind::Table)
-        })
+        .filter_map(|q| q.render.as_ref().map(|render| (render, q.render_span)))
+}
+
+/// `DS5001`, once per program run: the CLI prints charts as tables (LANGUAGE.md §6.3). It points
+/// at the first `render` that is not `render table`, with a note counting the others. It is
+/// given before anything runs, from the plans.
+pub(crate) fn chart_not_drawn<'a>(
+    renders: impl IntoIterator<Item = (&'a RenderSpec, Option<Span>)>,
+) -> Option<Diagnostic> {
+    let charts: Vec<(&RenderSpec, Option<Span>)> = renders
+        .into_iter()
+        .filter(|(spec, _)| spec.kind != ChartKind::Table)
         .collect();
-    let first = charts.first()?;
-    let kind = first.render.as_ref()?.kind;
+    let &(first, render_span) = charts.first()?;
+    let kind = first.kind;
     let mut d = Diagnostic::info(DS5001, "charts are not drawn on the command line");
-    d = match first.render_span {
+    d = match render_span {
         Some(span) => d.primary(span, format!("this `{kind}` is printed as a table")),
         None => d.note(format!("the `{kind}` is printed as a table")),
     };

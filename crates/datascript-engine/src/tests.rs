@@ -220,6 +220,8 @@ fn native_session_and_its_futures_are_send() {
     assert_send::<QueryResult>();
     fn assert_send_only<T: Send>() {}
     assert_send_only::<ResultStream>();
+    assert_send_only::<RunStream>();
+    assert_send_only::<QueryStream>();
     let (session, _) = session();
     let ctx = ctx(&session);
     let src = source("from 'orders.csv'");
@@ -227,6 +229,9 @@ fn native_session_and_its_futures_are_send() {
     assert_send_future(session.compile(&src, FileId(0), &ctx));
     assert_send_future(session.explain(&src, FileId(0), &ctx));
     assert_send_future(session.run(&src, FileId(0), &ctx));
+    assert_send_future(session.start(&src, FileId(0), &ctx));
+    let mut run = block_on(session.start(&src, FileId(0), &ctx));
+    assert_send_future(run.next_query());
 
     // One session serves several threads.
     let session = Arc::new(session);
@@ -668,4 +673,136 @@ fn catch_panic_passes_values_through_and_names_the_file() {
     );
     assert_eq!(d.file, Some(FileId(3)));
     assert_eq!(d.notes[0], "the crash said: boom");
+}
+
+// ---- streaming (`Session::start`) ----
+
+#[test]
+fn start_hands_out_batches_as_the_engine_produces_them() {
+    let mut engine = FakeEngine::new();
+    engine.batches = 100;
+    engine.rows_per_batch = 2;
+    let (session, engine) = session_with(engine);
+    let src = source("from 'orders.csv' | render barchart");
+    let mut run = block_on(session.start(&src, FileId(0), &ctx(&session)));
+    assert!(
+        !run.has_errors() && run.diagnostics.is_empty(),
+        "{:?}",
+        run.diagnostics
+    );
+    assert_eq!(run.queries().len(), 1);
+    // Nothing runs until the caller asks.
+    assert_eq!(engine.executions.load(Ordering::SeqCst), 0);
+    let mut query = block_on(run.next_query()).unwrap().unwrap();
+    assert!(query.render.is_some() && query.render_span.is_some());
+    assert_eq!((query.statement.start, query.statement.end), (0, 35));
+    let batch = block_on(query.batches.next()).unwrap().unwrap();
+    assert_eq!(batch.num_rows(), 2);
+    // One batch was produced, not the whole result.
+    assert_eq!(engine.polled.load(Ordering::SeqCst), 1);
+    drop(query);
+    assert!(engine.stream_dropped.load(Ordering::SeqCst));
+    assert!(block_on(run.next_query()).is_none());
+}
+
+#[test]
+fn start_runs_queries_in_order_and_select_keeps_one() {
+    let (session, engine) = session();
+    let src = source("from 'orders.csv' | project amount; from 'orders.csv' | take 1");
+    let mut run = block_on(session.start(&src, FileId(0), &ctx(&session)));
+    let starts: Vec<u32> = run.queries().iter().map(|q| q.span.start).collect();
+    assert_eq!(starts, [0, 36]);
+    let first = block_on(run.next_query()).unwrap().unwrap();
+    assert_eq!(first.schema.fields().len(), 1);
+    let second = block_on(run.next_query()).unwrap().unwrap();
+    assert_eq!(second.statement.start, 36);
+    assert!(block_on(run.next_query()).is_none());
+
+    let mut run = block_on(session.start(&src, FileId(0), &ctx(&session)));
+    run.select(1);
+    assert_eq!(run.queries().len(), 1);
+    assert_eq!(
+        block_on(run.next_query()).unwrap().unwrap().statement.start,
+        36
+    );
+    assert!(block_on(run.next_query()).is_none());
+    let mut run = block_on(session.start(&src, FileId(0), &ctx(&session)));
+    run.select(2);
+    assert!(block_on(run.next_query()).is_none());
+    assert_eq!(engine.executions.load(Ordering::SeqCst), 3);
+}
+
+#[test]
+fn start_with_errors_runs_nothing() {
+    let (session, engine) = session();
+    let src = source("from 'orders.csv' | project nope");
+    let mut run = block_on(session.start(&src, FileId(0), &ctx(&session)));
+    assert!(run.has_errors());
+    assert_eq!(codes(&run.diagnostics), [DS1001]);
+    assert!(run.queries().is_empty());
+    assert!(block_on(run.next_query()).is_none());
+    assert_eq!(engine.executions.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn start_warns_when_there_is_no_query() {
+    let (session, _) = session();
+    let run = block_on(session.start(&source("let x = 1;"), FileId(0), &ctx(&session)));
+    assert_eq!(codes(&run.diagnostics), [DS0004]);
+    assert!(!run.has_errors());
+}
+
+#[test]
+fn a_query_that_fails_to_start_ends_the_run() {
+    let mut engine = FakeEngine::new();
+    engine.fail_execute = true;
+    let (session, engine) = session_with(engine);
+    let src = source("from 'orders.csv'; from 'orders.csv'");
+    let mut run = block_on(session.start(&src, FileId(0), &ctx(&session)));
+    let error = block_on(run.next_query()).unwrap().unwrap_err();
+    assert_eq!(error.code, DS4002);
+    assert!(block_on(run.next_query()).is_none());
+    assert_eq!(engine.executions.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn panics_while_streaming_become_internal_errors() {
+    let mut engine = FakeEngine::new();
+    engine.batches = 5;
+    engine.panic_in = Some(PanicIn::Stream);
+    let (session, _) = session_with(engine);
+    let src = source("from 'orders.csv'");
+    let mut run = block_on(session.start(&src, FileId(0), &ctx(&session)));
+    let mut query = block_on(run.next_query()).unwrap().unwrap();
+    assert!(block_on(query.batches.next()).unwrap().is_ok());
+    let error = block_on(query.batches.next()).unwrap().unwrap_err();
+    assert_panic_diagnostic(&[error], "stream exploded");
+    // The stream ends after the panic.
+    assert!(block_on(query.batches.next()).is_none());
+
+    let mut engine = FakeEngine::new();
+    engine.panic_in = Some(PanicIn::Execute);
+    let (session, _) = session_with(engine);
+    let mut run = block_on(session.start(&src, FileId(0), &ctx(&session)));
+    let error = block_on(run.next_query()).unwrap().unwrap_err();
+    assert_panic_diagnostic(&[error], "execute exploded");
+    assert!(block_on(run.next_query()).is_none());
+
+    let mut engine = FakeEngine::new();
+    engine.panic_in = Some(PanicIn::SchemaOf);
+    let (session, _) = session_with(engine);
+    let run = block_on(session.start(&src, FileId(0), &ctx(&session)));
+    assert_panic_diagnostic(&run.diagnostics, "schema_of exploded");
+    assert!(run.queries().is_empty());
+}
+
+#[test]
+fn query_stream_collect_keeps_the_plan_details() {
+    let (session, _) = session();
+    let src = source("from 'orders.csv' | render barchart");
+    let mut run = block_on(session.start(&src, FileId(0), &ctx(&session)));
+    let query = block_on(run.next_query()).unwrap().unwrap();
+    let result = block_on(query.collect(None)).unwrap();
+    assert!(result.render.is_some() && result.render_span.is_some());
+    assert_eq!(result.statement.map(|s| s.start), Some(0));
 }
