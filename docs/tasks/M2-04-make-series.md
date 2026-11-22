@@ -1,7 +1,7 @@
 # M2-04 — `make-series`
 
 **Status:** todo
-**Depends on:** M2-03
+**Depends on:** M2-03, M2-13
 **Crates:** `datascript-compiler`, `datascript-datafusion`
 
 ## Goal

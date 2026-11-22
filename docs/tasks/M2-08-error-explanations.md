@@ -1,7 +1,7 @@
 # M2-08 — Long-form error explanations
 
 **Status:** todo
-**Depends on:** M1-13
+**Depends on:** M1-13, M2-13
 **Crates:** `datascript-diagnostics`, `datascript-cli`
 
 ## Goal

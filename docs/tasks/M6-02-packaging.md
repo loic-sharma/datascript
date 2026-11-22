@@ -1,7 +1,7 @@
 # M6-02 — Packaging and releases
 
 **Status:** todo
-**Depends on:** M1-13
+**Depends on:** M1-13, M2-13
 **Crates:** release tooling
 
 ## Goal

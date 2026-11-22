@@ -1,7 +1,7 @@
 # M2-01 — Remaining tabular operators
 
 **Status:** todo
-**Depends on:** M1-13
+**Depends on:** M1-13, M2-13
 **Crates:** `datascript-syntax`, `datascript-compiler`, `datascript-datafusion`
 
 ## Goal
@@ -18,5 +18,6 @@ Add the simpler ○ operators and sources from LANGUAGE.md: `lookup`, `as`, `sam
 - [ ] (from M1-24) Generators start a query without `from` (D-036). The parser already sends `range`, `datatable` and `print` at a pipeline head to `grammar::generator` (via `Parser::at_generator`), which reports DS0104 "not available yet" and skips them; replace that with their grammar, so a generator is a `PIPELINE` whose first child is the generator node. Update `tests/cases/syntax/generator_at_head.dstest`. `range(1, 5)` with no space must stay a call.
 - [ ] (from M1-25) `range x⏎from 1 to 10` must stay one statement (D-037): after `range x` the generator is not complete, so `from` there is not a statement start. Today `grammar::generator` recovers with `Parser::at_new_statement`, which stops at a `from` first on its line; the real grammar must not. Add a golden case once `range` parses.
 - [ ] (from M1-25) `lookup from t on k` should get DS0152 with the fix removing `from`, as `join` and `union` do: call `grammar::right_table` for the table after `lookup`.
+- [ ] (from M3-02) Teach completion the new operators in `datascript_compiler::ide::complete` (`classify`): the right side of `lookup` is a table position like `join`'s, and each operator's clauses need their keywords and column contexts. Add a case per operator to `crates/datascript-compiler/src/ide/tests.rs`, and an `operator_doc` line each (`ide/mod.rs`).
 
 ## Follow-ups

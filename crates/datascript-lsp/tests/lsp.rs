@@ -108,7 +108,10 @@ impl Client {
                     "workspaceFolders": folders,
                     "initializationOptions": options,
                     "capabilities": {
-                        "workspace": { "didChangeWatchedFiles": { "dynamicRegistration": watch } }
+                        "workspace": { "didChangeWatchedFiles": { "dynamicRegistration": watch } },
+                        "textDocument": {
+                            "completion": { "completionItem": { "snippetSupport": true } }
+                        }
                     }
                 }),
             )
@@ -266,6 +269,39 @@ impl Client {
             }),
         )
         .await;
+    }
+
+    /// Replaces the text of `uri` with `marked` minus its `‸`, and sends `method` at the `‸`.
+    async fn at_cursor(&mut self, method: &str, uri: &str, version: i32, marked: &str) -> Value {
+        let offset = marked.find('‸').expect("a cursor mark");
+        let before = &marked[..offset];
+        let line = before.matches('\n').count() as u32;
+        let column = before[before.rfind('\n').map_or(0, |i| i + 1)..]
+            .encode_utf16()
+            .count() as u32;
+        self.replace_all(uri, version, &marked.replace('‸', ""))
+            .await;
+        self.request(
+            method,
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": line, "character": column }
+            }),
+        )
+        .await
+    }
+
+    /// The labels of the completion items at the `‸` in `marked`.
+    async fn complete(&mut self, uri: &str, version: i32, marked: &str) -> Vec<String> {
+        let items = self
+            .at_cursor("textDocument/completion", uri, version, marked)
+            .await;
+        items
+            .as_array()
+            .unwrap_or(&Vec::new())
+            .iter()
+            .map(|i| i["label"].as_str().unwrap().to_owned())
+            .collect()
     }
 
     async fn shutdown(mut self) {
@@ -1210,6 +1246,338 @@ async fn the_server_answers_while_a_query_computes() {
         start.elapsed() < Duration::from_secs(1),
         "the cancellation waited {:?} for the query",
         start.elapsed()
+    );
+    client.shutdown().await;
+}
+
+// --- Completion, hover and signature help (M3-02) ---
+
+#[track_caller]
+fn assert_has(labels: &[String], expected: &[&str]) {
+    for e in expected {
+        assert!(labels.iter().any(|l| l == e), "missing `{e}` in {labels:?}");
+    }
+}
+
+#[track_caller]
+fn assert_lacks(labels: &[String], unexpected: &[&str]) {
+    for e in unexpected {
+        assert!(
+            !labels.iter().any(|l| l == e),
+            "unexpected `{e}` in {labels:?}"
+        );
+    }
+}
+
+/// One case per completion context, typed into an open document whose sources are real files.
+#[tokio::test(flavor = "multi_thread")]
+async fn completion_in_each_context() {
+    let mut client = Client::start(datafusion(), one_publish(10_000), false).await;
+    client.write("orders.csv", ORDERS);
+    std::fs::create_dir(client.dir.path().join("data")).unwrap();
+    client.write("data/more.parquet", "");
+    client.write("notes.txt", "");
+    let uri = client.uri("query.ds");
+    client.open(&uri, "").await;
+    let columns = ["orderId", "customerId", "amount"];
+    let lets = "let big = from 'orders.csv';\nlet p = 'orders.csv';\nlet n = 1;\n";
+    let mut version = 1;
+    let mut complete = async |client: &mut Client, marked: &str| {
+        version += 1;
+        client.complete(&uri, version, marked).await
+    };
+
+    // Statement start, and operators after `|`.
+    assert_eq!(complete(&mut client, "fr‸").await, ["from", "let"]);
+    let ops = complete(&mut client, "from 'orders.csv'\n| ‸").await;
+    assert_has(&ops, &["where", "project-away", "summarize", "render"]);
+    assert_eq!(ops.len(), datascript_syntax::OPERATOR_NAMES.len());
+
+    // Columns in incomplete code, from the stage before the cursor.
+    let l = complete(&mut client, "from 'orders.csv' | where am‸").await;
+    assert_eq!(l[..3], columns);
+    assert_has(&l, &["strlen", "tolower"]);
+    assert_lacks(&l, &["sum"]);
+    let l = complete(&mut client, "from 'orders.csv' | project amount | where ‸").await;
+    assert_has(&l, &["amount"]);
+    assert_lacks(&l, &["orderId"]);
+    assert_has(
+        &complete(&mut client, "from 'orders.csv' | summarize ‸").await,
+        &["sum", "amount"],
+    );
+    assert_has(
+        &complete(&mut client, "from 'orders.csv' | where amount > 1 ‸").await,
+        &["and", "or"],
+    );
+
+    // Tables after `from`: lets, readers and files, and nothing else.
+    let l = complete(&mut client, &format!("{lets}from ‸")).await;
+    assert_eq!(
+        l,
+        [
+            "big",
+            "p",
+            "read_csv",
+            "read_json",
+            "read_parquet",
+            "data/",
+            "orders.csv"
+        ],
+        "`n` is not a path and notes.txt is not a data file"
+    );
+    // The right side of `join` and `union`: no readers.
+    let l = complete(&mut client, &format!("{lets}from 'orders.csv' | join ‸")).await;
+    assert_has(&l, &["kind =", "big", "p", "orders.csv"]);
+    assert_lacks(&l, &["read_csv"]);
+    let l = complete(&mut client, &format!("{lets}from 'orders.csv' | union ‸")).await;
+    assert_has(&l, &["big", "orders.csv"]);
+    assert_has(
+        &complete(&mut client, "from 'orders.csv' | join kind=‸").await,
+        &["leftouter"],
+    );
+
+    // Inside a path string: the directory typed so far.
+    assert_eq!(
+        complete(&mut client, "from 'or‸").await,
+        ["data/", "orders.csv"]
+    );
+    assert_eq!(
+        complete(&mut client, "from 'data/‸'").await,
+        ["more.parquet"]
+    );
+    assert_eq!(
+        complete(&mut client, "from read_csv(\"‸").await,
+        ["data/", "orders.csv"]
+    );
+    assert!(
+        complete(&mut client, "from 'orders.csv' | where orderId == '‸")
+            .await
+            .is_empty()
+    );
+
+    // Render kinds, properties and values.
+    assert_has(
+        &complete(&mut client, "from 'orders.csv' | render ‸").await,
+        &["barchart", "card"],
+    );
+    assert_eq!(
+        complete(&mut client, "from 'orders.csv' | render table with (‸").await,
+        ["title"]
+    );
+    assert_eq!(
+        complete(
+            &mut client,
+            "from 'orders.csv' | render barchart with (xcolumn = ‸"
+        )
+        .await,
+        columns
+    );
+    assert_eq!(
+        complete(
+            &mut client,
+            "from 'orders.csv' | render barchart with (legend = ‸"
+        )
+        .await,
+        ["hidden", "visible"]
+    );
+
+    // Reader options and their values.
+    let l = complete(&mut client, "from read_csv('orders.csv', ‸").await;
+    assert_has(&l, &["delimiter", "header"]);
+    assert_eq!(
+        complete(&mut client, "from read_csv('orders.csv', header = ‸").await,
+        ["false", "true"]
+    );
+
+    // Scalar lets in expressions; nothing in comments.
+    let l = complete(&mut client, &format!("{lets}from big | where amount > ‸")).await;
+    assert_has(&l, &["n", "amount"]);
+    assert_lacks(&l, &["big"]);
+    assert!(complete(&mut client, "// from ‸").await.is_empty());
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn completion_items_edit_the_word_and_use_snippets() {
+    let mut client = Client::start(datafusion(), one_publish(10_000), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("query.ds");
+    client.open(&uri, "").await;
+    let items = client
+        .at_cursor(
+            "textDocument/completion",
+            &uri,
+            2,
+            "from 'orders.csv'\n| where str‸",
+        )
+        .await;
+    let strlen = items
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["label"] == "strlen")
+        .unwrap()
+        .clone();
+    assert_eq!(strlen["kind"], 3, "function");
+    assert_eq!(strlen["insertTextFormat"], 2, "snippet");
+    assert_eq!(strlen["textEdit"]["newText"], "strlen($0)");
+    assert_eq!(
+        strlen["textEdit"]["range"],
+        json!({ "start": { "line": 1, "character": 8 }, "end": { "line": 1, "character": 11 } })
+    );
+    assert_eq!(strlen["detail"], "strlen(source: string) -> long");
+    let amount = items
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["label"] == "amount")
+        .unwrap()
+        .clone();
+    assert_eq!(amount["kind"], 5, "field");
+    assert_eq!(amount["detail"], "real");
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn hover_and_signature_help() {
+    let mut client = Client::start(datafusion(), one_publish(10_000), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("query.ds");
+    client.open(&uri, "").await;
+
+    let hover = client
+        .at_cursor(
+            "textDocument/hover",
+            &uri,
+            2,
+            "from 'orders.csv'\n| where amo‸unt > 1",
+        )
+        .await;
+    assert_eq!(hover["contents"]["kind"], "markdown");
+    assert_eq!(
+        hover["contents"]["value"],
+        "```ds\namount: real\n```\ncolumn"
+    );
+    assert_eq!(
+        hover["range"],
+        json!({ "start": { "line": 1, "character": 8 }, "end": { "line": 1, "character": 14 } })
+    );
+    let hover = client
+        .at_cursor(
+            "textDocument/hover",
+            &uri,
+            3,
+            "from 'orders.csv' | extend n = strl‸en(orderId)",
+        )
+        .await;
+    let value = hover["contents"]["value"].as_str().unwrap();
+    assert!(value.contains("strlen(source: string) -> long"), "{value}");
+    let hover = client
+        .at_cursor(
+            "textDocument/hover",
+            &uri,
+            4,
+            "from 'orders.csv' | where 1 > 2‸",
+        )
+        .await;
+    assert_eq!(hover, Value::Null);
+
+    let help = client
+        .at_cursor(
+            "textDocument/signatureHelp",
+            &uri,
+            5,
+            "from 'orders.csv' | extend s = substring(orderId, ‸",
+        )
+        .await;
+    let sig = &help["signatures"][help["activeSignature"].as_u64().unwrap() as usize];
+    let label = sig["label"].as_str().unwrap();
+    let active = &sig["parameters"][sig["activeParameter"].as_u64().unwrap() as usize]["label"];
+    let (start, end) = (
+        active[0].as_u64().unwrap() as usize,
+        active[1].as_u64().unwrap() as usize,
+    );
+    assert_eq!(&label[start..end], "start: integer");
+    let help = client
+        .at_cursor(
+            "textDocument/signatureHelp",
+            &uri,
+            6,
+            "from 'orders.csv' | take 1‸",
+        )
+        .await;
+    assert_eq!(help, Value::Null);
+    client.shutdown().await;
+}
+
+/// A syntax-only server reads nothing for completion, hover or signature help: no columns, no
+/// files, but keywords, operators, functions and `let` names.
+#[tokio::test(flavor = "multi_thread")]
+async fn syntax_only_completion_reads_no_files() {
+    let mut client = Client::start_with(
+        Arc::new(NoReads(DataFusionEngine::default())),
+        one_publish(10_000),
+        false,
+        json!({ "syntaxOnly": true }),
+    )
+    .await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("query.ds");
+    client.open(&uri, "").await;
+    let l = client
+        .complete(&uri, 2, "from 'orders.csv' | where am‸")
+        .await;
+    assert_has(&l, &["strlen", "true"]);
+    assert_lacks(&l, &["amount"]);
+    let l = client.complete(&uri, 3, "from 'orders.csv' | ‸").await;
+    assert_has(&l, &["where", "take"]);
+    let l = client
+        .complete(&uri, 4, "let big = from 'orders.csv';\nlet n = 1;\nfrom ‸")
+        .await;
+    assert_eq!(
+        l,
+        ["big", "read_csv", "read_json", "read_parquet"],
+        "no files"
+    );
+    let l = client
+        .complete(&uri, 5, "let n = 1;\nfrom 'orders.csv' | take ‸")
+        .await;
+    assert_has(&l, &["n"]);
+    assert!(client.complete(&uri, 6, "from 'or‸").await.is_empty());
+    let hover = client
+        .at_cursor(
+            "textDocument/hover",
+            &uri,
+            7,
+            "from 'orders.csv' | where amo‸unt > 1",
+        )
+        .await;
+    assert_eq!(hover, Value::Null, "the column's type needs the schema");
+    let hover = client
+        .at_cursor(
+            "textDocument/hover",
+            &uri,
+            8,
+            "from 'orders.csv' | where strl‸en('a') > 1",
+        )
+        .await;
+    assert!(
+        hover["contents"]["value"]
+            .as_str()
+            .unwrap()
+            .contains("strlen(")
+    );
+    let help = client
+        .at_cursor(
+            "textDocument/signatureHelp",
+            &uri,
+            9,
+            "from 'orders.csv' | where strlen(‸",
+        )
+        .await;
+    assert_eq!(
+        help["signatures"][0]["label"],
+        "strlen(source: string) -> long"
     );
     client.shutdown().await;
 }

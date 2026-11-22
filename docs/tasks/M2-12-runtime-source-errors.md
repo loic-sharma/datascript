@@ -1,7 +1,7 @@
 # M2-12 — Name the file in runtime read errors
 
 **Status:** todo
-**Depends on:** M1-13
+**Depends on:** M1-13, M2-13
 **Crates:** `datascript-datafusion`
 **Diagnostic codes:** none new expected (DS3008); reserve a block if needed
 

@@ -1,7 +1,7 @@
 # M2-05 — User-defined functions
 
 **Status:** todo
-**Depends on:** M1-13
+**Depends on:** M1-13, M2-13
 **Crates:** `datascript-syntax`, `datascript-compiler`
 
 ## Goal
@@ -18,5 +18,6 @@
 
 ## Carried over
 - [ ] (from planning, 2026-11-22) If M3-02 or M3-03 is done, extend the language server to UDFs: completion and signature help for UDF calls, and go to definition, find references and rename for UDFs and their parameters, each with an LSP test.
+- [ ] (from M3-02) Offer user-defined functions in completion (expression contexts in `datascript_compiler::ide::complete`), with hover and signature help from their definitions.
 
 ## Follow-ups

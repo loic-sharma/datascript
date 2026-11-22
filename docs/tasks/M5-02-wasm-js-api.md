@@ -1,7 +1,7 @@
 # M5-02 — JS/TS API (`@datascript/wasm`)
 
 **Status:** todo
-**Depends on:** M5-01, M3-02 (`complete` lives in the compiler)
+**Depends on:** M5-01, M3-02 (`complete` lives in the compiler), M2-13
 **Crates:** `datascript-wasm`
 
 ## Goal

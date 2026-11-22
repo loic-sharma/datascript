@@ -837,6 +837,34 @@ incremental sync. It does not pick an engine; `ds lsp` passes a `Session` over D
   same document again cancels the request.
 *(M3-05, 2026-11-22.)*
 
+### D-057 — Completion, hover and signature help (M3-02)
+**Accepted.**
+
+- **Where**: `datascript_compiler::ide`, so every frontend gives the same answers. Signatures:
+  `complete` / `hover` / `signature_help(src: &SourceFile, analysis: &Analysis, offset: usize)`.
+  ARCHITECTURE.md sketched `complete(&Analysis, offset)`, but an `Analysis` holds no text or tree,
+  and keeping the tree in it would make every `check` result carry it for the few callers that
+  want it. Parsing again is cheap; the caller must pass the text it checked.
+- **Context from the token before the word.** In incomplete code the word being typed often
+  lands in an `ERROR` node, while the tokens before it parsed normally, so the context (after
+  `|`, after `from`, inside `with (`, a reader's options, after a complete expression…) is read
+  from the previous token and its ancestors. Columns are the output of the stage before the
+  cursor's operator, found in `Analysis::stage_schemas` by span.
+- **Items are not filtered** by what is typed; editors filter and rank fuzzily. The order is:
+  columns (in table order), properties, values, tables, scalar `let`s, functions, operators,
+  keywords.
+- **Files**: the compiler reads no files, so it returns `Completions::files` (the directory typed
+  so far, and whether the cursor is inside quotes) and the frontend lists that directory: data
+  files with a known format, and folders. Outside a string the names are inserted quoted.
+- **The LSP checks afresh for each request** (`Session::check`, warm schemas make it ~1 ms), since
+  completion usually comes right after an edit, before the debounced check. A syntax-only server
+  checks with `NoSchemas` and lists no files: keywords, operators, functions and `let` names, no
+  columns (D-053). Every call into the compiler is behind `catch_panic`; a crash is logged to the
+  client and the request answers nothing.
+- **Not offered yet**: host tables (no input for them; M4-04), columns made by earlier `extend`
+  items and `$left.`/`$right.` (M3-03).
+*(M3-02, 2026-11-22.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

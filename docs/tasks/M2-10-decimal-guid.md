@@ -1,7 +1,7 @@
 # M2-10 — `decimal` and `guid` types
 
 **Status:** todo
-**Depends on:** M1-13
+**Depends on:** M1-13, M2-13
 **Crates:** `datascript-compiler`, `datascript-datafusion`
 **Diagnostic codes:** none new expected (reuse DS2003, DS2006, DS2008); reserve a block if needed
 
