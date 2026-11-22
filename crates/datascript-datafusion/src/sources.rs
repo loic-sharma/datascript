@@ -483,8 +483,11 @@ fn single_file(path: &str, ctx: &ExecContext) -> Result<(PathBuf, String), Sourc
 /// as the separator.
 fn glob_files(pattern: &str, ctx: &ExecContext) -> Result<Vec<(PathBuf, String)>, SourceError> {
     let relative = !Path::new(pattern).is_absolute();
+    // A verbatim prefix (`\\?\C:\`, from `canonicalize` on Windows) would be escaped to `\\[?]\`,
+    // which `glob` no longer reads as a prefix, so nothing would match.
+    let base_dir = strip_verbatim(&ctx.base_dir);
     let full = if relative {
-        let base = glob::Pattern::escape(&ctx.base_dir.to_string_lossy());
+        let base = glob::Pattern::escape(&base_dir.to_string_lossy());
         format!("{base}/{pattern}")
     } else {
         pattern.to_string()
@@ -513,7 +516,7 @@ fn glob_files(pattern: &str, ctx: &ExecContext) -> Result<Vec<(PathBuf, String)>
             continue;
         }
         check_sandbox(&path, ctx)?;
-        let shown = match path.strip_prefix(&ctx.base_dir) {
+        let shown = match path.strip_prefix(&base_dir) {
             Ok(rest) if relative => rest.to_string_lossy().into_owned(),
             _ => path.to_string_lossy().into_owned(),
         };

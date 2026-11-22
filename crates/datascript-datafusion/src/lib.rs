@@ -554,4 +554,19 @@ mod tests {
             .collect();
         assert_eq!(files, ["a.csv", "b.csv", "c.csv"]);
     }
+
+    #[test]
+    fn globs_resolve_against_a_canonicalized_base_dir() {
+        // On Windows `canonicalize` adds a verbatim `\\?\` prefix, which must not stop matches.
+        let dir = TempDir::new("canonical");
+        dir.write("data/a.csv", "n\n1\n");
+        dir.write("cases/.keep", "");
+        let ctx = ExecContext {
+            base_dir: dir.0.join("cases").canonicalize().unwrap(),
+            ..dir.ctx()
+        };
+        let engine = DataFusionEngine::default();
+        let schema = schema_of(&engine, SourceRef::Glob("../data/*.csv".into()), &ctx).unwrap();
+        assert_eq!(schema.fields().len(), 1);
+    }
 }
