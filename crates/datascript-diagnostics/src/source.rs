@@ -6,8 +6,8 @@
 //! - **characters**: 1-based columns in the terminal and plain renderers;
 //! - **UTF-16 code units**: offsets and columns in the JSON form and the LSP (D-025).
 //!
-//! Lines are separated by `\n`. A `\r` before the `\n` is part of the line terminator and is
-//! never shown.
+//! A line ends at `\n`, `\r\n` or a lone `\r`, as in the LSP and as the parser counts lines. The
+//! terminator is never shown.
 
 use crate::span::{FileId, Span};
 
@@ -46,9 +46,12 @@ impl SourceFile {
         let mut line_starts = vec![0];
         let mut line_starts_utf16 = vec![0];
         let mut utf16 = 0u32;
+        let bytes = text.as_bytes();
         for (i, c) in text.char_indices() {
             utf16 += c.len_utf16() as u32;
-            if c == '\n' {
+            // `\r\n` is one terminator: the line starts after its `\n`.
+            let ends_line = c == '\n' || (c == '\r' && bytes.get(i + 1) != Some(&b'\n'));
+            if ends_line {
                 line_starts.push(i as u32 + 1);
                 line_starts_utf16.push(utf16);
             }
@@ -273,6 +276,21 @@ mod tests {
         let file = SourceFile::new("q", "ab\r\ncd");
         assert_eq!(file.line_text(0), "ab");
         assert_eq!(file.line_col(4), lc(2, 1));
+    }
+
+    #[test]
+    fn lone_cr_ends_a_line() {
+        // The LSP and the parser treat a lone `\r` as a line break, so positions agree.
+        let file = SourceFile::new("q", "ab\rcd\r\nef\n\rg");
+        assert_eq!(file.line_count(), 5);
+        assert_eq!(file.line_text(0), "ab");
+        assert_eq!(file.line_text(1), "cd");
+        assert_eq!(file.line_text(2), "ef");
+        assert_eq!(file.line_text(3), "");
+        assert_eq!(file.line_text(4), "g");
+        assert_eq!(file.line_col(3), lc(2, 1));
+        assert_eq!(file.utf16_line_col(11), lc(5, 1));
+        assert_eq!(file.byte_offset_from_utf16_line_col(lc(2, 3)), Some(5));
     }
 
     #[test]

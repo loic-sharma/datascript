@@ -32,7 +32,8 @@
 //! ```
 //!
 //! All positions count **UTF-16 code units** (D-025), so JavaScript can index its strings with
-//! them directly. Byte offsets are not part of the JSON form. Lines are separated by `\n`.
+//! them directly. Byte offsets are not part of the JSON form. A line ends at `\n`, `\r\n` or a lone
+//! `\r`.
 
 use std::fmt;
 

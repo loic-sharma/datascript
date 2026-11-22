@@ -44,6 +44,8 @@ datafusion = { version = "55.3", default-features = false, features = ["parquet"
 async-trait = "0.1"
 futures = { version = "0.3", default-features = false, features = ["std", "async-await"] }
 tokio = { version = "1", default-features = false, features = ["rt"] }
+# The language server (M3-01). Only `datascript-lsp` uses it; it re-exports `ls-types`.
+tower-lsp-server = "0.23"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

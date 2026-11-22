@@ -729,3 +729,75 @@ fn ctrl_c_stops_a_running_query() {
     );
     assert!(String::from_utf8_lossy(&output.stderr).contains("interrupted"));
 }
+
+/// Writes one framed JSON-RPC message, as the LSP sends them over stdio.
+fn lsp_send(stdin: &mut impl std::io::Write, body: &str) {
+    write!(stdin, "Content-Length: {}\r\n\r\n{body}", body.len()).unwrap();
+    stdin.flush().unwrap();
+}
+
+/// Reads one framed JSON-RPC message.
+fn lsp_receive(stdout: &mut impl std::io::BufRead) -> String {
+    let mut length = 0;
+    loop {
+        let mut line = String::new();
+        assert_ne!(
+            stdout.read_line(&mut line).unwrap(),
+            0,
+            "the server closed stdout"
+        );
+        let line = line.trim_end();
+        if line.is_empty() {
+            break;
+        }
+        if let Some(value) = line.strip_prefix("Content-Length: ") {
+            length = value.parse().unwrap();
+        }
+    }
+    let mut body = vec![0; length];
+    stdout.read_exact(&mut body).unwrap();
+    String::from_utf8(body).unwrap()
+}
+
+#[test]
+fn lsp_speaks_the_protocol_on_stdio() {
+    use std::io::BufReader;
+    use std::process::Stdio;
+
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_ds"))
+        .args(["lsp", "--stdio"])
+        .current_dir(data_dir())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    lsp_send(
+        &mut stdin,
+        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":null,"capabilities":{}}}"#,
+    );
+    let reply = lsp_receive(&mut stdout);
+    assert!(reply.contains(r#""serverInfo":{"name":"ds""#), "{reply}");
+    lsp_send(
+        &mut stdin,
+        r#"{"jsonrpc":"2.0","method":"initialized","params":{}}"#,
+    );
+    lsp_send(
+        &mut stdin,
+        r#"{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":"untitled:q","languageId":"datascript","version":1,"text":"from 'orders.csv' | where amount = 1"}}}"#,
+    );
+    let published = lsp_receive(&mut stdout);
+    assert!(
+        published.contains("textDocument/publishDiagnostics"),
+        "{published}"
+    );
+    assert!(published.contains(r#""code":"DS0110""#), "{published}");
+    lsp_send(
+        &mut stdin,
+        r#"{"jsonrpc":"2.0","id":2,"method":"shutdown"}"#,
+    );
+    assert!(lsp_receive(&mut stdout).contains(r#""id":2"#));
+    lsp_send(&mut stdin, r#"{"jsonrpc":"2.0","method":"exit"}"#);
+    assert!(child.wait().unwrap().success());
+}

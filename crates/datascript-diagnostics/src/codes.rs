@@ -31,6 +31,16 @@ pub struct CodeInfo {
     pub status: CodeStatus,
 }
 
+/// Where a code is documented, as a URL for editors (the LSP's code description) and the web UI.
+///
+/// Until the long-form pages `docs/errors/DSxxxx.md` exist (M2-08), this is the code registry in
+/// DIAGNOSTICS.md, which lists every code. Markdown table rows have no anchors, so every code
+/// links to the table; M2-08 switches this function to one page per code.
+pub fn docs_url(code: Code) -> String {
+    let _ = code;
+    "https://github.com/loic-sharma/datascript/blob/main/docs/DIAGNOSTICS.md#code-registry".into()
+}
+
 /// Looks up a code in [`REGISTRY`].
 pub fn lookup(code: Code) -> Option<&'static CodeInfo> {
     REGISTRY

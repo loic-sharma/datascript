@@ -53,6 +53,9 @@ fn main() -> ExitCode {
             "put them after the command, such as `ds run report.ds --table orders=orders.csv`",
         );
     }
+    if let Command::Lsp(_) = command {
+        return lsp();
+    }
     // A worker thread runs the program, so the main thread stays free to notice Ctrl-C even
     // while a query is busy computing.
     let runtime = match tokio::runtime::Builder::new_multi_thread()
@@ -89,8 +92,27 @@ async fn run(command: Command, color: ColorChoice) -> ExitCode {
         Command::Check(args) => check(args, &reporter).await,
         Command::Run(args) => run_script(args, &reporter).await,
         Command::Explain(args) => explain(args, &reporter).await,
+        Command::Lsp(_) => unreachable!("`main` serves the LSP before this"),
     };
     ExitCode::from(code)
+}
+
+/// `ds lsp`: serves the LSP over stdio until the client exits. Ctrl-C is not caught here: the
+/// editor owns the process, and stdout carries only the protocol.
+fn lsp() -> ExitCode {
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            eprintln!("error: cannot start the async runtime: {e}");
+            return ExitCode::from(EXIT_USAGE);
+        }
+    };
+    let session = Session::new(Arc::new(DataFusionEngine::default()), Arc::new(SystemClock));
+    runtime.block_on(datascript_lsp::serve_stdio(Arc::new(session)));
+    ExitCode::SUCCESS
 }
 
 /// A session over the DataFusion engine with the `--table` host tables, or the diagnostic for a

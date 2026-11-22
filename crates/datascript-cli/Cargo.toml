@@ -20,6 +20,7 @@ datascript-compiler = { path = "../datascript-compiler" }
 datascript-datafusion = { path = "../datascript-datafusion" }
 datascript-diagnostics = { path = "../datascript-diagnostics" }
 datascript-engine = { path = "../datascript-engine" }
+datascript-lsp = { path = "../datascript-lsp" }
 datascript-syntax = { path = "../datascript-syntax" }
 dirs.workspace = true
 nu-ansi-term.workspace = true
