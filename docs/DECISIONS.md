@@ -712,6 +712,39 @@ incremental sync. It does not pick an engine; `ds lsp` passes a `Session` over D
   workspace folder, else the server's working directory.
 *(M3-01, 2026-11-22.)*
 
+### D-053 — The VS Code extension: trust, grammar and tests (M3-04)
+**Accepted.**
+
+- **Syntax-only mode**: the client sends `initializationOptions: { "syntaxOnly": true }` when
+  the workspace is not trusted. The server then publishes only `parse` diagnostics, never calls
+  `Session::check`, registers no file watcher and ignores watched-file changes, so it reads no
+  file. A flag at startup, rather than a setting the client can flip, keeps the server simple: the
+  client restarts the server when trust is granted. Unknown options and options of the wrong type
+  are ignored, so an older client and a newer server still work together.
+- **Restricted settings**: `datascript.server.path` and `datascript.server.extraArgs` are
+  `restrictedConfigurations`, so VS Code ignores their workspace values in an untrusted folder.
+  Otherwise opening a folder could run any program it names.
+- **The grammar follows the lexer, and a test checks it**: the Rust test
+  `datascript-syntax/tests/textmate_tokens.rs` writes the lexer's tokens for the fixture files
+  `editors/vscode/test/grammar/*.ds` to `tokens.json` (UTF-16 columns, split per line) and
+  fails if the fixtures miss a token kind. The extension's grammar test runs VS Code's tokenizer
+  (`vscode-textmate` with `vscode-oniguruma`) over the same files and checks that every character
+  of every token carries the scope its kind maps to. A hand-written scope assertion per fixture
+  line (`vscode-tmgrammar-test`) would cover only what someone thought to assert, and would not
+  catch the grammar drifting when the lexer changes.
+- **Operator names**: right after `|` and any trivia, also across lines, the first identifier is
+  the operator name. Like the parser, the grammar joins only the known hyphenated names, and only
+  when the three tokens are adjacent (D-026). Other contextual keywords (`by`, `asc`, `has`, …)
+  are scoped wherever they appear. Semantic tokens (M3-03) can correct the rare column called `by`.
+- **Extension tests** run VS Code twice: with `--disable-workspace-trust`, and with trust enabled
+  and the folder untrusted (Restricted Mode, no startup prompt). `@vscode/test-electron`'s
+  `runTests` always disables trust, so the runner uses its download and starts VS Code itself.
+  VS Code has no API to grant trust, so the restart on trust is not tested end to end.
+- **Packaging**: esbuild bundles the client into `dist/extension.js`, so the `.vsix` ships no
+  `node_modules`. The server is not bundled yet: `datascript.server.path` (default `ds` on
+  `PATH`) names it. Bundling platform binaries is M6-02's.
+*(M3-04, 2026-11-22.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

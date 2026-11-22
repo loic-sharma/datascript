@@ -1,0 +1,17 @@
+// Numbers, strings, timespans and datetimes, valid and not.
+from t
+| extend a = 42, b = 1_000_000, c = 3.14, d = 1e-3, e = .5, f = 2.5E+10, g = 7e3
+| extend h = 1..10, i = 1.foo, j = -7
+| extend s1 = "text", s2 = 'text', s3 = @"C:\raw", s4 = @'C:\raw', s5 = "a\"b", s6 = 'it\'s'
+| extend e1 = "tab\tnew\nline\r nul\0 back\\ q\' u\u{1F600}", e2 = "bad \q escape \u{zz}"
+| extend t1 = 1d, t2 = 2h, t3 = 30m, t4 = 10s, t5 = 250ms, t6 = 1.5h, t7 = 5us, t8 = 5µs
+| extend t9 = 3tick, t10 = timespan(1.02:03:04), t11 = timespan(-90m), t12 = timespan(null)
+| extend u1 = 1x, u2 = 10min, u3 = 1e3s, u4 = 0x1F, u5 = 1_, u6 = 1e, u7 = 12
+| extend dt1 = datetime(2024-01-31), dt2 = datetime(2024-01-31T12:00:00Z), dt3 = datetime(null)
+| extend dt4 = datetime(2024-13-01), dt5 = datetime( 2024-01-31 ), typed = long(null)
+| extend datetime = 1, timespan = 2, x = datetime + timespan
+| where s1 == "unterminated
+| where s2 == @'also unterminated
+| where q == "ok"
+| extend dt6 = datetime(2024-01-31
+| extend empty = ""

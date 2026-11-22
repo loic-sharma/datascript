@@ -68,6 +68,8 @@ struct State {
     root: std::sync::Mutex<Option<PathBuf>>,
     /// Whether the client can watch files for us (`workspace/didChangeWatchedFiles`).
     can_watch: AtomicBool,
+    /// Report only lexical and syntax errors, never reading a file ([`InitOptions`]).
+    syntax_only: AtomicBool,
     /// Source of [`Doc::generation`] values.
     generations: AtomicU64,
 }
@@ -80,6 +82,30 @@ struct Doc {
     generation: u64,
 }
 
+/// The `initializationOptions` the server understands. Unknown fields, and fields of the wrong
+/// type, are ignored, so a client written for a newer server still gets the full check.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct InitOptions {
+    /// `"syntaxOnly": true`: publish only lexical and syntax diagnostics. The server then reads no
+    /// files (no schemas) and watches none, so it is safe in a workspace the user does not trust
+    /// (VS Code's Workspace Trust, ARCHITECTURE.md § Frontends).
+    syntax_only: bool,
+}
+
+impl InitOptions {
+    fn from_json(options: Option<&serde_json::Value>) -> Self {
+        let flag = |name: &str| {
+            options
+                .and_then(|o| o.get(name))
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false)
+        };
+        InitOptions {
+            syntax_only: flag("syntaxOnly"),
+        }
+    }
+}
+
 /// The LSP service over `session`, for [`Server`] or an in-process client.
 pub fn service(session: Arc<Session>, config: Config) -> (LspService<Backend>, ClientSocket) {
     LspService::new(move |client| Backend {
@@ -90,6 +116,7 @@ pub fn service(session: Arc<Session>, config: Config) -> (LspService<Backend>, C
             docs: Mutex::new(HashMap::new()),
             root: std::sync::Mutex::new(None),
             can_watch: AtomicBool::new(false),
+            syntax_only: AtomicBool::new(false),
             generations: AtomicU64::new(0),
         }),
     })
@@ -136,6 +163,10 @@ impl LanguageServer for Backend {
             .and_then(|w| w.dynamic_registration)
             .unwrap_or(false);
         self.state.can_watch.store(can_watch, Ordering::Relaxed);
+        let options = InitOptions::from_json(params.initialization_options.as_ref());
+        self.state
+            .syntax_only
+            .store(options.syntax_only, Ordering::Relaxed);
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Options(
@@ -156,7 +187,10 @@ impl LanguageServer for Backend {
     }
 
     async fn initialized(&self, _: InitializedParams) {
-        if !self.state.can_watch.load(Ordering::Relaxed) {
+        // A syntax-only server reads no data files, so their changes do not matter to it.
+        if !self.state.can_watch.load(Ordering::Relaxed)
+            || self.state.syntax_only.load(Ordering::Relaxed)
+        {
             return;
         }
         // Any file may be a source (`read_csv('data.txt')`, globs), so watch them all and skip
@@ -224,6 +258,9 @@ impl LanguageServer for Backend {
     }
 
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+        if self.state.syntax_only.load(Ordering::Relaxed) {
+            return;
+        }
         let data_changed = params.changes.iter().any(|change| {
             file_path(&change.uri).is_none_or(|path| {
                 path.extension()
@@ -282,6 +319,12 @@ impl State {
             |n| n.to_string_lossy().into_owned(),
         );
         let file = SourceFile::new(name, text);
+        if self.syntax_only.load(Ordering::Relaxed) {
+            let syntax = syntax_diagnostics(&file);
+            self.publish(client, &uri, generation, version, &file, &syntax)
+                .await;
+            return;
+        }
         let ctx = self.session.exec_context(&self.base_dir(path.as_deref()));
         let check = self.session.check(&file, FILE, &ctx);
         tokio::pin!(check);

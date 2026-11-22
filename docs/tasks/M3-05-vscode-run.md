@@ -14,4 +14,7 @@ M4-03 exists, reusing `web/` components.
 - [ ] Runtime errors appear as diagnostics in the editor and in the panel.
 - [ ] Cancellation works.
 
+## Carried over
+- [ ] (from M3-04) No Run in an untrusted workspace (ARCHITECTURE.md § Frontends, D-053): show no Run CodeLens when `vscode.workspace.isTrusted` is false, and have the server reject `datascript/run` when it was started with `initializationOptions.syntaxOnly`. Add both to `editors/vscode/test/e2e/suite/untrusted.test.ts` and `crates/datascript-lsp/tests/lsp.rs`.
+
 ## Follow-ups

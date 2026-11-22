@@ -12,4 +12,7 @@ Changelog and versioning policy.
 ## Acceptance criteria
 - [ ] A dry-run release from CI produces all artifacts. Nothing is published without the maintainer's approval.
 
+## Carried over
+- [ ] (from M3-04) Ship `ds` inside platform-specific VS Code packages (`vsce package --target darwin-arm64` …) and have `editors/vscode/src/extension.ts` prefer the bundled binary when `datascript.server.path` is unset. Today the default is `ds` on `PATH`. CI's `vscode` job already builds the .vsix; set the real `publisher` in `editors/vscode/package.json` before publishing.
+
 ## Follow-ups

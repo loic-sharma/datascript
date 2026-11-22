@@ -1,0 +1,136 @@
+{
+  "name": "datascript",
+  "displayName": "DataScript",
+  "description": "DataScript language support: highlighting, snippets and live diagnostics from the `ds` language server.",
+  "version": "0.0.1",
+  "publisher": "datascript",
+  "license": "MIT OR Apache-2.0",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/loic-sharma/datascript.git",
+    "directory": "editors/vscode"
+  },
+  "engines": {
+    "vscode": "^1.91.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets",
+    "Linters"
+  ],
+  "keywords": [
+    "datascript",
+    "kql",
+    "query",
+    "csv",
+    "parquet"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In a workspace you do not trust, DataScript reports syntax errors only: it reads no data files (so no schema checks) and runs no queries.",
+      "restrictedConfigurations": [
+        "datascript.server.path",
+        "datascript.server.extraArgs"
+      ]
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "The language server reads data files from disk."
+    }
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "datascript",
+        "aliases": [
+          "DataScript",
+          "datascript"
+        ],
+        "extensions": [
+          ".ds"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "datascript",
+        "scopeName": "source.datascript",
+        "path": "./syntaxes/datascript.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "datascript",
+        "path": "./snippets/datascript.code-snippets"
+      }
+    ],
+    "commands": [
+      {
+        "command": "datascript.restartServer",
+        "title": "Restart Language Server",
+        "category": "DataScript"
+      }
+    ],
+    "configuration": {
+      "title": "DataScript",
+      "properties": {
+        "datascript.server.path": {
+          "type": "string",
+          "default": "ds",
+          "scope": "machine-overridable",
+          "markdownDescription": "The `ds` executable that serves the language server (`ds lsp`). A bare name is looked up on `PATH`; a relative path resolves against the first workspace folder. Ignored in workspace settings of an untrusted workspace."
+        },
+        "datascript.server.extraArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "machine-overridable",
+          "markdownDescription": "Extra arguments passed to `ds` before `lsp`. Ignored in workspace settings of an untrusted workspace."
+        },
+        "datascript.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Logs the messages between VS Code and the language server to the DataScript output channel."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc -p . --noEmit",
+    "compile-tests": "tsc -p tsconfig.test.json",
+    "test:grammar": "npm run compile-tests && mocha out/test/grammar/grammar.test.js",
+    "test:e2e": "npm run build && npm run compile-tests && node out/test/e2e/runTests.js",
+    "test": "npm run typecheck && npm run test:grammar && npm run test:e2e",
+    "package": "node scripts/copy-licenses.mjs && vsce package --no-dependencies",
+    "vscode:prepublish": "npm run build -- --production"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.19.0",
+    "@types/vscode": "~1.91.0",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^4.1.1",
+    "esbuild": "^0.28.2",
+    "mocha": "^11.7.0",
+    "typescript": "~5.9.3",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.2.0"
+  }
+}

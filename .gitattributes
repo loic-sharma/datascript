@@ -1,4 +1,7 @@
 *.dstest text eol=lf
+# The grammar test compares UTF-16 columns in tokens.json with these files.
+editors/vscode/test/grammar/*.ds text eol=lf
+editors/vscode/test/grammar/tokens.json text eol=lf
 
 # Generated fixtures are compared byte for byte; never convert line endings.
 tests/data/** -text

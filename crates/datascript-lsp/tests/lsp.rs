@@ -45,6 +45,16 @@ struct Client {
 
 impl Client {
     async fn start(engine: Arc<dyn Engine>, config: Config, watch: bool) -> Client {
+        Client::start_with(engine, config, watch, Value::Null).await
+    }
+
+    /// Starts a server, passing `options` as the `initializationOptions`.
+    async fn start_with(
+        engine: Arc<dyn Engine>,
+        config: Config,
+        watch: bool,
+        options: Value,
+    ) -> Client {
         let (client_end, server_end) = tokio::io::duplex(1 << 20);
         let (server_read, server_write) = tokio::io::split(server_end);
         let session = Arc::new(Session::new(engine, Arc::new(FixedClock(0))));
@@ -80,6 +90,7 @@ impl Client {
                     "processId": null,
                     "rootUri": root,
                     "workspaceFolders": [{ "uri": root, "name": "w" }],
+                    "initializationOptions": options,
                     "capabilities": {
                         "workspace": { "didChangeWatchedFiles": { "dynamicRegistration": watch } }
                     }
@@ -511,6 +522,114 @@ async fn documents_that_are_not_files_resolve_paths_in_the_workspace() {
         .await;
     assert_eq!(client.diagnostics(uri).await.codes(), ["DS1001"]);
     client.shutdown().await;
+}
+
+/// An engine that fails the test if it is asked to read anything.
+#[derive(Debug)]
+struct NoReads(DataFusionEngine);
+
+#[async_trait::async_trait]
+impl Engine for NoReads {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn capabilities(&self) -> &Capabilities {
+        self.0.capabilities()
+    }
+
+    async fn schema_of(
+        &self,
+        source: &SourceRef,
+        _: &ExecContext,
+    ) -> Result<SchemaRef, SourceError> {
+        panic!("a syntax-only server read the schema of {source:?}");
+    }
+
+    async fn execute(&self, _: &QueryPlan, _: &ExecContext) -> Result<ResultStream, Diagnostic> {
+        panic!("a syntax-only server ran a query");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn syntax_only_mode_reads_no_files() {
+    let mut client = Client::start_with(
+        Arc::new(NoReads(DataFusionEngine::default())),
+        one_publish(20),
+        true,
+        json!({ "syntaxOnly": true }),
+    )
+    .await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("query.ds");
+
+    // A syntax error and an unknown column: only the syntax error is reported, since finding the
+    // other one means reading `orders.csv`.
+    client
+        .open(
+            &uri,
+            "from 'orders.csv' | where amount = 1 | project amout\n",
+        )
+        .await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(1));
+    assert_eq!(published.codes(), ["DS0110"]);
+
+    // Lexical errors are syntax too, and edits are still checked.
+    client
+        .replace_all(&uri, 2, "from 'orders.csv' | take 1 # x\n")
+        .await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(2));
+    assert_eq!(published.codes(), ["DS0001"]);
+
+    // No data files are watched, and a reported change re-checks nothing.
+    assert!(
+        !client
+            .server_requests
+            .lock()
+            .unwrap()
+            .contains(&"client/registerCapability".to_owned()),
+        "a syntax-only server does not watch files"
+    );
+    client
+        .notify(
+            "workspace/didChangeWatchedFiles",
+            json!({ "changes": [{ "uri": client.uri("orders.csv"), "type": 2 }] }),
+        )
+        .await;
+    client
+        .replace_all(&uri, 3, "from 'orders.csv' | take 1\n")
+        .await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(3));
+    assert_eq!(published.codes(), Vec::<&str>::new());
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn unknown_initialization_options_are_ignored() {
+    // `syntaxOnly: false`, options of the wrong shape and options for other servers all leave
+    // the full check on.
+    for options in [
+        json!({ "syntaxOnly": false }),
+        json!({ "syntaxOnly": "yes", "other": 1 }),
+        json!([1, 2]),
+    ] {
+        let mut client =
+            Client::start_with(datafusion(), one_publish(20), false, options.clone()).await;
+        client.write("orders.csv", ORDERS);
+        let uri = client.uri("query.ds");
+        client
+            .open(&uri, "from 'orders.csv' | project amout\n")
+            .await;
+        assert_eq!(
+            client.diagnostics(&uri).await.codes(),
+            ["DS1001"],
+            "options: {options}"
+        );
+        client.shutdown().await;
+    }
 }
 
 /// The script the latency test checks: 100 five-line queries over a real file, 500 lines.

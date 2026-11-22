@@ -1,0 +1,429 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "DataScript",
+  "scopeName": "source.datascript",
+  "fileTypes": [
+    "ds"
+  ],
+  "comment": "Follows the lexer in crates/datascript-syntax/src/lexer.rs token for token; test/grammar checks it against the lexer's output on the fixture files. Operator names are scoped only right after `|`, as the parser reads them (D-026).",
+  "patterns": [
+    {
+      "include": "#tokens"
+    }
+  ],
+  "repository": {
+    "tokens": {
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#quoted-names"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#literals"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#operators"
+        },
+        {
+          "include": "#pipe"
+        },
+        {
+          "include": "#words"
+        },
+        {
+          "include": "#invalid"
+        }
+      ]
+    },
+    "body": {
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "include": "#quoted-names"
+        },
+        {
+          "include": "#strings"
+        },
+        {
+          "include": "#literals"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#operators"
+        },
+        {
+          "include": "#words"
+        },
+        {
+          "include": "#invalid"
+        }
+      ]
+    },
+    "comments": {
+      "patterns": [
+        {
+          "match": "(//)[^\\r\\n]*",
+          "name": "comment.line.double-slash.datascript",
+          "captures": {
+            "1": {
+              "name": "punctuation.definition.comment.datascript"
+            }
+          }
+        },
+        {
+          "begin": "/\\*",
+          "end": "\\*/",
+          "name": "comment.block.datascript",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.begin.datascript"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.comment.end.datascript"
+            }
+          }
+        }
+      ]
+    },
+    "quoted-names": {
+      "patterns": [
+        {
+          "match": "\\[(?:'(?:[^'\\\\\\r\\n]|\\\\[^\\r\\n])*'|\\\"(?:[^\\\"\\\\\\r\\n]|\\\\[^\\r\\n])*\\\")\\]",
+          "name": "variable.other.quoted.datascript"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "begin": "@'",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.datascript"
+            }
+          },
+          "end": "'|$",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.datascript"
+            }
+          },
+          "name": "string.quoted.single.verbatim.datascript"
+        },
+        {
+          "begin": "@\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.datascript"
+            }
+          },
+          "end": "\"|$",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.datascript"
+            }
+          },
+          "name": "string.quoted.double.verbatim.datascript"
+        },
+        {
+          "begin": "'",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.datascript"
+            }
+          },
+          "end": "'|$",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.datascript"
+            }
+          },
+          "name": "string.quoted.single.datascript",
+          "patterns": [
+            {
+              "include": "#escapes"
+            }
+          ]
+        },
+        {
+          "begin": "\"",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.begin.datascript"
+            }
+          },
+          "end": "\"|$",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.datascript"
+            }
+          },
+          "name": "string.quoted.double.datascript",
+          "patterns": [
+            {
+              "include": "#escapes"
+            }
+          ]
+        }
+      ]
+    },
+    "escapes": {
+      "patterns": [
+        {
+          "match": "\\\\(?:[\\\\\\\"'nrt0]|u\\{[0-9A-Fa-f]{1,6}\\})",
+          "name": "constant.character.escape.datascript"
+        },
+        {
+          "match": "\\\\[^\\r\\n]",
+          "name": "invalid.illegal.escape.datascript"
+        }
+      ]
+    },
+    "literals": {
+      "patterns": [
+        {
+          "match": "(?<![\\p{L}\\p{N}_\\p{M}])datetime\\([^)\\r\\n]*\\)?",
+          "name": "constant.other.datetime.datascript"
+        },
+        {
+          "match": "(?<![\\p{L}\\p{N}_\\p{M}])timespan\\([^)\\r\\n]*\\)?",
+          "name": "constant.other.timespan.datascript"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "match": "(?>(?:\\d[\\d_]*(?:\\.\\d[\\d_]*)?|\\.\\d[\\d_]*)(?:[eE][+-]?\\d[\\d_]*)?)[\\p{L}\\p{N}_\\p{M}µ]+",
+          "name": "constant.numeric.timespan.datascript"
+        },
+        {
+          "match": "(?>(?:\\d[\\d_]*\\.\\d[\\d_]*|\\.\\d[\\d_]*)(?:[eE][+-]?\\d[\\d_]*)?|\\d[\\d_]*[eE][+-]?\\d[\\d_]*)",
+          "name": "constant.numeric.float.datascript"
+        },
+        {
+          "match": "\\d[\\d_]*",
+          "name": "constant.numeric.integer.datascript"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "match": "!(?:in~|(?:in|between|has_cs|has|contains_cs|contains|startswith_cs|startswith|endswith_cs|endswith)(?![\\p{L}\\p{N}_\\p{M}]))",
+          "name": "keyword.operator.word.negated.datascript"
+        },
+        {
+          "match": "\\$(?:left|right)(?![\\p{L}\\p{N}_\\p{M}])",
+          "name": "variable.language.datascript"
+        },
+        {
+          "match": "(?<![\\p{L}\\p{N}_\\p{M}])in~",
+          "name": "keyword.operator.word.datascript"
+        },
+        {
+          "match": "\\|\\||&&|<>",
+          "name": "invalid.illegal.operator.datascript"
+        },
+        {
+          "match": "==|!=|<=|>=|=~|!~",
+          "name": "keyword.operator.comparison.datascript"
+        },
+        {
+          "match": "\\.\\.",
+          "name": "keyword.operator.range.datascript"
+        },
+        {
+          "match": "=",
+          "name": "keyword.operator.assignment.datascript"
+        },
+        {
+          "match": "<|>",
+          "name": "keyword.operator.comparison.datascript"
+        },
+        {
+          "match": "[-+*/%]",
+          "name": "keyword.operator.arithmetic.datascript"
+        },
+        {
+          "match": "!",
+          "name": "invalid.illegal.operator.datascript"
+        },
+        {
+          "match": "~",
+          "name": "keyword.operator.tilde.datascript"
+        },
+        {
+          "match": ";",
+          "name": "punctuation.terminator.statement.datascript"
+        },
+        {
+          "match": ",",
+          "name": "punctuation.separator.comma.datascript"
+        },
+        {
+          "match": ":",
+          "name": "punctuation.separator.colon.datascript"
+        },
+        {
+          "match": "\\.",
+          "name": "punctuation.accessor.datascript"
+        },
+        {
+          "match": "\\(",
+          "name": "punctuation.section.parens.begin.datascript"
+        },
+        {
+          "match": "\\)",
+          "name": "punctuation.section.parens.end.datascript"
+        },
+        {
+          "match": "\\[",
+          "name": "punctuation.section.brackets.begin.datascript"
+        },
+        {
+          "match": "\\]",
+          "name": "punctuation.section.brackets.end.datascript"
+        },
+        {
+          "match": "\\{",
+          "name": "punctuation.section.braces.begin.datascript"
+        },
+        {
+          "match": "\\}",
+          "name": "punctuation.section.braces.end.datascript"
+        }
+      ]
+    },
+    "pipe": {
+      "comment": "`|`, trivia (also across lines), then the operator: its name is the first token, if it is an identifier. A hyphenated name is joined only when it is a known one written without spaces, as the parser does (D-026). The operator runs to the next `|`, `;` or closing bracket.",
+      "begin": "\\|",
+      "beginCaptures": {
+        "0": {
+          "name": "keyword.operator.pipe.datascript"
+        }
+      },
+      "end": "(?=[|;)\\]}])",
+      "patterns": [
+        {
+          "include": "#comments"
+        },
+        {
+          "begin": "(?<![\\p{L}\\p{N}_\\p{M}])(?:(?:make-series|mv-expand|project-away|project-rename|project-reorder)(?![\\p{L}\\p{N}_\\p{M}])|(?!(?:let|true|false|null|and|or|not)(?![\\p{L}\\p{N}_\\p{M}]))[A-Za-z_][A-Za-z0-9_]*(?![\\p{L}\\p{N}_\\p{M}]))",
+          "beginCaptures": {
+            "0": {
+              "name": "keyword.control.operator.datascript"
+            }
+          },
+          "end": "(?=[|;)\\]}])",
+          "patterns": [
+            {
+              "include": "#body"
+            }
+          ]
+        },
+        {
+          "begin": "(?=[^\\s/\\x{FEFF}|;)\\]}])|(?=/(?![/*]))",
+          "end": "(?=[|;)\\]}])",
+          "patterns": [
+            {
+              "include": "#body"
+            }
+          ]
+        }
+      ]
+    },
+    "words": {
+      "patterns": [
+        {
+          "match": "(?<![\\p{L}\\p{N}_\\p{M}])let(?![\\p{L}\\p{N}_\\p{M}])",
+          "name": "storage.type.let.datascript"
+        },
+        {
+          "match": "(?<![\\p{L}\\p{N}_\\p{M}])(?:true|false)(?![\\p{L}\\p{N}_\\p{M}])",
+          "name": "constant.language.boolean.datascript"
+        },
+        {
+          "match": "(?<![\\p{L}\\p{N}_\\p{M}])null(?![\\p{L}\\p{N}_\\p{M}])",
+          "name": "constant.language.null.datascript"
+        },
+        {
+          "match": "(?<![\\p{L}\\p{N}_\\p{M}])(?:and|or|not)(?![\\p{L}\\p{N}_\\p{M}])",
+          "name": "keyword.operator.logical.datascript"
+        },
+        {
+          "match": "(?<![\\p{L}\\p{N}_\\p{M}])from(?![\\p{L}\\p{N}_\\p{M}])(?=\\s*(?:$|['\\\"\\[(@$]|\\.?\\d|[A-Za-z_]))(?!\\s*(?:not|and|or)(?![\\p{L}\\p{N}_\\p{M}]))",
+          "name": "keyword.other.from.datascript"
+        },
+        {
+          "match": "(?<![\\p{L}\\p{N}_\\p{M}])(matches)(\\s+)(regex)(?![\\p{L}\\p{N}_\\p{M}])",
+          "captures": {
+            "1": {
+              "name": "keyword.operator.word.datascript"
+            },
+            "3": {
+              "name": "keyword.operator.word.datascript"
+            }
+          }
+        },
+        {
+          "match": "(?<![\\p{L}\\p{N}_\\p{M}])(?:between|has_cs|has|contains_cs|contains|startswith_cs|startswith|endswith_cs|endswith|in)(?![\\p{L}\\p{N}_\\p{M}])",
+          "name": "keyword.operator.word.datascript"
+        },
+        {
+          "match": "(?<![\\p{L}\\p{N}_\\p{M}])(nulls)(\\s+)(first|last)(?![\\p{L}\\p{N}_\\p{M}])",
+          "captures": {
+            "1": {
+              "name": "keyword.other.datascript"
+            },
+            "3": {
+              "name": "keyword.other.datascript"
+            }
+          }
+        },
+        {
+          "match": "(?<![\\p{L}\\p{N}_\\p{M}])(?:by|asc|desc|on|with|kind(?=\\s*=))(?![\\p{L}\\p{N}_\\p{M}])",
+          "name": "keyword.other.datascript"
+        },
+        {
+          "match": "(?<![\\p{L}\\p{N}_\\p{M}])[A-Za-z_][A-Za-z0-9_]*(?=\\()",
+          "name": "entity.name.function.datascript"
+        },
+        {
+          "match": "(?<![\\p{L}\\p{N}_\\p{M}])[A-Za-z_][A-Za-z0-9_]*(?![\\p{L}\\p{N}_\\p{M}])",
+          "name": "variable.other.datascript"
+        }
+      ]
+    },
+    "invalid": {
+      "patterns": [
+        {
+          "match": "`[^`\\r\\n]+`",
+          "name": "invalid.illegal.name.datascript"
+        },
+        {
+          "match": "[\\p{L}\\p{N}_][\\p{L}\\p{N}_\\p{M}]*",
+          "name": "invalid.illegal.name.datascript"
+        },
+        {
+          "match": "[^\\p{White_Space}\\x{FEFF}]",
+          "name": "invalid.illegal.character.datascript"
+        }
+      ]
+    }
+  }
+}

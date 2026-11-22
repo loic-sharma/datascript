@@ -1,0 +1,57 @@
+{
+  "Query": {
+    "prefix": "from",
+    "body": ["from '${1:data.csv}'", "| ${2:take 10}$0"],
+    "description": "A query over a file"
+  },
+  "Tabular let": {
+    "prefix": "letfrom",
+    "body": ["let ${1:name} = from '${2:data.csv}'", "| ${3:where ${4:true}};$0"],
+    "description": "Bind a pipeline to a name"
+  },
+  "Scalar let": {
+    "prefix": "let",
+    "body": ["let ${1:name} = ${2:value};$0"],
+    "description": "Bind a value to a name"
+  },
+  "where": {
+    "prefix": "where",
+    "body": ["| where ${1:column} ${2:==} ${3:value}$0"],
+    "description": "Keep the rows that match a condition"
+  },
+  "summarize": {
+    "prefix": "summarize",
+    "body": ["| summarize ${1:total} = ${2:sum}(${3:column}) by ${4:key}$0"],
+    "description": "Aggregate rows, grouped by keys"
+  },
+  "sort": {
+    "prefix": "sort",
+    "body": ["| sort by ${1:column} ${2|desc,asc|}$0"],
+    "description": "Sort rows"
+  },
+  "top": {
+    "prefix": "top",
+    "body": ["| top ${1:10} by ${2:column}$0"],
+    "description": "The first rows by a key, largest first"
+  },
+  "join": {
+    "prefix": "join",
+    "body": ["| join kind = ${1|inner,leftouter,rightouter,fullouter,leftsemi,leftanti,rightsemi,rightanti|} ${2:'other.csv'} on ${3:key}$0"],
+    "description": "Join with another table"
+  },
+  "join on different keys": {
+    "prefix": "joinon",
+    "body": ["| join ${1:'other.csv'} on \\$left.${2:key} == \\$right.${3:key}$0"],
+    "description": "Join on columns with different names"
+  },
+  "read_csv": {
+    "prefix": "read_csv",
+    "body": ["from read_csv('${1:data.txt}', delimiter = '${2:;}', header = ${3|true,false|})$0"],
+    "description": "Read a CSV file with explicit options"
+  },
+  "render": {
+    "prefix": "render",
+    "body": ["| render ${1|timechart,linechart,areachart,barchart,columnchart,piechart,scatterchart,card,table|} with (title = \"${2:title}\")$0"],
+    "description": "Chart the result"
+  }
+}
