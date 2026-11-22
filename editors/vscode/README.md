@@ -7,6 +7,14 @@ language for CSV, Parquet and JSON files.
 - **Diagnostics as you type** from the `ds` language server: syntax errors, unknown columns, type
   errors and warnings, each linked to its error code.
 - **Snippets** for common operators (`from`, `where`, `summarize`, `join`, `render`, …).
+- **Run** a query from the "▶ Run" CodeLens above it (or "▶ Run file"), or with
+  **DataScript: Run Statement at Cursor** and **DataScript: Run File**. The result prints in a
+  terminal named "DataScript" exactly as `ds run` prints it, unsaved edits included. Runtime
+  errors also show in the editor until the next edit. Press Ctrl+C in the terminal to stop a run.
+
+  Relative paths resolve against the script's folder. An untitled script resolves them against
+  the workspace folder, or your home directory when no folder is open. Charts print as tables for
+  now, as on the command line.
 
 ## Requirements
 
@@ -19,6 +27,7 @@ the executable. Without it, highlighting and snippets still work.
 |---|---|---|
 | `datascript.server.path` | `ds` | The `ds` executable. A bare name is looked up on `PATH`; a relative path resolves against the first workspace folder. |
 | `datascript.server.extraArgs` | `[]` | Extra arguments passed to `ds` before `lsp`. |
+| `datascript.run.maxRows` | `100` | Rows shown per table when running, like `ds run --max-rows`. 0 shows every row. |
 | `datascript.trace.server` | `off` | Logs the messages between VS Code and the server to the DataScript output channel. |
 
 Run **DataScript: Restart Language Server** after replacing the `ds` binary.
@@ -30,6 +39,7 @@ does less:
 
 - The server reports syntax errors only. It reads no data files, so unknown columns and type
   errors are not reported.
+- Nothing runs: there is no Run CodeLens, and the Run commands are off.
 - `datascript.server.path` and `datascript.server.extraArgs` are read from your user settings
   only. An untrusted folder cannot choose the program VS Code runs.
 

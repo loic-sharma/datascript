@@ -21,10 +21,9 @@ use std::sync::Arc;
 
 use clap::Parser;
 use datascript_compiler::SourceRef;
-use datascript_compiler::ir::{ChartKind, QueryPlan, RenderSpec};
 use datascript_compiler::source::format_of_path;
 use datascript_datafusion::DataFusionEngine;
-use datascript_diagnostics::codes::{DS3002, DS5001};
+use datascript_diagnostics::codes::DS3002;
 use datascript_diagnostics::{Diagnostic, JsonReport, Severity, Span};
 use datascript_engine::{Session, SystemClock};
 
@@ -285,7 +284,7 @@ async fn run_script(args: RunArgs, reporter: &Reporter) -> u8 {
     diagnostics.extend(chart_not_drawn(charts_of(run.queries())));
     reporter.report(&sources, &diagnostics);
     let layout = output::Layout {
-        format: args.format,
+        format: args.format.into(),
         max_rows: args.max_rows,
         frontend: output::Frontend::Run,
     };
@@ -307,41 +306,7 @@ async fn run_script(args: RunArgs, reporter: &Reporter) -> u8 {
     }
 }
 
-/// The `render` specs of `queries`, with their spans, for [`chart_not_drawn`].
-pub(crate) fn charts_of(
-    queries: &[QueryPlan],
-) -> impl Iterator<Item = (&RenderSpec, Option<Span>)> {
-    queries
-        .iter()
-        .filter_map(|q| q.render.as_ref().map(|render| (render, q.render_span)))
-}
-
-/// `DS5001`, once per program run: the CLI prints charts as tables (LANGUAGE.md §6.3). It points
-/// at the first `render` that is not `render table`, with a note counting the others. It is
-/// given before anything runs, from the plans.
-pub(crate) fn chart_not_drawn<'a>(
-    renders: impl IntoIterator<Item = (&'a RenderSpec, Option<Span>)>,
-) -> Option<Diagnostic> {
-    let charts: Vec<(&RenderSpec, Option<Span>)> = renders
-        .into_iter()
-        .filter(|(spec, _)| spec.kind != ChartKind::Table)
-        .collect();
-    let &(first, render_span) = charts.first()?;
-    let kind = first.kind;
-    let mut d = Diagnostic::info(DS5001, "charts are not drawn on the command line");
-    d = match render_span {
-        Some(span) => d.primary(span, format!("this `{kind}` is printed as a table")),
-        None => d.note(format!("the `{kind}` is printed as a table")),
-    };
-    if charts.len() > 1 {
-        let others = charts.len() - 1;
-        d = d.note(format!(
-            "{} not drawn either",
-            output::count(others, "other chart is", "other charts are")
-        ));
-    }
-    Some(d)
-}
+pub(crate) use datascript_engine::printer::{chart_not_drawn, charts_of};
 
 /// "pick one with `--statement <n>`: 1 (line 3), 2 (line 8)".
 fn statement_help(lines: &[u32]) -> String {

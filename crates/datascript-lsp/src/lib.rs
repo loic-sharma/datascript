@@ -9,10 +9,17 @@
 //! With the `initializationOptions` `{ "syntaxOnly": true }` it reports only lexical and syntax
 //! errors and reads no files, for workspaces the user does not trust.
 //!
+//! Run (M3-05, D-054): a "▶ Run" CodeLens over each query statement, and the custom request
+//! `datascript/run` ([`RunParams`] → [`RunResult`]) that runs the server's text of an open
+//! document and returns what `ds run` prints for it. Its runtime error is published with the
+//! document's diagnostics until the next edit. A syntax-only server runs nothing.
+//!
 //! The server does not pick an engine: the frontend that starts it passes a session over one.
 
 pub mod convert;
 mod document;
+mod run;
 mod server;
 
+pub use run::{RUN_FILE_COMMAND, RUN_METHOD, RUN_STATEMENT_COMMAND, RunParams, RunResult};
 pub use server::{Backend, Config, serve, serve_stdio, service};

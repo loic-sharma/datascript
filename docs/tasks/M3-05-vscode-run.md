@@ -1,6 +1,6 @@
 # M3-05 — VS Code: Run CodeLens with CLI-style output
 
-**Status:** todo
+**Status:** done — `datascript/run` and the Run CodeLens in `ds lsp` print through the CLI's printer (moved to `datascript_engine::printer`); the VS Code extension runs statements or files in a "DataScript" terminal, with runtime-error diagnostics and cancellation (D-056).
 **Depends on:** M3-04
 **Crates:** `datascript-lsp`, `editors/vscode`
 
@@ -35,19 +35,34 @@ grid and charts comes later (M3-06) and reuses the same request (D-054).
 - **No new diagnostic codes are expected.** If one is needed, reserve a block first (D-018).
 
 ## Acceptance criteria
-- [ ] Run a single statement (with the `let`s it depends on) or the whole file, from the CodeLens
+- [x] Run a single statement (with the `let`s it depends on) or the whole file, from the CodeLens
       and from a command (`DataScript: Run Statement at Cursor`, `DataScript: Run File`).
-- [ ] Unsaved edits are run: an edit that is not saved changes the output.
-- [ ] For the same file, the output equals what `ds run` prints (test in
+- [x] Unsaved edits are run: an edit that is not saved changes the output.
+- [x] For the same file, the output equals what `ds run` prints (test in
       `crates/datascript-lsp/tests/lsp.rs` against the CLI's renderer).
-- [ ] Runtime errors appear as diagnostics in the editor and in the terminal.
-- [ ] Cancellation works, and a cancelled query stops running.
-- [ ] Extension tests in `editors/vscode/test/e2e/suite/` cover the CodeLens, a run with unsaved
+- [x] Runtime errors appear as diagnostics in the editor and in the terminal.
+- [x] Cancellation works, and a cancelled query stops running.
+- [x] Extension tests in `editors/vscode/test/e2e/suite/` cover the CodeLens, a run with unsaved
       edits, and a runtime error. Expose the last output through `DataScriptApi` so tests can
       read it.
 
 ## Carried over
-- [ ] (from M2-11) `ds run` now prints by streaming: `stream_results` in `crates/datascript-cli/src/output.rs` reads a `RunStream` (`Session::start`) and writes to a `Sink`, which can wrap any `Write` (a `Vec<u8>` for the LSP). Cut tables say `… at least N more rows` when the rest was not counted (D-055). To return the same text from `datascript/run`, move that printer to a crate the LSP can depend on rather than copying it.
-- [ ] (from M3-04) No Run in an untrusted workspace (ARCHITECTURE.md § Frontends, D-053): show no Run CodeLens when `vscode.workspace.isTrusted` is false, and have the server reject `datascript/run` when it was started with `initializationOptions.syntaxOnly`. Add both to `editors/vscode/test/e2e/suite/untrusted.test.ts` and `crates/datascript-lsp/tests/lsp.rs`. A syntax-only server returns no CodeLens either.
+- [x] (from M2-11) `ds run` now prints by streaming: `stream_results` in `crates/datascript-cli/src/output.rs` reads a `RunStream` (`Session::start`) and writes to a `Sink`, which can wrap any `Write` (a `Vec<u8>` for the LSP). Cut tables say `… at least N more rows` when the rest was not counted (D-055). To return the same text from `datascript/run`, move that printer to a crate the LSP can depend on rather than copying it.
+- [x] (from M3-04) No Run in an untrusted workspace (ARCHITECTURE.md § Frontends, D-053): show no Run CodeLens when `vscode.workspace.isTrusted` is false, and have the server reject `datascript/run` when it was started with `initializationOptions.syntaxOnly`. Add both to `editors/vscode/test/e2e/suite/untrusted.test.ts` and `crates/datascript-lsp/tests/lsp.rs`. A syntax-only server returns no CodeLens either.
 
 ## Follow-ups
+- The parity test (output equals `ds run`) is `crates/datascript-cli/tests/lsp_run.rs`, not
+  `crates/datascript-lsp/tests/lsp.rs`: it runs `ds lsp` and `ds run --color always` through the
+  `ds` binary, which only the CLI crate's tests can reach. `lsp.rs` covers the rest: statements,
+  `maxRows`, color, unsaved edits, runtime-error diagnostics, cancellation, CodeLens, untrusted
+  servers and untitled documents with and without a folder.
+- Cancellation over stdio did not work at first: tower-lsp-server polls request futures on the
+  task that reads messages, so a query that rarely yields blocked `$/cancelRequest`. The run now
+  happens on its own task, aborted when the request is cancelled (D-056); a regression test in
+  `lsp.rs` checks it. How fast a cancelled query stops still depends on DataFusion's yields (about
+  every 128 batches).
+- The extension's cancellation tests use a 3-million-row CSV and cancel after 200 ms, which the
+  debug `ds` takes about 4 s to aggregate. Against a much faster build they could see the query
+  finish first.
+- The cut-table footer and `DS5001` are worded for the command line (`--max-rows`, "on the
+  command line"), as the task asked for identical output; carried over to M3-06.

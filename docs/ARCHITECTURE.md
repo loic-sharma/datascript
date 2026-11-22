@@ -206,7 +206,9 @@ pub struct ResultStream { pub schema: SchemaRef, pub batches: BatchStream }  // 
   lookups too, and is cleared with `invalidate_schemas` / `invalidate_source` (D-043). The session
   enforces `ExecContext::row_limit` and marks the result `truncated`.
 - `datascript_engine::table` and `datascript_engine::writers` turn results into the ASCII table,
-  CSV, JSON and NDJSON, printing values the same way in all four.
+  CSV, JSON and NDJSON, printing values the same way in all four. `datascript_engine::printer`
+  streams a `RunStream` into a writer as `ds run` prints it; the CLI, the REPL and the language
+  server's `datascript/run` all print through it (D-056).
 - **Panics**: frontends call the compiler and engine through a boundary that turns a panic into
   `DS9001` (`catch_unwind` on native, a panic hook on wasm32). The LSP and `ds ui` must survive a
   compiler bug. Every `Session` method is behind it; `catch_panic` and `catch_panic_async` are
@@ -312,7 +314,7 @@ The web UI renders JSON diagnostics in the editor and can show the same snippet 
 |---|---|---|
 | CLI | `datascript-cli` | `ds check`, `ds run`, `ds explain`, `ds fmt`; output as table, CSV, JSON, NDJSON or Arrow IPC; exit codes 0/1/2, 130 on Ctrl-C (D-046) |
 | REPL | `datascript-cli` | `ds` with no args; reedline; Enter submits complete input ending in `;`, or on a blank line; lets kept as text across inputs, each input its own `<repl:N>` snippet (D-048); `.schema`, `.tables`, `.format`, `.help`, `.quit`; piped stdin runs the same loop without the editor |
-| LSP | `datascript-lsp` | `ds lsp`; tower-lsp-server, incremental sync, a debounced `Session::check` per document with syntax errors first when schemas are slow, schema cache cleared on watched file changes (D-052); Run CodeLens and a custom `datascript/run` request that runs the open document's current text and returns the text `ds run` prints (M3-05, D-054) |
+| LSP | `datascript-lsp` | `ds lsp`; tower-lsp-server, incremental sync, a debounced `Session::check` per document with syntax errors first when schemas are slow, schema cache cleared on watched file changes (D-052); Run CodeLens and a custom `datascript/run` request that runs the open document's current text and returns the text `ds run` prints, the query running on its own task so cancellation is immediate (M3-05, D-054, D-056) |
 | VS Code | `editors/vscode` | TS client, TextMate grammar, "▶ Run" CodeLens above each query statement, printing the result in a terminal as `ds run` does (M3-05); later a results webview reusing `web/` components (M3-06). Honors Workspace Trust: in an untrusted workspace the server runs syntax-only (no schema reads, no Run), started with `initializationOptions.syntaxOnly`, and the server path comes from user settings only (D-053) |
 | Local web UI | `datascript-server` + `web/` | `ds ui` starts axum on 127.0.0.1 with a random port and a session token, serves the embedded SPA, exposes a JSON/WebSocket API. Query sources are confined to the root directory (D-016) |
 | WASM | `datascript-wasm` + `web/` | Same SPA with a client-side runtime adapter; files come from drag-drop, File System Access API, or URLs |

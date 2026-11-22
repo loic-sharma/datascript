@@ -1420,6 +1420,7 @@ version = "0.0.0"
 dependencies = [
  "arrow-array",
  "arrow-cast",
+ "arrow-ipc",
  "arrow-schema",
  "async-trait",
  "datascript-compiler",
@@ -1443,6 +1444,7 @@ dependencies = [
 name = "datascript-lsp"
 version = "0.0.0"
 dependencies = [
+ "arrow-array",
  "arrow-schema",
  "async-trait",
  "datascript-compiler",
@@ -1451,6 +1453,7 @@ dependencies = [
  "datascript-engine",
  "datascript-syntax",
  "futures",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",

@@ -79,3 +79,25 @@ export function waitForCodes(
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/** The CodeLenses VS Code shows for `uri`, resolved. */
+export async function codeLenses(uri: vscode.Uri): Promise<vscode.CodeLens[]> {
+  const lenses = await vscode.commands.executeCommand<vscode.CodeLens[]>(
+    'vscode.executeCodeLensProvider',
+    uri,
+  );
+  return lenses ?? [];
+}
+
+/** The open terminal named `name`, waiting for it to open. */
+export async function terminalNamed(name: string, timeoutMs = 10_000): Promise<vscode.Terminal> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const found = vscode.window.terminals.find((t) => t.name === name);
+    if (found) {
+      return found;
+    }
+    assert.ok(Date.now() < deadline, `no terminal named ${name}`);
+    await sleep(20);
+  }
+}

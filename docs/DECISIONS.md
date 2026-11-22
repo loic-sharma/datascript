@@ -799,6 +799,44 @@ incremental sync. It does not pick an engine; `ds lsp` passes a `Session` over D
   task) drops the `RunStream`, which cancels the query, and `ds run` exits 130.
 *(M2-11, 2026-11-22.)*
 
+### D-056 — How VS Code Run works (M3-05)
+**Accepted.**
+
+- **One printer.** The code that prints a run's results (`stream_results`, the table footer,
+  `DS5001`) moved from the CLI to `datascript_engine::printer`, so `ds run`, the REPL and
+  `datascript/run` print through the same function. `datascript/run` returns
+  `{ output, failed }`: the check's diagnostics, the tables and the runtime error, rendered with
+  the renderer `ds run` uses on a terminal (`Renderer::terminal(color)`), in the order `ds run`
+  writes them to standard error and standard output. `failed` is what makes `ds run` exit 1. The
+  table footer says `--max-rows`, as `ds run`'s does; the editor's setting
+  `datascript.run.maxRows` maps to it. A parity test runs both through the `ds` binary
+  (`crates/datascript-cli/tests/lsp_run.rs`), since the LSP crate cannot run the CLI.
+- **Names.** Diagnostics name the document by its path relative to the workspace folder, as
+  `ds run` run from that folder does; a file outside it by its full path; an untitled document by
+  its URI.
+- **The query runs on its own task.** tower-lsp-server reads, dispatches and answers messages on
+  one task, and polls request futures there. A query that computes for a long stretch between
+  yields (DataFusion yields every 128 batches) would hold up every message, `$/cancelRequest`
+  included: cancelling over stdio did nothing until the query ended. The handler spawns the run
+  and aborts the task when it is dropped, so a cancelled query is dropped at its next yield and
+  the reply is immediate.
+- **Runtime errors** are published after the check's diagnostics for the text that ran, and
+  cleared on the next edit (the check after it publishes without them). A run of a text that was
+  edited meanwhile publishes nothing.
+- **CodeLens**: "▶ Run" over each query statement and "▶ Run file" next to the first one when
+  there are several. A lens's range is its whole statement, so the client finds the statement at
+  the cursor from the lenses. A syntax-only server returns no lenses and refuses
+  `datascript/run` (`RequestFailed`, -32803); the client also hides lenses and refuses to run
+  while the workspace is untrusted.
+- **No folder open**: an untitled document resolves relative paths against the workspace folder,
+  or else the server's working directory. The VS Code client starts the server in the first
+  workspace folder, or else in the home directory, so with no folder `from 'data.csv'` reads
+  `~/data.csv`. Refusing to run would also have been possible, but a scratch query over an
+  absolute path is a reasonable thing to do with no folder open.
+- **Cancellation** in VS Code: Ctrl+C in the "DataScript" terminal, closing it, or running the
+  same document again cancels the request.
+*(M3-05, 2026-11-22.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack
