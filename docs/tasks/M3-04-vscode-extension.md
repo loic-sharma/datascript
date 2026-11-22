@@ -15,4 +15,8 @@ binary later), and snippets.
       operator names are matched as adjacent `ident-ident` after `|`, the same rule as the parser (D-026).
 - [ ] Honors Workspace Trust: in an untrusted workspace, the server runs syntax-only (no schema reads, no Run). Tested.
 
+## Carried over
+- [ ] (from M3-01) The server has no syntax-only mode yet. Add one to `datascript-lsp` (for example an `initializationOptions` flag that skips `Session::check` and publishes only `parse` diagnostics) and have the client set it in an untrusted workspace.
+- [ ] (from M3-01) The server clears its schema cache only when the client reports changed files through a dynamically registered `workspace/didChangeWatchedFiles` watcher (D-052). Make sure the language client advertises `dynamicRegistration` for it (vscode-languageclient does by default).
+
 ## Follow-ups

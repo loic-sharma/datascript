@@ -683,6 +683,35 @@ mistake, a new opt-in lint gets a new code. *(2026-11-22.)*
   such keys as secondary labels; the one fix adds `asc` to all of them. `top` keys never warn.
 *(M1-14, 2026-11-22.)*
 
+### D-052 — How the language server checks documents (M3-01)
+**Accepted.** `datascript-lsp` uses `tower-lsp-server` (and the `ls-types` it re-exports) with
+incremental sync. It does not pick an engine; `ds lsp` passes a `Session` over DataFusion.
+
+- **When it checks**: an opened document at once, a changed one after a 150 ms debounce. Each
+  scheduled check gets a generation number; a check whose document changed meanwhile publishes
+  nothing, and publishing holds the documents lock, so a stale result can never overwrite a newer
+  one. A check is not cancelled when superseded: its schema reads still warm the cache.
+- **Syntax first, without flicker**: the full check (`Session::check`) races a 50 ms grace. With
+  warm schemas it wins and the editor sees one update. When schemas must still be read, the
+  lexical and syntax diagnostics are published on their own, then the full set. Publishing syntax
+  errors on every keystroke would make semantic errors blink out while typing.
+- **Schema cache**: the server asks the client to watch `**/*` (dynamic registration of
+  `workspace/didChangeWatchedFiles`), because any file can be a source (`read_csv('data.txt')`,
+  globs, a file that does not exist yet). A change to anything but a `.ds` script clears the whole
+  cache (`invalidate_schemas`) and re-checks open documents. Mapping one changed file to the
+  `SourceRef`s it affects would need glob matching against every base directory, for little gain:
+  the next check reads only what open documents use. Clients that cannot register watchers get no
+  invalidation until the server restarts.
+- **Conversion**: positions are UTF-16 (D-025). The message carries the help and note lines as the
+  terminal prints them (`help: …`), since editors show only the message. The primary label (when
+  it says something) and secondary labels become related information. The code description links
+  to `codes::docs_url`, the DIAGNOSTICS.md code registry until M2-08's pages exist.
+- **Line breaks**: `SourceFile` now ends a line at `\n`, `\r\n` or a lone `\r`, as the LSP and
+  the parser do, so positions agree everywhere (until now a lone `\r` was not a line break).
+- **Base directory**: a `file:` document's directory; for other documents (`untitled:`), the first
+  workspace folder, else the server's working directory.
+*(M3-01, 2026-11-22.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

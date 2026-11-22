@@ -14,6 +14,7 @@ inside source strings. Hover shows types and catalog docs. Signature help for fu
 - [ ] LSP tests for each completion context.
 
 ## Carried over
+- [ ] (from M3-01) Call `complete` through `datascript_engine::catch_panic`, as the server already does for `parse`, so a compiler bug becomes `DS9001` instead of killing the server.
 - [ ] (from M1-24) Completion after `from ` (a `PIPELINE` whose `from_token()` is followed by nothing or by a partial name) offers only tables and paths: table `let`s, host tables, scalar `let`s bound to strings, reader functions and files. The right side of `join`/`union`/`lookup` is the same kind of position, without `from`.
 
 ## Follow-ups

@@ -84,6 +84,18 @@ pub enum Command {
     /// Print the logical plan of each query in a script.
     #[command(after_help = EXPLAIN_EXAMPLES)]
     Explain(ExplainArgs),
+    /// Start the language server, speaking the LSP on standard input and output.
+    ///
+    /// Editors start this; it is not meant to be run by hand.
+    Lsp(LspArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct LspArgs {
+    /// Talk over standard input and output. This is the only transport and the default; the flag
+    /// is accepted because language clients pass it.
+    #[arg(long)]
+    pub stdio: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
