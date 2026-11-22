@@ -101,7 +101,7 @@ implement them, don't re-decide them.
   comments, and lexer errors. Off when color is off (`--color never`, `NO_COLOR`).
 - Tab completes operator names (`datascript_syntax::OPERATOR_NAMES`), function names (from the
   function catalog), saved let names and host table names, and meta command names when the input
-  starts with `.`. Columns come later (from the binder's stage schemas; that's M3-02 territory).
+  starts with `.`. Column completion is M3-07 (it uses the compiler's `complete` from M3-02).
 
 ### New dependencies
 `reedline` and `dirs`, added to the workspace `Cargo.toml` and used only by `datascript-cli`.

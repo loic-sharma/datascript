@@ -1,6 +1,6 @@
 # M3-02 — Language server: completion, hover, signature help
 
-**Status:** todo
+**Status:** in-progress
 **Depends on:** M3-01
 **Crates:** `datascript-lsp`, `datascript-compiler`
 
@@ -9,9 +9,14 @@ Context-aware completion: operators after `|`, columns from `stage_schemas` at t
 functions (with snippets), lets, render kinds and properties, reader options, and file paths
 inside source strings. Hover shows types and catalog docs. Signature help for function calls.
 
+`hover(&Analysis, offset)` lives in `datascript-compiler` next to `complete`, for the same reason:
+the LSP, the `ds ui` server (M4-04) and WASM (M5-02) must give the same answer for the same text.
+The LSP only converts the result to LSP types.
+
 ## Acceptance criteria
-- [ ] Completion works in incomplete code (`orders | where am|`), relying on parser recovery.
+- [ ] Completion works in incomplete code (`from orders | where am|`), relying on parser recovery.
 - [ ] LSP tests for each completion context.
+- [ ] ARCHITECTURE.md's facade sketch lists `hover` next to `complete`, with its final signature.
 
 ## Carried over
 - [ ] (from M3-01) Call `complete` through `datascript_engine::catch_panic`, as the server already does for `parse`, so a compiler bug becomes `DS9001` instead of killing the server.

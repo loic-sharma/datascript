@@ -1,7 +1,7 @@
 # M3-03 — Language server: quick fixes, navigation, semantic tokens
 
 **Status:** todo
-**Depends on:** M3-01
+**Depends on:** M3-01, M2-13
 **Crates:** `datascript-lsp`
 
 ## Goal

@@ -1,7 +1,7 @@
 # M5-01 — Build the engine for wasm32
 
 **Status:** todo
-**Depends on:** M1-13
+**Depends on:** M1-13, M2-13
 **Crates:** `datascript-wasm`, `datascript-datafusion`
 
 ## Goal

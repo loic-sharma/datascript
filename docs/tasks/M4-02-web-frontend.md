@@ -1,7 +1,7 @@
 # M4-02 — Web UI front end
 
 **Status:** todo
-**Depends on:** M4-01
+**Depends on:** M4-01, M2-13
 **Crates:** `web/`
 
 ## Goal

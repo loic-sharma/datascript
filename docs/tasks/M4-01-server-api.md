@@ -1,7 +1,7 @@
 # M4-01 — Local web UI server (`ds ui`)
 
 **Status:** todo
-**Depends on:** M1-13
+**Depends on:** M1-13, M2-13
 **Crates:** `datascript-server`, `datascript-cli`
 
 ## Goal

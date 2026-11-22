@@ -78,55 +78,59 @@ Two shared files are touched by many tasks:
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
-| [M2-01](M2-01-tabular-operators.md) | Remaining tabular operators | M1-13 | todo |
-| [M2-02](M2-02-parse-operator.md) | `parse` operator | M1-13 | todo |
-| [M2-03](M2-03-dynamic-type.md) | `dynamic` type, JSON, `mv-expand` | M1-13 | todo |
-| [M2-04](M2-04-make-series.md) | `make-series` | M2-03 | todo |
-| [M2-05](M2-05-user-defined-functions.md) | User-defined functions | M1-13 | todo |
-| [M2-06](M2-06-function-library.md) | Complete the function library | M1-13 | todo |
+| [M2-01](M2-01-tabular-operators.md) | Remaining tabular operators | M1-13, M2-13 | todo |
+| [M2-02](M2-02-parse-operator.md) | `parse` operator | M1-13, M2-13 | todo |
+| [M2-03](M2-03-dynamic-type.md) | `dynamic` type, JSON, `mv-expand` | M1-13, M2-13 | todo |
+| [M2-04](M2-04-make-series.md) | `make-series` | M2-03, M2-13 | todo |
+| [M2-05](M2-05-user-defined-functions.md) | User-defined functions | M1-13, M2-13 | todo |
+| [M2-06](M2-06-function-library.md) | Complete the function library | M1-13, M2-13 | todo |
 | [M2-07](M2-07-formatter.md) | Formatter (`ds fmt`) | M1-13 | todo |
-| [M2-08](M2-08-error-explanations.md) | Long-form error explanations | M1-13 | todo |
-| [M2-09](M2-09-schema-overrides.md) | Reader schema overrides | M1-13 | todo |
-| [M2-10](M2-10-decimal-guid.md) | `decimal` and `guid` types | M1-13 | todo |
+| [M2-08](M2-08-error-explanations.md) | Long-form error explanations | M1-13, M2-13 | todo |
+| [M2-09](M2-09-schema-overrides.md) | Reader schema overrides | M1-13, M2-13 | todo |
+| [M2-10](M2-10-decimal-guid.md) | `decimal` and `guid` types | M1-13, M2-13 | todo |
 | [M2-11](M2-11-streaming-run.md) | Stream results in `ds run` | M1-13 | done |
-| [M2-12](M2-12-runtime-source-errors.md) | Name the file in runtime read errors | M1-13 | todo |
+| [M2-12](M2-12-runtime-source-errors.md) | Name the file in runtime read errors | M1-13, M2-13 | todo |
+| [M2-13](M2-13-task-contract-fixes.md) | Fix task contracts and diagnostic code blocks | M1-13 | todo |
+| [M2-14](M2-14-spec-code-mismatches.md) | Spec/code mismatches from the docs review | M1-13 | todo |
 
 ## M3 — Editor experience
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
 | [M3-01](M3-01-lsp-diagnostics.md) | LSP core and diagnostics | M1-13 | done |
-| [M3-02](M3-02-lsp-completion-hover.md) | LSP completion, hover, signature help | M3-01 | todo |
-| [M3-03](M3-03-lsp-navigation-fixes.md) | LSP quick fixes, navigation, semantic tokens | M3-01 | todo |
+| [M3-02](M3-02-lsp-completion-hover.md) | LSP completion, hover, signature help | M3-01 | in-progress |
+| [M3-03](M3-03-lsp-navigation-fixes.md) | LSP quick fixes, navigation, semantic tokens | M3-01, M2-13 | todo |
 | [M3-04](M3-04-vscode-extension.md) | VS Code extension | M3-01 | done |
 | [M3-05](M3-05-vscode-run.md) | VS Code Run CodeLens with CLI-style output | M3-04 | done |
-| [M3-06](M3-06-vscode-results-panel.md) | VS Code results panel (grid and charts) | M3-05, M4-02, M4-03 | todo |
+| [M3-06](M3-06-vscode-results-panel.md) | VS Code results panel (grid and charts) | M3-05, M4-02, M4-03, M2-13 | todo |
+| [M3-07](M3-07-repl-column-completion.md) | REPL column completion | M3-02 | todo |
 
 ## M4 — Local web UI
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
-| [M4-01](M4-01-server-api.md) | Local server (`ds ui`) | M1-13 | todo |
-| [M4-02](M4-02-web-frontend.md) | Web UI front end | M4-01 | todo |
+| [M4-01](M4-01-server-api.md) | Local server (`ds ui`) | M1-13, M2-13 | todo |
+| [M4-02](M4-02-web-frontend.md) | Web UI front end | M4-01, M2-13 | todo |
 | [M4-03](M4-03-web-charts.md) | Charts from RenderSpec | M4-02, M1-10 | todo |
-| [M4-04](M4-04-web-schema-completion.md) | Schema browser and completion | M4-02, M3-02 | todo |
+| [M4-04](M4-04-web-schema-completion.md) | Schema browser and completion | M4-02, M3-02, M2-13 | todo |
 
 ## M5 — In-browser runtime (WASM)
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
-| [M5-01](M5-01-wasm-build.md) | Build the engine for wasm32 | M1-13 | todo |
-| [M5-02](M5-02-wasm-js-api.md) | JS/TS API (`@datascript/wasm`) | M5-01, M3-02 | todo |
-| [M5-03](M5-03-wasm-playground.md) | WASM runtime adapter and playground | M5-02, M4-02 | todo |
+| [M5-01](M5-01-wasm-build.md) | Build the engine for wasm32 | M1-13, M2-13 | todo |
+| [M5-02](M5-02-wasm-js-api.md) | JS/TS API (`@datascript/wasm`) | M5-01, M3-02, M2-13 | todo |
+| [M5-03](M5-03-wasm-playground.md) | WASM runtime adapter and playground | M5-02, M4-02, M2-13 | todo |
 | [M5-04](M5-04-parity-tests.md) | CLI ↔ WASM parity tests | M5-02 | todo |
 
 ## M6 — Release readiness
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
-| [M6-01](M6-01-reference-docs.md) | Language reference and docs site | M2-08, M5-03 | todo |
-| [M6-02](M6-02-packaging.md) | Packaging and releases | M1-13 | todo |
+| [M6-01](M6-01-reference-docs.md) | Language reference and docs site | M2-08, M5-03, M2-13 | todo |
+| [M6-02](M6-02-packaging.md) | Packaging and releases | M1-13, M2-13 | todo |
 | [M6-03](M6-03-sql-backend.md) | Second backend: SQL emitter | M1-13 | todo |
+| [M6-04](M6-04-core-docs-refresh.md) | Bring the core docs in line with the code | M2-13, M2-14 | todo |
 
 The editor (M3) and the local web UI (M4) are being done before language breadth (M2). Where an M2
 task adds something the editor or web UI must show, its "Carried over" section says so.

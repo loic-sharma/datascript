@@ -1,7 +1,7 @@
 # M2-06 — Complete the function library
 
 **Status:** todo
-**Depends on:** M1-13
+**Depends on:** M1-13, M2-13
 **Crates:** `datascript-compiler`, `datascript-datafusion`
 
 ## Goal

@@ -1,7 +1,7 @@
 # M2-03 — `dynamic` type, JSON, and `mv-expand`
 
 **Status:** todo
-**Depends on:** M1-13
+**Depends on:** M1-13, M2-13
 **Crates:** `datascript-compiler`, `datascript-datafusion`
 
 ## Goal

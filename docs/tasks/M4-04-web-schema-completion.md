@@ -1,7 +1,7 @@
 # M4-04 — Web UI: schema browser and completion
 
 **Status:** todo
-**Depends on:** M4-02, M3-02
+**Depends on:** M4-02, M3-02, M2-13
 **Crates:** `web/`, `datascript-server`
 
 ## Goal

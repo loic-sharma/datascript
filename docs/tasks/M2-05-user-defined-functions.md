@@ -1,7 +1,7 @@
 # M2-05 — User-defined functions
 
 **Status:** todo
-**Depends on:** M1-13
+**Depends on:** M1-13, M2-13
 **Crates:** `datascript-syntax`, `datascript-compiler`
 
 ## Goal

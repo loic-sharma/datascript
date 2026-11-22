@@ -1,7 +1,7 @@
 # M2-02 — `parse` operator
 
 **Status:** todo
-**Depends on:** M1-13
+**Depends on:** M1-13, M2-13
 **Crates:** `datascript-syntax`, `datascript-compiler`, `datascript-datafusion`
 
 ## Goal

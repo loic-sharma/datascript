@@ -1,7 +1,7 @@
 # M6-01 — Language reference and docs site
 
 **Status:** todo
-**Depends on:** M2-08, M5-03 (embedded playground)
+**Depends on:** M2-08, M5-03 (embedded playground), M2-13
 **Crates:** docs site
 
 ## Goal

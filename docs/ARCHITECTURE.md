@@ -134,8 +134,9 @@ statement do not stop other statements from being checked.
 - **Binder output**: a typed HIR where every column reference is resolved and every expression
   has a type. The binder computes the output schema of each pipeline stage, which also drives
   column completion in the LSP.
-- **Completion**: `complete(&Analysis, offset) -> Vec<Completion>` lives in the compiler, so the
-  LSP, the `ds ui` server and WASM return the same items for the same text.
+- **Completion and hover**: `complete(&Analysis, offset) -> Vec<Completion>` and
+  `hover(&Analysis, offset) -> Option<Hover>` live in the compiler, so the LSP, the `ds ui` server
+  and WASM return the same answer for the same text.
 - **Logical plan IR**: a small, engine-neutral relational algebra:
   `Scan, Filter, Project, Aggregate, Sort, Limit, TopN, Join, Union, Distinct, Values`, with an
   expression IR (`Column, Literal, Call(fn_id, args), Cast, Case, …`). `ds explain` pretty-prints it.
@@ -152,6 +153,7 @@ pub fn compile(src: &SourceFile, file: FileId, schemas: &dyn SchemaProvider, cap
     -> Result<Program, Vec<Diagnostic>>;
 pub fn program_of(analysis: Analysis, file: FileId) -> Result<Program, Vec<Diagnostic>>;
 pub fn complete(analysis: &Analysis, offset: TextSize) -> Vec<Completion>;
+pub fn hover(analysis: &Analysis, offset: TextSize) -> Option<Hover>;   // M3-02
 ```
 
 `SourceFile` holds a file's name and text but not its `FileId`, which the caller's `SourceMap`

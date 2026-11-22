@@ -1,7 +1,7 @@
 # M3-06 — VS Code: results panel
 
 **Status:** todo
-**Depends on:** M3-05, M4-02, M4-03
+**Depends on:** M3-05, M4-02, M4-03, M2-13
 **Crates:** `datascript-lsp`, `editors/vscode`
 
 ## Goal
