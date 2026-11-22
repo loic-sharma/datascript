@@ -149,9 +149,9 @@ pub enum Op {
     Union(Vec<Source>),
     /// `getschema`: one row per input column.
     GetSchema,
-    /// An operator whose output schema is not computed yet (`render`, M1-10). Reported as not
-    /// implemented.
-    Unsupported { name: String },
+    /// `render`, with every default resolved (LANGUAGE.md §6). Its output columns are its
+    /// input columns.
+    Render(Box<crate::ir::RenderSpec>),
     /// The operator has an error.
     Error,
 }

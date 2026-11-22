@@ -1,0 +1,14 @@
+# A card shows every typed column (KQL alignment), of the first row.
+mode: run
+---- query
+from '../../data/orders.csv'
+| summarize revenue = sum(amount), orders = count() by customerId
+| top 3 by revenue desc
+| take 1
+| render card
+---- expected
+customerId | revenue | orders
+string     | real    | long
+-----------+---------+-------
+c-042      |  1250.5 |      7
+render: card y=[customerId, revenue, orders]

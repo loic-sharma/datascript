@@ -1,0 +1,12 @@
+# KQL map charts (`kind = map` on a piechart or scatterchart) are not supported yet.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| render scatterchart with (kind = map)
+---- expected
+error[DS5006]: map charts are not supported yet
+  --> query:2:29
+  |
+2 | | render scatterchart with (kind = map)
+  |                             ^^^^ `kind = map` asks for a KQL map chart

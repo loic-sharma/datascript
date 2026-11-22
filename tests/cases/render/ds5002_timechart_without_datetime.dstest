@@ -1,0 +1,16 @@
+# DS5002: a timechart needs a datetime x and the result has none; the message lists the columns with types.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| summarize revenue = sum(revenue) by customerId
+| render timechart
+---- expected
+error[DS5002]: `timechart` needs a `datetime` column for the x-axis, but the result has none
+  --> query:3:10
+  |
+3 | | render timechart
+  |          ^^^^^^^^^ no column for the x-axis
+  |
+  = help: convert a column with `extend` before `render`
+  = note: the result's columns: customerId: string, revenue: real

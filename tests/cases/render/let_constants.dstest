@@ -1,0 +1,18 @@
+# Titles and bounds may be scalar `let`s bound to constants (as for paths, D-020).
+mode: run
+---- query
+let t = "Revenue";
+let lo = -10;
+
+from '../../data/orders.csv'
+| summarize revenue = sum(amount), orders = count() by customerId
+| top 3 by revenue desc
+| render barchart with (title = t, ymin = lo)
+---- expected
+customerId | revenue | orders
+string     | real    | long
+-----------+---------+-------
+c-042      | 1250.5  |      7
+c-007      |  980.0  |      6
+c-113      |  402.25 |      4
+render: barchart x=customerId y=[revenue, orders] title="Revenue" ymin=-10

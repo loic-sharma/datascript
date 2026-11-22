@@ -33,15 +33,16 @@ pub struct QueryPlan {
     pub output_schema: SchemaRef,
     /// What a final `render` asks frontends to draw; `None` without one.
     pub render: Option<RenderSpec>,
+    /// The `render` operator that produced [`QueryPlan::render`], for diagnostics such as
+    /// `DS5001` (chart not drawn).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub render_span: Option<Span>,
     /// The whole query statement, from `from` to its last operator. Frontends name a result by
     /// the line it starts on.
     pub span: Span,
 }
 
-/// Placeholder for the chart a `render` operator describes. M1-10 defines its contents.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-#[non_exhaustive]
-pub struct RenderSpec {}
+pub use crate::render::{ChartKind, Legend, RenderNumber, RenderSpec, Stacking};
 
 /// A plan node with its output schema and source span.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -341,7 +342,7 @@ fn write_operand(f: &mut fmt::Formatter<'_>, e: &Expr) -> fmt::Result {
 impl Program {
     /// The deterministic tree printout used by `ds explain` and `mode: explain` golden tests:
     /// one tree per query, separated by blank lines, each node indented two spaces under its
-    /// parent.
+    /// parent. A query with a `render` ends with its [`RenderSpec::summary`] line (D-047).
     pub fn explain(&self) -> String {
         let mut out = String::new();
         for (i, query) in self.queries.iter().enumerate() {
@@ -349,6 +350,10 @@ impl Program {
                 out.push('\n');
             }
             write_plan(&mut out, &query.root, 0);
+            if let Some(render) = &query.render {
+                out.push_str(&render.summary());
+                out.push('\n');
+            }
         }
         out
     }

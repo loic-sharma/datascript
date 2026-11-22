@@ -16,8 +16,7 @@
 //!
 //! Operator schemas and column naming (M1-16) are in [`ops`], `join` in [`join`], and sources
 //! and the engine's file formats (M1-17) in [`sources`]. The other capability checks (DS4001)
-//! are where the function or `join` kind is bound. `render` is M1-10; it gives `DS9001` "not
-//! implemented yet".
+//! are where the function or `join` kind is bound. `render` (M1-10) is in [`render`].
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
@@ -43,6 +42,7 @@ use crate::hir::{
 
 mod join;
 mod ops;
+mod render;
 mod sources;
 
 use crate::capabilities::Capabilities;
@@ -123,6 +123,9 @@ pub(crate) struct Binder<'a> {
     pub(crate) diagnostics: Vec<Diagnostic>,
     pub(crate) pending: BTreeSet<SourceRef>,
     pub(crate) stage_schemas: Vec<StageSchema>,
+    /// The pipeline of the query statement being bound: the only place `render` may be
+    /// (DS5008).
+    query_pipeline: Option<SyntaxNode>,
 }
 
 impl<'a> Binder<'a> {
@@ -147,6 +150,7 @@ impl<'a> Binder<'a> {
             diagnostics: Vec::new(),
             pending: BTreeSet::new(),
             stage_schemas: Vec::new(),
+            query_pipeline: None,
         }
     }
 
@@ -161,6 +165,7 @@ impl<'a> Binder<'a> {
                 }
                 Stmt::Query(pipeline) => {
                     let span = self.span(&pipeline);
+                    self.query_pipeline = Some(pipeline.syntax().clone());
                     let pipeline = self.bind_pipeline(&pipeline);
                     statements.push(Statement::Query(Query { span, pipeline }));
                 }
@@ -326,9 +331,11 @@ impl<'a> Binder<'a> {
     ) -> (Op, Option<Vec<Column>>) {
         if self.broken.contains(op.syntax()) {
             let after = match op {
-                Operator::Where(_) | Operator::Take(_) | Operator::Sort(_) | Operator::Top(_) => {
-                    columns.clone()
-                }
+                Operator::Where(_)
+                | Operator::Take(_)
+                | Operator::Sort(_)
+                | Operator::Top(_)
+                | Operator::Render(_) => columns.clone(),
                 Operator::Count(_) => Some(Self::count_columns()),
                 Operator::GetSchema(_) => Some(Self::getschema_columns()),
                 _ => None,
@@ -382,13 +389,7 @@ impl<'a> Binder<'a> {
             Operator::Join(op) => self.bind_join(op, columns),
             Operator::Union(op) => self.bind_union(op, columns),
             Operator::GetSchema(_) => (Op::GetSchema, Some(Self::getschema_columns())),
-            Operator::Render(_) => {
-                // `render` is M1-10.
-                let span = self.span(op);
-                let what = format!("`{}`", op.name());
-                self.not_implemented(self.first_token_span(op.syntax(), span), &what);
-                (Op::Unsupported { name: op.name() }, None)
-            }
+            Operator::Render(op) => self.bind_render(op, columns),
         }
     }
 

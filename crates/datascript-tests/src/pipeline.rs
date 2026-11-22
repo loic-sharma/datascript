@@ -195,6 +195,11 @@ impl Driver for PipelineDriver {
                 out.push('\n');
             }
             out.push_str(&format_table(&result.schema, &result.batches));
+            // DS5001 is not printed: this line already shows the chart (TESTING.md).
+            if let Some(render) = &result.render {
+                out.push_str(&render.summary());
+                out.push('\n');
+            }
         }
         Ok(out)
     }

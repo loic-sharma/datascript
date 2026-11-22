@@ -125,6 +125,7 @@ highlighting, `OPERATOR_NAMES` for completion).
       design review). Update both if implementation forces a change.
 
 ## Carried over
+- [ ] (from M1-10) `ds run` prints `DS5001` with `chart_not_drawn` in `crates/datascript-cli/src/main.rs` (once per program run, at the first non-`table` render, with a note counting the others). In the REPL, one submitted input is one program run: call the same helper on each input's results, and add a test that `render table` prints nothing and two charts in one input print one `DS5001`.
 - [ ] (from M1-07) The session caches failed schema lookups too (D-043). Call `Session::invalidate_schemas` before each submission (or on a `.reload` command) so a file created or edited after an error is read again. *(Settled above: before every submission and `.schema`; no `.reload`.)*
 
 ## Follow-ups

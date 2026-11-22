@@ -1,0 +1,15 @@
+# DS5004 with a did-you-mean.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| render timechart with (xcolum = month)
+---- expected
+error[DS5004]: unknown render property `xcolum`
+  --> query:2:26
+  |
+2 | | render timechart with (xcolum = month)
+  |                          ^^^^^^ not a render property
+  |
+  = help: a property with a similar name exists: `xcolumn`
+  = note: the properties are title, xcolumn, ycolumns, series, xtitle, ytitle, legend, ymin, ymax, kind

@@ -33,10 +33,21 @@ use crate::ir::{self, Plan, PlanNode, ProjectItem};
 /// The plan of one query statement.
 pub(crate) fn plan_query(query: &hir::Query) -> Result<ir::QueryPlan, Diagnostic> {
     let root = plan_pipeline(&query.pipeline)?.plan;
+    // The binder allows `render` only as the last operator of a query statement (DS0120,
+    // DS5008).
+    let (render, render_span) = match query.pipeline.stages.last() {
+        Some(hir::Stage {
+            op: hir::Op::Render(spec),
+            span,
+            ..
+        }) => (Some((**spec).clone()), Some(*span)),
+        _ => (None, None),
+    };
     Ok(ir::QueryPlan {
         output_schema: root.schema.clone(),
         root,
-        render: None,
+        render,
+        render_span,
         span: query.span,
     })
 }
@@ -219,7 +230,9 @@ fn plan_stage(input: Planned, stage: &hir::Stage) -> Result<Planned, Diagnostic>
                 .collect();
             Planned::new(PlanNode::Values { rows }, out, span)
         }
-        hir::Op::Unsupported { .. } | hir::Op::Error => {
+        // `render` does not change the data; the plan carries its spec (`plan_query`).
+        hir::Op::Render(_) => return Ok(input),
+        hir::Op::Error => {
             return Err(internal(span, "an operator with an error"));
         }
     })

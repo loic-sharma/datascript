@@ -1,0 +1,38 @@
+# DS5005: wrong forms. Each property is checked on its own.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| render timechart with (title = 1, xtitle = Month, ymin = "0", legend = hiden)
+---- expected
+error[DS5005]: `title` must be a constant string
+  --> query:2:34
+  |
+2 | | render timechart with (title = 1, xtitle = Month, ymin = "0", legend = hiden)
+  |                                  ^ this is not a constant string
+  |
+  = help: write a string literal such as `title = "Revenue"`, or the name of a `let` bound to one
+
+error[DS5005]: `xtitle` must be a constant string
+  --> query:2:46
+  |
+2 | | render timechart with (title = 1, xtitle = Month, ymin = "0", legend = hiden)
+  |                                              ^^^^^ this is not a constant string
+  |
+  = help: write the text in quotes: `xtitle = "Month"`
+
+error[DS5005]: `ymin` must be a constant number
+  --> query:2:60
+  |
+2 | | render timechart with (title = 1, xtitle = Month, ymin = "0", legend = hiden)
+  |                                                            ^^^ this is not a constant number
+  |
+  = help: write a number such as `ymin = 0`, or the name of a `let` bound to one
+
+error[DS5005]: unknown `legend` value `hiden`
+  --> query:2:74
+  |
+2 | | render timechart with (title = 1, xtitle = Month, ymin = "0", legend = hiden)
+  |                                                                          ^^^^^ expected `visible` or `hidden`
+  |
+  = help: a value with a similar name exists: `hidden`

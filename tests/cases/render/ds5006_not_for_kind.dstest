@@ -1,0 +1,22 @@
+# DS5006: properties that do not apply to the kind say what the kind accepts.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| render piechart with (series = customerId, ymin = 0)
+---- expected
+error[DS5006]: `series` does not apply to a `piechart`
+  --> query:2:25
+  |
+2 | | render piechart with (series = customerId, ymin = 0)
+  |                         ^^^^^^ not a `piechart` property
+  |
+  = note: a `piechart` accepts `title`, `xcolumn`, `ycolumns`, `xtitle`, `ytitle`, `legend`
+
+error[DS5006]: `ymin` does not apply to a `piechart`
+  --> query:2:46
+  |
+2 | | render piechart with (series = customerId, ymin = 0)
+  |                                              ^^^^ not a `piechart` property
+  |
+  = note: a `piechart` accepts `title`, `xcolumn`, `ycolumns`, `xtitle`, `ytitle`, `legend`

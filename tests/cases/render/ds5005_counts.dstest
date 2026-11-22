@@ -1,0 +1,22 @@
+# DS5005: two columns where one is expected.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| render piechart with (xcolumn = customerId, month, ycolumns = revenue, n)
+---- expected
+error[DS5005]: `xcolumn` takes one column
+  --> query:2:47
+  |
+2 | | render piechart with (xcolumn = customerId, month, ycolumns = revenue, n)
+  |                                               ^^^^^ a chart has one x-axis
+  |
+  = help: remove the extra columns
+
+error[DS5005]: a `piechart` takes one column in `ycolumns`
+  --> query:2:74
+  |
+2 | | render piechart with (xcolumn = customerId, month, ycolumns = revenue, n)
+  |                                                                          ^ a pie chart has one value per slice
+  |
+  = help: remove the extra columns

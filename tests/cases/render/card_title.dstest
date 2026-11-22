@@ -1,0 +1,12 @@
+# A card takes only `title`.
+mode: run
+---- query
+from '../../data/orders.csv'
+| count
+| render card with (title = "Orders")
+---- expected
+Count
+long
+-----
+   50
+render: card y=[Count] title="Orders"

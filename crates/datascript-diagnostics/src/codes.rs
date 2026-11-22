@@ -197,14 +197,22 @@ pub const DS4002: Code = Code::new(4002);
 pub const DS4003: Code = Code::new(4003);
 /// invalid argument value at runtime: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100
 pub const DS4004: Code = Code::new(4004);
-/// chart not drawn in this runtime
+/// chart not drawn in this runtime (once per program run, not for `render table`)
 pub const DS5001: Code = Code::new(5001);
-/// chart needs a column of a kind the result lacks
+/// chart role cannot be filled: no column of the type the kind needs, or an explicit column of the wrong type (names the role and lists the result's columns)
 pub const DS5002: Code = Code::new(5002);
-/// unknown render kind (did-you-mean)
+/// unknown render kind (did-you-mean; a KQL kind DataScript does not support yet says so instead)
 pub const DS5003: Code = Code::new(5003);
-/// unknown or repeated render property (did-you-mean)
+/// unknown or repeated render property (did-you-mean; a KQL property DataScript does not support yet says so instead)
 pub const DS5004: Code = Code::new(5004);
+/// bad value for a render property: wrong form or count, unknown `legend`/`kind` word (did-you-mean), `ymin` not below `ymax`
+pub const DS5005: Code = Code::new(5005);
+/// render property does not apply to this chart kind (says which properties the kind accepts; `kind = map` says map charts are not supported yet)
+pub const DS5006: Code = Code::new(5006);
+/// one column used in two chart roles (x, y, series)
+pub const DS5007: Code = Code::new(5007);
+/// `render` outside a query statement (in a tabular `let`, a parenthesized pipeline, or the right side of `join`/`union`)
+pub const DS5008: Code = Code::new(5008);
 /// internal compiler error (also used for caught panics)
 pub const DS9001: Code = Code::new(9001);
 
@@ -693,25 +701,49 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS5001,
         severity: Some(Severity::Info),
-        summary: "chart not drawn in this runtime",
+        summary: "chart not drawn in this runtime (once per program run, not for `render table`)",
         status: CodeStatus::Active,
     },
     CodeInfo {
         code: DS5002,
         severity: Some(Severity::Error),
-        summary: "chart needs a column of a kind the result lacks",
+        summary: "chart role cannot be filled: no column of the type the kind needs, or an explicit column of the wrong type (names the role and lists the result's columns)",
         status: CodeStatus::Active,
     },
     CodeInfo {
         code: DS5003,
         severity: Some(Severity::Error),
-        summary: "unknown render kind (did-you-mean)",
+        summary: "unknown render kind (did-you-mean; a KQL kind DataScript does not support yet says so instead)",
         status: CodeStatus::Active,
     },
     CodeInfo {
         code: DS5004,
         severity: Some(Severity::Error),
-        summary: "unknown or repeated render property (did-you-mean)",
+        summary: "unknown or repeated render property (did-you-mean; a KQL property DataScript does not support yet says so instead)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS5005,
+        severity: Some(Severity::Error),
+        summary: "bad value for a render property: wrong form or count, unknown `legend`/`kind` word (did-you-mean), `ymin` not below `ymax`",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS5006,
+        severity: Some(Severity::Error),
+        summary: "render property does not apply to this chart kind (says which properties the kind accepts; `kind = map` says map charts are not supported yet)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS5007,
+        severity: Some(Severity::Error),
+        summary: "one column used in two chart roles (x, y, series)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS5008,
+        severity: Some(Severity::Error),
+        summary: "`render` outside a query statement (in a tabular `let`, a parenthesized pipeline, or the right side of `join`/`union`)",
         status: CodeStatus::Active,
     },
     CodeInfo {

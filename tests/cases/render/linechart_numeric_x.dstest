@@ -1,0 +1,16 @@
+# Without a datetime, x is the first numeric column and y the remaining numeric ones.
+mode: run
+---- query
+from '../../data/orders.csv'
+| summarize orders = count(), revenue = sum(amount) by customerId
+| sort by orders asc, customerId asc
+| take 3
+| render linechart with (ytitle = "EUR")
+---- expected
+customerId | orders | revenue
+string     | long   | real
+-----------+--------+--------
+c-999      |      2 |   75.25
+c-003      |      3 |  142.25
+c-019      |      3 |  300.0
+render: linechart x=orders y=[revenue] series=[customerId] ytitle="EUR"

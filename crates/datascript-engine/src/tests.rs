@@ -488,12 +488,26 @@ fn an_engine_error_stops_the_run() {
 }
 
 #[test]
-fn not_implemented_is_a_diagnostic() {
+fn a_render_query_carries_its_spec() {
     let (session, _) = session();
-    // `render` is checked but not implemented yet (M1-10).
-    let src = source("from 'orders.csv' | render table");
+    let text =
+        "from 'orders.csv' | take 1;\nfrom 'orders.csv' | render barchart with (title = \"T\")";
+    let src = source(text);
     let output = block_on(session.run(&src, FileId(0), &ctx(&session)));
-    assert_eq!(codes(&output.diagnostics), [DS9001]);
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert_eq!(output.results.len(), 2);
+    assert!(output.results[0].render.is_none() && output.results[0].render_span.is_none());
+    let chart = &output.results[1];
+    let spec = chart
+        .render
+        .as_ref()
+        .expect("the second result has a render spec");
+    assert_eq!(
+        spec.summary(),
+        r#"render: barchart x=name y=[amount] title="T""#
+    );
+    let span = chart.render_span.expect("the render span is set");
+    assert_eq!(&text[span.range()], r#"render barchart with (title = "T")"#);
 }
 
 #[test]

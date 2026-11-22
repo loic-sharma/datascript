@@ -1,0 +1,14 @@
+# DS5005: `ymin` must be below `ymax`.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| render timechart with (ymin = 10, ymax = 5)
+---- expected
+error[DS5005]: `ymin` must be less than `ymax`
+  --> query:2:33
+  |
+2 | | render timechart with (ymin = 10, ymax = 5)
+  |                                 ^^         - `ymax` is 5
+  |                                 |
+  |                                 `ymin` is 10

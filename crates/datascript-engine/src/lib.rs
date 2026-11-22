@@ -97,7 +97,7 @@ impl ResultStream {
     /// row arrives, the stream is dropped, which cancels the rest of the query, and the result
     /// is marked [`truncated`](QueryResult::truncated).
     ///
-    /// The result has no `render` spec or statement span; [`Session::run`] adds the plan's.
+    /// The result has no `render` spec or spans; [`Session::run`] adds the plan's.
     pub async fn collect(mut self, row_limit: Option<usize>) -> Result<QueryResult, Diagnostic> {
         let mut batches = Vec::new();
         let mut rows = 0;
@@ -121,6 +121,7 @@ impl ResultStream {
             schema: self.schema,
             batches,
             render: None,
+            render_span: None,
             statement: None,
             diagnostics: Vec::new(),
             truncated,
@@ -136,6 +137,11 @@ pub struct QueryResult {
     pub batches: Vec<RecordBatch>,
     /// What a final `render` asks frontends to draw; `None` without one.
     pub render: Option<RenderSpec>,
+    /// The `render` operator of [`QueryResult::render`] ([`QueryPlan::render_span`]), for
+    /// `DS5001`. [`Session::run`] sets it.
+    ///
+    /// [`QueryPlan::render_span`]: datascript_compiler::ir::QueryPlan::render_span
+    pub render_span: Option<Span>,
     /// The query statement this is the result of ([`QueryPlan::span`]). [`Session::run`] sets
     /// it.
     ///

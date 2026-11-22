@@ -1,0 +1,19 @@
+# Explicit `ycolumns` with default `series`: the default skips the y column and keeps
+# the remaining string columns; the other numeric column `n` is left out of the chart.
+mode: run
+---- query
+from '../../data/orders.csv'
+| where customerId == "c-042"
+| summarize revenue = sum(amount), n = count() by customerId, month = startofmonth(timestamp)
+| extend label = "x"
+| sort by month asc
+| render timechart with (ycolumns = revenue)
+---- expected
+customerId | month                | revenue | n    | label
+string     | datetime             | real    | long | string
+-----------+----------------------+---------+------+-------
+c-042      | 2023-12-01T00:00:00Z |  523.75 |    3 | x
+c-042      | 2024-01-01T00:00:00Z |  185.0  |    1 | x
+c-042      | 2024-02-01T00:00:00Z |  451.25 |    2 | x
+c-042      | 2024-03-01T00:00:00Z |   90.5  |    1 | x
+render: timechart x=month y=[revenue] series=[customerId, label]

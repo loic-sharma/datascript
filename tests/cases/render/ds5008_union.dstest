@@ -1,0 +1,15 @@
+# DS5008: `render` in a table of `union`.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| union (from t | render table)
+---- expected
+error[DS5008]: `render` must end a query statement
+  --> query:2:19
+  |
+2 | | union (from t | render table)
+  |                   ^^^^^^ this `render` is in a table of `union`
+  |
+  = help: move the `render` to the end of the query statement that shows this table
+  = note: only a query statement's result is shown, so a chart anywhere else could never be drawn

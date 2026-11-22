@@ -21,6 +21,10 @@ fn orders_path() -> String {
         .unwrap()
         .display()
         .to_string()
+        // On Windows, drop the verbatim `\\?\` prefix `canonicalize` adds, and use forward
+        // slashes: backslashes would be read as escapes inside a DataScript string literal.
+        .trim_start_matches(r"\\?\")
+        .replace('\\', "/")
 }
 
 fn repo_dir() -> PathBuf {
@@ -91,13 +95,66 @@ fn run_a_script_file_resolves_paths_against_its_directory() {
 }
 
 #[test]
-#[ignore = "needs `render` (M1-10)"]
 fn run_the_readme_example() {
     ds().arg("run")
         .arg(repo_dir().join("examples/top_customers.ds"))
         .assert()
         .success()
-        .stdout(contains("customerId"));
+        .stdout(
+            contains("customerId | month                | revenue\n")
+                .and(contains("string     | datetime             | real\n")),
+        )
+        .stderr(
+            contains("info[DS5001]: charts are not drawn on the command line")
+                .and(contains("this `timechart` is printed as a table")),
+        );
+}
+
+// ---- run: charts (DS5001) ----
+
+const TWO_CHARTS: &str = "from 'orders.csv' | count | render card;
+from 'orders.csv' | count | render table;
+from 'orders.csv' | summarize n = count() by customerId | top 2 by n | render barchart";
+
+#[test]
+fn two_charts_give_one_ds5001_for_any_format() {
+    for format in ["table", "json", "csv"] {
+        let mut cmd = ds();
+        cmd.args(["run", "-e", TWO_CHARTS, "--format", format]);
+        if format == "csv" {
+            cmd.args(["--statement", "3"]);
+        }
+        let output = cmd.output().unwrap();
+        assert!(output.status.success(), "{format}");
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        assert_eq!(stderr.matches("DS5001").count(), 1, "{format}: {stderr}");
+        if format == "csv" {
+            assert!(
+                stderr.contains("this `barchart` is printed as a table"),
+                "{stderr}"
+            );
+            assert!(!stderr.contains("other chart"), "{stderr}");
+        } else {
+            assert!(
+                stderr.contains("this `card` is printed as a table"),
+                "{stderr}"
+            );
+            assert!(
+                stderr.contains("= note: 1 other chart is not drawn either"),
+                "{stderr}"
+            );
+        }
+        assert!(!String::from_utf8(output.stdout).unwrap().contains("DS5001"));
+    }
+}
+
+#[test]
+fn render_table_gives_no_ds5001() {
+    ds().args(["run", "-e", "from 'orders.csv' | count | render table"])
+        .assert()
+        .success()
+        .stdout(contains("Count"))
+        .stderr("");
 }
 
 #[test]

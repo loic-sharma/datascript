@@ -1,0 +1,15 @@
+# An explicit `xcolumn` on a scatterchart: the default y skips it.
+mode: run
+---- query
+from '../../data/orders.csv'
+| summarize revenue = sum(amount), orders = count() by customerId
+| top 3 by revenue desc
+| render scatterchart with (xcolumn = orders, ymin = 0, ymax = 2000)
+---- expected
+customerId | revenue | orders
+string     | real    | long
+-----------+---------+-------
+c-042      | 1250.5  |      7
+c-007      |  980.0  |      6
+c-113      |  402.25 |      4
+render: scatterchart x=orders y=[revenue] ymin=0 ymax=2000

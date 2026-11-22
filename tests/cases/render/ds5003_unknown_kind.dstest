@@ -1,0 +1,15 @@
+# DS5003 with a did-you-mean.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| render timechar
+---- expected
+error[DS5003]: unknown chart kind `timechar`
+  --> query:2:10
+  |
+2 | | render timechar
+  |          ^^^^^^^^ not a chart kind
+  |
+  = help: a chart kind with a similar name exists: `timechart`
+  = note: the chart kinds are table, timechart, linechart, areachart, barchart, columnchart, piechart, scatterchart, card

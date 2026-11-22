@@ -35,7 +35,7 @@ use crate::source::{
 };
 
 /// The constant value of a bound expression: a literal, or a `let` bound to one.
-fn const_value(expr: &Expr) -> Option<&Value> {
+pub(super) fn const_value(expr: &Expr) -> Option<&Value> {
     match &expr.kind {
         ExprKind::Literal(value) => Some(value),
         ExprKind::Let { value, .. } => const_value(value),
@@ -121,7 +121,7 @@ impl Binder<'_> {
 
     /// Binds an expression that must be a constant: a path or a reader option. There are no
     /// columns.
-    fn const_expr(&mut self, expr: &ast::Expr) -> Expr {
+    pub(super) fn const_expr(&mut self, expr: &ast::Expr) -> Expr {
         let cx = Cx {
             cols: Cols::NoRows,
             agg: Agg::Row("a source"),

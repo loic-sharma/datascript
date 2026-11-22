@@ -1,0 +1,15 @@
+# DS5008: `render` in a tabular `let`.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+let s = from t | render table;
+from s
+---- expected
+error[DS5008]: `render` must end a query statement
+  --> query:1:18
+  |
+1 | let s = from t | render table;
+  |                  ^^^^^^ this `render` is in a tabular `let`
+  |
+  = help: move the `render` to the end of the query statement that shows this table
+  = note: only a query statement's result is shown, so a chart anywhere else could never be drawn

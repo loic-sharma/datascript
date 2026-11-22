@@ -1,0 +1,16 @@
+# A piechart takes titles and `legend`, but no series.
+mode: run
+---- query
+from '../../data/orders.csv'
+| summarize revenue = sum(amount), orders = count() by customerId
+| top 3 by revenue desc
+| render piechart with (xcolumn = customerId, ycolumns = orders, title = "Orders",
+    xtitle = "Customer", ytitle = "Count", legend = hidden)
+---- expected
+customerId | revenue | orders
+string     | real    | long
+-----------+---------+-------
+c-042      | 1250.5  |      7
+c-007      |  980.0  |      6
+c-113      |  402.25 |      4
+render: piechart x=customerId y=[orders] title="Orders" xtitle="Customer" ytitle="Count" legend=hidden

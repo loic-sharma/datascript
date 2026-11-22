@@ -1,0 +1,15 @@
+# x = the first string, y = all numeric columns (KQL alignment); bar charts have no default series.
+mode: run
+---- query
+from '../../data/orders.csv'
+| summarize revenue = sum(amount), orders = count() by customerId
+| top 3 by revenue desc
+| render barchart
+---- expected
+customerId | revenue | orders
+string     | real    | long
+-----------+---------+-------
+c-042      | 1250.5  |      7
+c-007      |  980.0  |      6
+c-113      |  402.25 |      4
+render: barchart x=customerId y=[revenue, orders]

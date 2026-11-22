@@ -1,5 +1,5 @@
-# The README example without its final `render` (M1-10): the path `let` and the tabular `let` are
-# inlined into the query, and `top` is a `TopN`.
+# The README example: the path `let` and the tabular `let` are inlined into the query, `top` is a
+# `TopN`, and the final `render` adds its resolved spec after the plan (D-047).
 mode: explain
 schema: 'data/orders/*.parquet'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
 ---- query
@@ -12,6 +12,7 @@ let topCustomers = from orders
 from orders
 | join kind = inner topCustomers on customerId
 | summarize revenue = sum(amount) by customerId, month = startofmonth(timestamp)
+| render timechart
 ---- expected
 Aggregate: revenue = sum(amount) by customerId, month = startofmonth(timestamp)
   Project: orderId, customerId, amount, qty, timestamp, revenue
@@ -21,3 +22,4 @@ Aggregate: revenue = sum(amount) by customerId, month = startofmonth(timestamp)
         TopN: 10 by revenue desc nulls last
           Aggregate: revenue = sum(amount) by customerId
             Scan: 'data/orders/*.parquet' (orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+render: timechart x=month y=[revenue] series=[customerId]

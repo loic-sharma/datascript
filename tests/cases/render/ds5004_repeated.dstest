@@ -1,0 +1,16 @@
+# A property given twice.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| render timechart with (title = "a", title = "b")
+---- expected
+error[DS5004]: `title` is given twice
+  --> query:2:39
+  |
+2 | | render timechart with (title = "a", title = "b")
+  |                          -----        ^^^^^ given again here
+  |                          |
+  |                          first given here
+  |
+  = help: remove one of them

@@ -1,0 +1,15 @@
+# DS1001 for a property column, with a did-you-mean over the output columns.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| render timechart with (ycolumns = revenu)
+---- expected
+error[DS1001]: unknown column `revenu`
+  --> query:2:37
+  |
+2 | | render timechart with (ycolumns = revenu)
+  |                                     ^^^^^^ no column named `revenu` here
+  |
+  = help: a column with a similar name exists: `revenue`
+  = note: columns available at this point: customerId, month, revenue, n

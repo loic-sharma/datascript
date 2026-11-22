@@ -1,0 +1,22 @@
+# DS5002 for a y column and a series column of the wrong types, both reported.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| render linechart with (ycolumns = customerId, series = revenue)
+---- expected
+error[DS5002]: `linechart` needs a numeric column for the y-axis, but `customerId` is a `string`
+  --> query:2:37
+  |
+2 | | render linechart with (ycolumns = customerId, series = revenue)
+  |                                     ^^^^^^^^^^ this column is a `string`
+  |
+  = note: the result's columns: customerId: string, month: datetime, revenue: real, n: long
+
+error[DS5002]: `linechart` needs `string`, `bool`, `int` or `long` columns for `series`, but `revenue` is a `real`
+  --> query:2:58
+  |
+2 | | render linechart with (ycolumns = customerId, series = revenue)
+  |                                                          ^^^^^^^ this column is a `real`
+  |
+  = note: the result's columns: customerId: string, month: datetime, revenue: real, n: long

@@ -22,6 +22,7 @@ pub mod hir;
 pub mod ir;
 pub mod operators;
 mod plan;
+mod render;
 pub mod source;
 pub mod types;
 

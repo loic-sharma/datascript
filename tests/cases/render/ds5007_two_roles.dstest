@@ -1,0 +1,16 @@
+# DS5007: one column in two roles.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| render timechart with (ycolumns = revenue, series = revenue)
+---- expected
+error[DS5007]: `revenue` is used for both the y-axis and `series`
+  --> query:2:55
+  |
+2 | | render timechart with (ycolumns = revenue, series = revenue)
+  |                                     -------           ^^^^^^^ used for `series` here
+  |                                     |
+  |                                     used for the y-axis here
+  |
+  = help: a column can fill only one role; remove it from one of them

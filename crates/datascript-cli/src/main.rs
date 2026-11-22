@@ -19,11 +19,12 @@ use std::sync::Arc;
 
 use clap::Parser;
 use datascript_compiler::SourceRef;
+use datascript_compiler::ir::ChartKind;
 use datascript_compiler::source::format_of_path;
 use datascript_datafusion::DataFusionEngine;
-use datascript_diagnostics::codes::DS3002;
+use datascript_diagnostics::codes::{DS3002, DS5001};
 use datascript_diagnostics::{Diagnostic, JsonReport, Severity};
-use datascript_engine::{Session, SystemClock};
+use datascript_engine::{QueryResult, Session, SystemClock};
 
 use crate::args::{CheckArgs, CheckFormat, Cli, Command, ExplainArgs, RunArgs, TableArg};
 use crate::output::{Destination, OutputError};
@@ -251,7 +252,9 @@ async fn run_script(args: RunArgs, reporter: &Reporter) -> u8 {
         Some(index) => session.run_statement(src, script.file, &ctx, index).await,
         None => session.run(src, script.file, &ctx).await,
     };
-    reporter.report(&sources, &output.diagnostics);
+    let mut diagnostics = output.diagnostics.clone();
+    diagnostics.extend(chart_not_drawn(&output.results));
+    reporter.report(&sources, &diagnostics);
     let failed = output.diagnostics.iter().any(Diagnostic::is_error);
     let written = output::write_results(
         &destination,
@@ -265,6 +268,34 @@ async fn run_script(args: RunArgs, reporter: &Reporter) -> u8 {
         Ok(()) => 0,
         Err(e) => e.exit_code(),
     }
+}
+
+/// `DS5001`, once per program run: the CLI prints charts as tables (LANGUAGE.md §6.3). It points
+/// at the first `render` that is not `render table`, with a note counting the others.
+fn chart_not_drawn(results: &[QueryResult]) -> Option<Diagnostic> {
+    let charts: Vec<&QueryResult> = results
+        .iter()
+        .filter(|r| {
+            r.render
+                .as_ref()
+                .is_some_and(|spec| spec.kind != ChartKind::Table)
+        })
+        .collect();
+    let first = charts.first()?;
+    let kind = first.render.as_ref()?.kind;
+    let mut d = Diagnostic::info(DS5001, "charts are not drawn on the command line");
+    d = match first.render_span {
+        Some(span) => d.primary(span, format!("this `{kind}` is printed as a table")),
+        None => d.note(format!("the `{kind}` is printed as a table")),
+    };
+    if charts.len() > 1 {
+        let others = charts.len() - 1;
+        d = d.note(format!(
+            "{} not drawn either",
+            output::count(others, "other chart is", "other charts are")
+        ));
+    }
+    Some(d)
 }
 
 /// "pick one with `--statement <n>`: 1 (line 3), 2 (line 8)".

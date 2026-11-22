@@ -1,0 +1,11 @@
+# `ds explain` prints the render line after the plan (D-047).
+mode: explain
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| where n > 1
+| render columnchart with (xcolumn = customerId, title = "N")
+---- expected
+Filter: n > 1
+  Scan: table `t` (customerId: string, month: datetime, revenue: real, n: long)
+render: columnchart x=customerId y=[revenue, n] title="N"

@@ -1,0 +1,14 @@
+# DS5002: an explicit column of the wrong type.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| render timechart with (xcolumn = customerId)
+---- expected
+error[DS5002]: `timechart` needs a `datetime` column for the x-axis, but `customerId` is a `string`
+  --> query:2:36
+  |
+2 | | render timechart with (xcolumn = customerId)
+  |                                    ^^^^^^^^^^ this column is a `string`
+  |
+  = note: the result's columns: customerId: string, month: datetime, revenue: real, n: long

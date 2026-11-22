@@ -319,6 +319,7 @@ impl Session {
             match result {
                 Ok(mut result) => {
                     result.render = query.render.clone();
+                    result.render_span = query.render_span;
                     result.statement = Some(query.span);
                     output.results.push(result);
                 }

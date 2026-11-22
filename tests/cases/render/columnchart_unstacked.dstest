@@ -1,0 +1,15 @@
+# KQL's `kind = unstacked` resolves to `default`.
+mode: run
+---- query
+from '../../data/orders.csv'
+| summarize revenue = sum(amount), orders = count() by customerId
+| top 3 by revenue desc
+| render columnchart with (kind = unstacked, xtitle = "Customer")
+---- expected
+customerId | revenue | orders
+string     | real    | long
+-----------+---------+-------
+c-042      | 1250.5  |      7
+c-007      |  980.0  |      6
+c-113      |  402.25 |      4
+render: columnchart x=customerId y=[revenue, orders] xtitle="Customer"

@@ -1,0 +1,16 @@
+# Quoted column names in properties, and in the summary line.
+mode: run
+---- query
+from '../../data/orders.csv'
+| summarize revenue = sum(amount), orders = count() by customerId
+| top 3 by revenue desc
+| project-rename ['customer id'] = customerId, ['total revenue'] = revenue
+| render columnchart with (xcolumn = ['customer id'], ycolumns = ['total revenue'])
+---- expected
+customer id | total revenue | orders
+string      | real          | long
+------------+---------------+-------
+c-042       |       1250.5  |      7
+c-007       |        980.0  |      6
+c-113       |        402.25 |      4
+render: columnchart x=['customer id'] y=[['total revenue']]

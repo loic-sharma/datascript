@@ -255,7 +255,9 @@ The web UI renders JSON diagnostics in the editor and can show the same snippet 
 - `render <kind> [with (title = "...", xcolumn = ..., ycolumns = ..., series = ...)]` must be the
   last operator of a query statement (`DS0120` in the parser, `DS5008` in the binder). It does not
   change the data. The planner puts an explicit `ir::RenderSpec` (defaults resolved, LANGUAGE.md §6)
-  on `QueryPlan::render`, and the session copies it to `QueryResult::render`.
+  on `QueryPlan::render`, and the session copies it to `QueryResult::render`. The span of the
+  `render` operator travels beside it (`QueryPlan::render_span`, `QueryResult::render_span`), so
+  runtimes can point `DS5001` at it; it is not part of the spec or its JSON.
 - The compiler validates the spec against the output schema, e.g. "`timechart` needs a datetime
   column for the x-axis, but the result has none".
 - **RenderSpec JSON** (serde, the contract with `web/` and VS Code; D-047). Keys are camelCase;

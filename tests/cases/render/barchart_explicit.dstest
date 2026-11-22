@@ -1,0 +1,16 @@
+# x can be any typed column on a barchart; `kind = stacked100`, a negative `ymin`.
+mode: run
+---- query
+from '../../data/orders.csv'
+| summarize revenue = sum(amount), orders = count() by customerId
+| top 3 by revenue desc
+| render barchart with (xcolumn = customerId, ycolumns = revenue, series = orders,
+    kind = stacked100, ymin = -1.5, ymax = 3000, legend = visible)
+---- expected
+customerId | revenue | orders
+string     | real    | long
+-----------+---------+-------
+c-042      | 1250.5  |      7
+c-007      |  980.0  |      6
+c-113      |  402.25 |      4
+render: barchart x=customerId y=[revenue] series=[orders] ymin=-1.5 ymax=3000 stacking=stacked100

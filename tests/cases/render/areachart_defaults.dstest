@@ -1,0 +1,22 @@
+# Area charts default to `stacking=default`, which the summary line leaves out.
+mode: run
+---- query
+from '../../data/orders.csv'
+| where customerId in ("c-007", "c-042")
+| summarize revenue = sum(amount) by customerId, month = startofmonth(timestamp)
+| sort by month asc, customerId asc
+| render areachart
+---- expected
+customerId | month                | revenue
+string     | datetime             | real
+-----------+----------------------+--------
+c-007      | 2023-12-01T00:00:00Z |  162.25
+c-042      | 2023-12-01T00:00:00Z |  523.75
+c-007      | 2024-01-01T00:00:00Z |  125.0
+c-042      | 2024-01-01T00:00:00Z |  185.0
+c-042      | 2024-02-01T00:00:00Z |  451.25
+c-007      | 2024-03-01T00:00:00Z |  156.5
+c-042      | 2024-03-01T00:00:00Z |   90.5
+c-007      | 2024-04-01T00:00:00Z |  367.0
+c-007      | 2024-05-01T00:00:00Z |  169.25
+render: areachart x=month y=[revenue] series=[customerId]

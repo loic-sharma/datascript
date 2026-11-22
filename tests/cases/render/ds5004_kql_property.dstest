@@ -1,0 +1,14 @@
+# A KQL-only property says it is not supported yet.
+mode: check
+schema: t(customerId: string, month: datetime, revenue: real, n: long)
+---- query
+from t
+| render timechart with (ysplit = panels)
+---- expected
+error[DS5004]: the render property `ysplit` is not supported yet
+  --> query:2:26
+  |
+2 | | render timechart with (ysplit = panels)
+  |                          ^^^^^^ a KQL property DataScript does not support yet
+  |
+  = note: the properties are title, xcolumn, ycolumns, series, xtitle, ytitle, legend, ymin, ymax, kind
