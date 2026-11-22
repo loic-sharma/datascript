@@ -99,8 +99,9 @@ once, and is now the house style:
 ## Severity
 
 - `error`: the program cannot run.
-- `warning`: it runs, but probably not as intended (e.g. `take` before `sort`, a predicate that
-  is always true). These lints are task M1-14.
+- `warning`: it runs, but probably not as intended (e.g. a `where` condition that is always
+  true, a `sort` key without a direction). These lints run on the bound program; their codes and
+  default severities are listed in one table, `datascript_compiler::lints::LINTS` (M1-14).
 - `info`: neutral facts (e.g. "render ignored: this runtime cannot draw charts", "join renamed
   `customerId` to `customerId1`").
 
@@ -218,8 +219,8 @@ design decision and implemented by the task named in the allocation table.
 | DS2043 | error | reader option given twice |
 | DS2050 | error | `take`/`top` row count that is not a constant whole number of 0 or more |
 | DS2101 | — | *retired, never implemented* (was: `take`/`limit` before `sort`, D-050) |
-| DS2102 | warning | predicate is always true or always false *(planned, M1-14)* |
-| DS2103 | warning | `sort` key without `asc`/`desc` (default is asc, ≠ KQL); machine-applicable fix inserts `asc` *(planned, M1-14, D-005)* |
+| DS2102 | warning | `where` condition that is always true or always false after folding literals (D-051) |
+| DS2103 | warning | `sort` key without `asc`/`desc` (default is asc, ≠ KQL); machine-applicable fix inserts `asc` (D-005) |
 | DS3001 | error | file not found (with did-you-mean over nearby files) |
 | DS3002 | error | unknown file format |
 | DS3003 | error | unknown reader option |

@@ -8,6 +8,7 @@
 //! - [`source`]: [`SourceRef`], [`SchemaProvider`] and [`SourceError`] (D-022, D-023).
 //! - [`hir`]: the typed HIR the binder produces.
 //! - [`ir`]: the logical plan IR and its `explain` printout.
+//! - [`lints`]: warnings for programs that run but probably not as intended (M1-14).
 //! - [`check`] and [`compile`]: the entry points that parse, bind and plan a program.
 //!
 //! This crate does not depend on DataFusion, tokio or the filesystem, and builds for
@@ -21,6 +22,7 @@ pub mod capabilities;
 pub mod catalog;
 pub mod hir;
 pub mod ir;
+pub mod lints;
 pub mod operators;
 mod plan;
 mod render;
@@ -82,8 +84,14 @@ pub fn check(
     let program = parse.program();
     let mut binder = binder::Binder::new(file, src.text(), schemas, caps, &program, &parse.errors);
     let hir = binder.bind_program(&program);
+    let lints = lints::run(&hir, file, src.text());
     let mut diagnostics = Diagnostics::new();
-    for d in parse.errors.into_iter().chain(binder.diagnostics) {
+    for d in parse
+        .errors
+        .into_iter()
+        .chain(binder.diagnostics)
+        .chain(lints)
+    {
         diagnostics.emit(d);
     }
     Analysis {

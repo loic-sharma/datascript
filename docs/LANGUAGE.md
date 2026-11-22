@@ -249,7 +249,7 @@ M1 operators are marked ●, M2 operators ○.
 
 | Operator | Syntax | Notes |
 |---|---|---|
-| ● `where` | `where <predicate>` | Predicate must be bool. `=` in a predicate gives a targeted error suggesting `==` |
+| ● `where` | `where <predicate>` | Predicate must be bool. `=` in a predicate gives a targeted error suggesting `==`. A predicate that is always true or always false after folding literals is warning `DS2102` (D-051) |
 | ● `project` | `project a, b, c = a + b` | Select, rename, and compute. Output in the order written. Unnamed expressions get `Column1`, … |
 | ● `project-away` | `project-away a, b` | Wildcards `col*` allowed |
 | ● `project-rename` | `project-rename new = old` | Keeps column position. Items apply in order; a new name another column has is `DS1005` |

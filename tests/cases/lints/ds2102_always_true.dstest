@@ -1,0 +1,49 @@
+# DS2102: conditions that are true for every row after folding literals.
+mode: check
+schema: t(x: long, y: real, s: string, ts: datetime, b: bool)
+---- query
+from t | where 1 == 1;
+from t | where true;
+from t | where x > 0 or 2 > 1;
+from t | where not (1.5 < 1);
+from t | where 2 * 3 == 6 and "a" != "b"
+---- expected
+warning[DS2102]: `where` condition is always true
+  --> query:1:16
+  |
+1 | from t | where 1 == 1;
+  |                ^^^^^^ true for every row, so `where` keeps them all
+  |
+  = help: if this is on purpose, remove the `where`: it has no effect
+
+warning[DS2102]: `where` condition is always true
+  --> query:2:16
+  |
+2 | from t | where true;
+  |                ^^^^ true for every row, so `where` keeps them all
+  |
+  = help: if this is on purpose, remove the `where`: it has no effect
+
+warning[DS2102]: `where` condition is always true
+  --> query:3:16
+  |
+3 | from t | where x > 0 or 2 > 1;
+  |                ^^^^^^^^^^^^^^ true for every row, so `where` keeps them all
+  |
+  = help: if this is on purpose, remove the `where`: it has no effect
+
+warning[DS2102]: `where` condition is always true
+  --> query:4:16
+  |
+4 | from t | where not (1.5 < 1);
+  |                ^^^^^^^^^^^^^ true for every row, so `where` keeps them all
+  |
+  = help: if this is on purpose, remove the `where`: it has no effect
+
+warning[DS2102]: `where` condition is always true
+  --> query:5:16
+  |
+5 | from t | where 2 * 3 == 6 and "a" != "b"
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^ true for every row, so `where` keeps them all
+  |
+  = help: if this is on purpose, remove the `where`: it has no effect

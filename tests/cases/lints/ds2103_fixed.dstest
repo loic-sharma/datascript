@@ -1,0 +1,9 @@
+# DS2103 must not warn: every key has a direction (the fixed form of ds2103_sort_without_direction),
+# and `top` keys never warn.
+mode: check
+schema: t(x: long, y: real, s: string, ts: datetime, b: bool)
+---- query
+from t | sort by x asc;
+from t | sort by x desc, y asc nulls last;
+from t | top 3 by x
+---- expected

@@ -1,0 +1,15 @@
+# DS2102 must not warn: a column, a self-comparison (nulls make it not constant), a null
+# result, a function call, and a scalar `let` used as a switch (D-051).
+mode: check
+schema: t(x: long, y: real, s: string, ts: datetime, b: bool)
+---- query
+let includeAll = true;
+from t | where x != x;
+from t | where x == x;
+from t | where b;
+from t | where 1 == long(null);
+from t | where null and true;
+from t | where now() > datetime(2020-01-01);
+from t | where includeAll or x > 1;
+from t | where x > 0 or 1 > 2
+---- expected
