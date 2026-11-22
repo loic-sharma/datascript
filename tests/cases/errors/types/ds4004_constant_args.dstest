@@ -1,0 +1,83 @@
+# A constant argument the language restricts is checked before the query runs (DS4004): a regular
+# expression that does not compile, an unknown datetime part or format specifier, a percentile
+# outside 0 to 100. A `let` bound to a constant counts; each mistake is reported on its own.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+let part = 'fortnight';
+from 'orders.csv'
+| where orderId matches regex '(o-'
+| extend
+    a = trim('[', orderId),
+    b = extract('a{2,1}', 0, orderId),
+    c = datetime_part(part, timestamp),
+    d = datetime_diff('Weeks', timestamp, timestamp),
+    e = format_datetime(timestamp, 'yyyy-QQ'),
+    f = datetime_part('Week', timestamp),
+    g = format_datetime(timestamp, 'yyyy-MM-dd HH:mm tt')
+| summarize p = percentile(amount, 150), q = percentile(qty, -1), r = percentile(amount, 99.5)
+---- expected
+error[DS4004]: `(o-` is not a valid regular expression
+  --> query:3:31
+  |
+3 | | where orderId matches regex '(o-'
+  |                               ^^^^^ this pattern does not compile
+  |
+  = note: unclosed group (regexes use Rust `regex` syntax)
+
+error[DS4004]: `[` is not a valid regular expression
+  --> query:5:14
+  |
+5 |     a = trim('[', orderId),
+  |              ^^^ this pattern does not compile
+  |
+  = note: unclosed character class (regexes use Rust `regex` syntax)
+
+error[DS4004]: `a{2,1}` is not a valid regular expression
+  --> query:6:17
+  |
+6 |     b = extract('a{2,1}', 0, orderId),
+  |                 ^^^^^^^^ this pattern does not compile
+  |
+  = note: invalid repetition count range, the start must be <= the end (regexes use Rust `regex` syntax)
+
+error[DS4004]: `fortnight` is not a datetime part
+  --> query:7:23
+  |
+7 |     c = datetime_part(part, timestamp),
+  |                       ^^^^ not one of the parts
+  |
+  = note: the parts are "year", "quarter", "month", "week_of_year", "week", "day", "dayofyear", "hour", "minute", "second", "millisecond", "microsecond", "nanosecond"
+
+error[DS4004]: `Weeks` is not a datetime part
+  --> query:8:23
+  |
+8 |     d = datetime_diff('Weeks', timestamp, timestamp),
+  |                       ^^^^^^^ not one of the parts
+  |
+  = help: did you mean `'week'`?
+  = note: the parts are "year", "quarter", "month", "week_of_year", "week", "day", "dayofyear", "hour", "minute", "second", "millisecond", "microsecond", "nanosecond"
+
+error[DS4004]: `QQ` is not a datetime format specifier
+  --> query:9:36
+  |
+9 |     e = format_datetime(timestamp, 'yyyy-QQ'),
+  |                                    ^^^^^^^^^ in this format
+  |
+  = note: the specifiers are yyyy, yy, y, MM, M, dd, d, HH, H, hh, h, mm, m, ss, s, f to fffffff, F to FFFFFFF and tt; other characters that are not letters are copied
+
+error[DS4004]: percentile 150 is outside 0 to 100
+   --> query:12:36
+   |
+12 | | summarize p = percentile(amount, 150), q = percentile(qty, -1), r = percentile(amount, 99.5)
+   |                                    ^^^ must be from 0 to 100
+   |
+   = note: the second argument of `percentile` is a percentage from 0 to 100
+
+error[DS4004]: percentile -1 is outside 0 to 100
+   --> query:12:62
+   |
+12 | | summarize p = percentile(amount, 150), q = percentile(qty, -1), r = percentile(amount, 99.5)
+   |                                                              ^^ must be from 0 to 100
+   |
+   = note: the second argument of `percentile` is a percentage from 0 to 100

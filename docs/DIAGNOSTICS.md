@@ -71,6 +71,31 @@ error[DS2003]: cannot add `string` and `long`
     candidates) are sorted deterministically. Paths are shown relative to the script's directory
     when they are inside it.
 
+### Recurring patterns (M1 review)
+
+The M1-13 review read every golden diagnostic against the rules above. What came up more than
+once, and is now the house style:
+
+- **Only suggest a fix that works.** A conversion help must produce a value: `toreal(timestamp)`
+  is null (LANGUAGE.md §7), so it is never offered. When the real problem is likely something
+  else, say that instead: swapped arguments (`datetime_part(ts, 'year')`), a number used as a
+  condition (`x != 0`), a bare number where a `timespan` is needed (`1d`).
+- **Never use `DS9001` for a user's mistake.** "Not implemented yet" with an internal-error code
+  was used for `take amount`; a mistake the user can fix gets a real code and a help.
+- **Check constants early.** If a value is known before the query runs, report it from `check`,
+  at the argument, with the same code the engine would use at run time.
+- **Code spans hold code.** Do not wrap prose that itself contains backticks in a code span
+  (`` `min(x: T) -> T`, where T is a number or `string` ``). Quoted values in messages are code:
+  `` `'ndjson'` ``, not `'ndjson'`.
+- **Short labels are fine when the message says it all**, such as "this is SQL" or "not a chart
+  kind". A label must not restate the message in other words; when there is nothing to add, say
+  where with a few words ("given again here").
+- **The same situation gets the same words.** "remove one of them" for repeated properties and
+  options; "did you mean `x`?" with a machine-applicable fix for one close match; "a ... with a
+  similar name exists: `x`" for names.
+- **Measure text in terminal columns** (`text_width`), not characters, wherever output is
+  aligned.
+
 ## Severity
 
 - `error`: the program cannot run.
@@ -100,6 +125,7 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS1001–DS1029, DS2001–DS2029 | M1-05 binder core (and M1-04 for DS2002, DS2003, DS2006, DS2009) |
 | DS1030–DS1049, DS2030–DS2039 | M1-16 operator schemas and joins (also implements the registered DS1005, DS1007) |
 | DS2040–DS2049 | M1-17 source resolution and capability pass (also implements the registered DS2008, DS3006, DS4001, and builds DS3002 and DS3003 in the binder, D-041) |
+| DS2050–DS2059 | M1-13 M1 acceptance and polish |
 | DS2100–DS2149 | M1-14 lints |
 | DS3001–DS3049 | M1-08 sources (DS3007 reserved for M4-01) |
 | DS4001–DS4049 | M1-07 / M1-09 engine |
@@ -190,6 +216,7 @@ design decision and implemented by the task named in the allocation table.
 | DS2041 | error | reader option value has the wrong type or is not allowed |
 | DS2042 | error | reader call without exactly one path argument |
 | DS2043 | error | reader option given twice |
+| DS2050 | error | `take`/`top` row count that is not a constant whole number of 0 or more |
 | DS2101 | warning | `take`/`limit` before `sort`: the rows kept are arbitrary *(planned, M1-14)* |
 | DS2102 | warning | predicate is always true or always false *(planned, M1-14)* |
 | DS2103 | warning | `sort` key without `asc`/`desc` (default is asc, ≠ KQL); machine-applicable fix inserts `asc` *(planned, M1-14, D-005)* |
@@ -205,7 +232,7 @@ design decision and implemented by the task named in the allocation table.
 | DS4001 | error | function, `join` kind or file format not supported by this engine (reported by `check`, from the engine's capabilities) |
 | DS4002 | error | engine runtime error |
 | DS4003 | error | arithmetic error: integer division by zero, overflow, or out-of-range value (D-014) |
-| DS4004 | error | invalid argument value at runtime: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100 |
+| DS4004 | error | invalid argument value: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100 (reported by `check` when the argument is a constant, D-049) |
 | DS5001 | info | chart not drawn in this runtime (once per program run, not for `render table`) |
 | DS5002 | error | chart role cannot be filled: no column of the type the kind needs, or an explicit column of the wrong type (names the role and lists the result's columns) |
 | DS5003 | error | unknown render kind (did-you-mean; a KQL kind DataScript does not support yet says so instead) |

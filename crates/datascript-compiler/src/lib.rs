@@ -13,6 +13,7 @@
 //! This crate does not depend on DataFusion, tokio or the filesystem, and builds for
 //! `wasm32-unknown-unknown`.
 
+pub mod arg_values;
 pub mod arrow;
 mod binder;
 mod builtins;

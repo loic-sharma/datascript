@@ -165,6 +165,8 @@ pub const DS2041: Code = Code::new(2041);
 pub const DS2042: Code = Code::new(2042);
 /// reader option given twice
 pub const DS2043: Code = Code::new(2043);
+/// `take`/`top` row count that is not a constant whole number of 0 or more
+pub const DS2050: Code = Code::new(2050);
 /// `take`/`limit` before `sort`: the rows kept are arbitrary (planned, M1-14)
 pub const DS2101: Code = Code::new(2101);
 /// predicate is always true or always false (planned, M1-14)
@@ -195,7 +197,7 @@ pub const DS4001: Code = Code::new(4001);
 pub const DS4002: Code = Code::new(4002);
 /// arithmetic error: integer division by zero, overflow, or out-of-range value (D-014)
 pub const DS4003: Code = Code::new(4003);
-/// invalid argument value at runtime: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100
+/// invalid argument value: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100 (reported by `check` when the argument is a constant, D-049)
 pub const DS4004: Code = Code::new(4004);
 /// chart not drawn in this runtime (once per program run, not for `render table`)
 pub const DS5001: Code = Code::new(5001);
@@ -603,6 +605,12 @@ pub const REGISTRY: &[CodeInfo] = &[
         status: CodeStatus::Active,
     },
     CodeInfo {
+        code: DS2050,
+        severity: Some(Severity::Error),
+        summary: "`take`/`top` row count that is not a constant whole number of 0 or more",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
         code: DS2101,
         severity: Some(Severity::Warning),
         summary: "`take`/`limit` before `sort`: the rows kept are arbitrary *(planned, M1-14)*",
@@ -695,7 +703,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS4004,
         severity: Some(Severity::Error),
-        summary: "invalid argument value at runtime: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100",
+        summary: "invalid argument value: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100 (reported by `check` when the argument is a constant, D-049)",
         status: CodeStatus::Active,
     },
     CodeInfo {

@@ -16,6 +16,7 @@
 //! [`Suggestion`]: crate::Suggestion
 
 use std::fmt::Write as _;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::diagnostic::{Diagnostic, Label, Severity};
 use crate::source::{SourceFile, SourceMap};
@@ -320,7 +321,7 @@ impl<'a> Snippet<'a> {
                     1 => {}
                     2 => {
                         let text = self.file.line_text(previous + 1).replace('\t', TAB);
-                        let width = text.chars().count();
+                        let width = display_width(&text);
                         let window = Window::new(width, 0, 0, chars.cut);
                         self.source_line(out, &text, previous + 1, gutter, &window);
                     }
@@ -333,7 +334,7 @@ impl<'a> Snippet<'a> {
             }
             previous = Some(*index);
             let text = self.file.line_text(*index).replace('\t', TAB);
-            let width = text.chars().count();
+            let width = display_width(&text);
             let lo = segments.iter().map(|s| s.start).min().unwrap_or(0);
             let hi = segments.iter().map(|s| s.end).max().unwrap_or(0);
             let window = Window::new(width, lo, hi, chars.cut);
@@ -369,11 +370,7 @@ impl<'a> Snippet<'a> {
         if window.start > 0 {
             line.push(self.chars.cut, Style::Border);
         }
-        let shown: String = text
-            .chars()
-            .skip(window.start)
-            .take(window.end - window.start)
-            .collect();
+        let shown = slice_columns(text, window.start, window.end);
         line.push(&shown, Style::Plain);
         if window.end < window.width {
             line.push(self.chars.cut, Style::Border);
@@ -504,11 +501,40 @@ fn border(out: &mut Output, pad: &str, chars: &Chars) {
     line.push_char(chars.border, Style::Border);
 }
 
-/// Display width of `text`: one column per character, four per tab.
+/// Display width of `text` in a terminal: wide characters (CJK, most emoji) take two columns,
+/// combining marks and other zero-width characters none, and a tab four.
 fn display_width(text: &str) -> usize {
-    text.chars()
-        .map(|c| if c == '\t' { TAB.len() } else { 1 })
-        .sum()
+    text.split('\t').map(UnicodeWidthStr::width).sum::<usize>()
+        + text.matches('\t').count() * TAB.len()
+}
+
+/// The terminal width of `text`, in columns, as used to align carets and table cells: wide
+/// characters (CJK, most emoji) count two, combining marks and other zero-width characters
+/// none. Control characters count none, so escape them before measuring.
+pub fn text_width(text: &str) -> usize {
+    UnicodeWidthStr::width(text)
+}
+
+/// Display width of one character, as [`display_width`] counts it (tabs are already expanded).
+fn char_width(c: char) -> usize {
+    UnicodeWidthChar::width(c).unwrap_or(0)
+}
+
+/// The characters of `text` (tabs already expanded) in display columns `start..end`. A wide
+/// character that straddles the start is left out, one that straddles the end is kept.
+fn slice_columns(text: &str, start: usize, end: usize) -> String {
+    let mut column = 0;
+    let mut out = String::new();
+    for c in text.chars() {
+        if column >= end {
+            break;
+        }
+        if column >= start {
+            out.push(c);
+        }
+        column += char_width(c);
+    }
+    out
 }
 
 /// Display column (0-based) of byte `offset` on the 0-based line `index`.
@@ -678,6 +704,39 @@ mod tests {
         let column = source.find("xyz").unwrap();
         assert_eq!(marker.find('^'), Some(column), "{out}");
         assert!(marker.ends_with("^^^ here"), "{out}");
+    }
+
+    /// The terminal column where the carets of `out`'s marker line start, and how many.
+    fn carets(out: &str) -> (usize, usize) {
+        let marker = out
+            .lines()
+            .find(|l| l.contains('^'))
+            .expect("a marker line");
+        let start = text_width(&marker[..marker.find('^').unwrap()]);
+        (start, marker.matches('^').count())
+    }
+
+    #[test]
+    fn carets_line_up_after_wide_and_combining_characters() {
+        // `李雷` is two wide characters (4 columns); `e\u{301}` is one column; `😀` is two.
+        for (text, prefix, word) in [
+            ("'李雷' x", "'李雷' ", "x"),
+            ("'e\u{301}e\u{301}' x", "'e\u{301}e\u{301}' ", "x"),
+            ("'😀' 李雷", "'😀' ", "李雷"),
+        ] {
+            let mut sources = SourceMap::new();
+            let f = sources.add("q", text);
+            let start = prefix.len() as u32;
+            let end = start + word.len() as u32;
+            let d = Diagnostic::error(Code::new(1), "m").primary(Span::new(f, start, end), "");
+            let out = Renderer::plain().render(&d, &sources);
+            // The marker line starts with `  | `, as wide as the source line's `1 | `.
+            assert_eq!(
+                carets(&out),
+                ("  | ".len() + text_width(prefix), text_width(word)),
+                "{out}"
+            );
+        }
     }
 
     #[test]

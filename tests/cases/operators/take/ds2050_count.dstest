@@ -1,0 +1,61 @@
+# The row count of `take`, `limit` and `top` must be a constant whole number of 0 or more (DS2050).
+# Each mistake is reported on its own.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+let n = 2.5;
+from 'orders.csv' | take amount;
+from 'orders.csv' | take -1;
+from 'orders.csv' | limit 2.5;
+from 'orders.csv' | take '3';
+from 'orders.csv' | take n;
+from 'orders.csv' | top qty by amount desc
+---- expected
+error[DS2050]: the row count of `take` must be a constant
+  --> query:2:26
+  |
+2 | from 'orders.csv' | take amount;
+  |                          ^^^^^^ `amount` is a column, which can differ from row to row
+  |
+  = help: write a whole number of 0 or more, such as `take 10`, or the name of a `let` bound to one
+
+error[DS2050]: the row count of `take` cannot be negative
+  --> query:3:26
+  |
+3 | from 'orders.csv' | take -1;
+  |                          ^^ this is -1
+  |
+  = help: write a whole number of 0 or more, such as `take 10`, or the name of a `let` bound to one
+
+error[DS2050]: the row count of `limit` must be a whole number
+  --> query:4:27
+  |
+4 | from 'orders.csv' | limit 2.5;
+  |                           ^^^ this is `real`
+  |
+  = help: write a whole number of 0 or more, such as `limit 10`, or the name of a `let` bound to one
+
+error[DS2050]: the row count of `take` must be a whole number
+  --> query:5:26
+  |
+5 | from 'orders.csv' | take '3';
+  |                          ^^^ this is `string`
+  |
+  = help: write a whole number of 0 or more, such as `take 10`, or the name of a `let` bound to one
+
+error[DS2050]: the row count of `take` must be a whole number
+  --> query:6:26
+  |
+6 | from 'orders.csv' | take n;
+  |                          ^ this is `real`
+  |
+  = help: write a whole number of 0 or more, such as `take 10`, or the name of a `let` bound to one
+  = note: `n` is defined by a `let`
+
+error[DS2050]: the row count of `top` must be a constant
+  --> query:7:25
+  |
+7 | from 'orders.csv' | top qty by amount desc
+  |                         ^^^ `qty` is a column, which can differ from row to row
+  |
+  = help: write a whole number of 0 or more, such as `top 10 by x`, or the name of a `let` bound to one

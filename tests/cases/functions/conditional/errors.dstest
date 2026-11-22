@@ -1,0 +1,86 @@
+# Common mistakes with the conditional functions: a condition that is not `bool`, branches of
+# different types, a missing `else` value, and wrong argument counts.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv'
+| project
+    a = iff(qty, 1, 0),
+    b = iff(amount > 100, 'big', 0),
+    c = case(amount > 100, 'big', amount > 10, 'medium'),
+    d = coalesce(amount, customerId),
+    e = isnull(),
+    f = isnotnull(amount, qty),
+    g = isempty(),
+    h = isnotempty(customerId, orderId)
+---- expected
+error[DS2006]: argument `condition` of `iff` must be `bool`, found `long`
+  --> query:3:13
+  |
+3 |     a = iff(qty, 1, 0),
+  |             ^^^ this is `long` (column `qty` was read from orders.csv)
+  |
+  = help: to test whether it is not zero, compare it: `qty != 0`
+  = note: signature: `iff(condition: bool, then: T, else: T) -> T`
+
+error[DS2006]: argument `else` of `iff` must have the same type as argument `then` (`string`), found `long`
+  --> query:4:34
+  |
+4 |     b = iff(amount > 100, 'big', 0),
+  |                           -----  ^ this is `long`
+  |                           |
+  |                           this is `string`
+  |
+  = help: convert it first if that is what you meant: `tostring(0)`
+  = note: signature: `iff(condition: bool, then: T, else: T) -> T`
+
+error[DS2002]: `case` takes an odd number of arguments, at least 3, found 4
+  --> query:5:9
+  |
+5 |     c = case(amount > 100, 'big', amount > 10, 'medium'),
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ called with 4 arguments
+  |
+  = note: signature: `case(condition: bool, value: T, ..., else: T) -> T`
+
+error[DS2006]: the 2nd argument of `coalesce` must have the same type as the 1st argument (`real`), found `string`
+  --> query:6:26
+  |
+6 |     d = coalesce(amount, customerId),
+  |                  ------  ^^^^^^^^^^ this is `string` (column `customerId` was read from orders.csv)
+  |                  |
+  |                  this is `real` (column `amount` was read from orders.csv)
+  |
+  = help: convert it first if that is what you meant: `toreal(customerId)`
+  = note: signature: `coalesce(value: T, value: T, ...) -> T`
+
+error[DS2002]: `isnull` takes 1 argument, found 0
+  --> query:7:9
+  |
+7 |     e = isnull(),
+  |         ^^^^^^^^ missing `value`
+  |
+  = note: signature: `isnull(value: any) -> bool`
+
+error[DS2002]: `isnotnull` takes 1 argument, found 2
+  --> query:8:27
+  |
+8 |     f = isnotnull(amount, qty),
+  |                           ^^^ this argument is not expected
+  |
+  = note: signature: `isnotnull(value: any) -> bool`
+
+error[DS2002]: `isempty` takes 1 argument, found 0
+  --> query:9:9
+  |
+9 |     g = isempty(),
+  |         ^^^^^^^^^ missing `value`
+  |
+  = note: signature: `isempty(value: any) -> bool`
+
+error[DS2002]: `isnotempty` takes 1 argument, found 2
+   --> query:10:32
+   |
+10 |     h = isnotempty(customerId, orderId)
+   |                                ^^^^^^^ this argument is not expected
+   |
+   = note: signature: `isnotempty(value: any) -> bool`

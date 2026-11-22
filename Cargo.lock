@@ -1370,6 +1370,7 @@ dependencies = [
  "arrow-schema",
  "datascript-diagnostics",
  "datascript-syntax",
+ "regex-syntax",
  "serde",
  "serde_json",
 ]
@@ -1402,6 +1403,7 @@ dependencies = [
  "insta",
  "serde",
  "serde_json",
+ "unicode-width",
 ]
 
 [[package]]

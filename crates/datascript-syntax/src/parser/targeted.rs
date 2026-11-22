@@ -363,6 +363,11 @@ impl Parser<'_> {
         }
         let lower = name.to_lowercase();
 
+        // SQL's `LEFT JOIN t`, `FULL OUTER JOIN t`, … written as an operator (DS0105).
+        if let Some(d) = self.sql_join(span, &lower) {
+            return d;
+        }
+
         // SQL keywords in SQL's capitals (DS0105). `GROUP BY` and `ORDER BY` are one keyword.
         // Other mixed case (`Where`) is just the wrong case, below.
         if lower != name && name == name.to_uppercase() && SQL_WORDS.contains(&lower.as_str()) {
@@ -889,6 +894,105 @@ impl Parser<'_> {
             Suggestion::replace(self.current_span(), lower.clone()),
         );
         self.report(d);
+    }
+
+    /// DS0105 for SQL's `LEFT JOIN`, `FULL OUTER JOIN`, `LEFT SEMI JOIN`, … where an operator is
+    /// expected. `span` covers the first word, `lower` is it in lowercase. `None` if the words
+    /// do not end in `join`.
+    fn sql_join(&self, span: datascript_diagnostics::Span, lower: &str) -> Option<Diagnostic> {
+        if !matches!(
+            lower,
+            "left" | "right" | "full" | "inner" | "outer" | "cross"
+        ) {
+            return None;
+        }
+        // Up to two more words, then `join`, all on the same line as the first.
+        let mut words = vec![lower.to_string()];
+        let mut n = 1;
+        while n <= 3 && self.nth(n) == IDENT && !self.nth_line_start(n) {
+            let word = self.nth_text(n).to_lowercase();
+            if word == "join" {
+                break;
+            }
+            if !matches!(word.as_str(), "outer" | "semi" | "anti") {
+                return None;
+            }
+            words.push(word);
+            n += 1;
+        }
+        if self.nth(n) != IDENT || !self.nth_text(n).eq_ignore_ascii_case("join") {
+            return None;
+        }
+        let span = self.span(span.start, self.tokens[self.pos + n].end());
+        let written = self.source(span.start, span.end).to_string();
+        let words: Vec<&str> = words.iter().map(String::as_str).collect();
+        let kind = match words.as_slice() {
+            ["inner"] => Some("inner"),
+            ["left"] | ["left", "outer"] => Some("leftouter"),
+            ["right"] | ["right", "outer"] => Some("rightouter"),
+            ["full"] | ["full", "outer"] | ["outer"] => Some("fullouter"),
+            ["left", "semi"] => Some("leftsemi"),
+            ["left", "anti"] => Some("leftanti"),
+            ["right", "semi"] => Some("rightsemi"),
+            ["right", "anti"] => Some("rightanti"),
+            _ => None,
+        };
+        let d = Diagnostic::error(codes::DS0105, format!("`{written}` is SQL, not DataScript"))
+            .primary(span, "this is SQL");
+        Some(match kind {
+            Some(kind) => {
+                let rewrite = format!("join kind = {kind}");
+                d.help_with(
+                    format!("the join kind goes after `join`: `{rewrite}`"),
+                    Suggestion::replace(span, rewrite),
+                )
+            }
+            None => d
+                .help(
+                    "DataScript has no cross join; to pair every row with every row, add the \
+                     same constant column to both sides with `extend` and join on it",
+                )
+                .note(
+                    "the kinds are `inner`, `leftouter`, `rightouter`, `fullouter`, `leftsemi`, \
+                     `leftanti`, `rightsemi` and `rightanti`",
+                ),
+        })
+    }
+
+    /// DS0105 for `NULLS FIRST` / `NULLS LAST` with a word in SQL's uppercase. The current token
+    /// is `nulls` in any case. Returns whether it reported.
+    pub(super) fn check_nulls_case(&mut self) -> bool {
+        let first_ok = self.nth_text(0) == "nulls";
+        let placement = self.nth(1) == IDENT
+            && matches!(self.nth_text(1).to_lowercase().as_str(), "first" | "last");
+        let second_ok = !placement || matches!(self.nth_text(1), "first" | "last");
+        if first_ok && second_ok {
+            return false;
+        }
+        let start = self.offset();
+        let end = if placement {
+            self.tokens[self.pos + 1].end()
+        } else {
+            self.current_span().end
+        };
+        let span = self.span(start, end);
+        let written = self.source(span.start, span.end).to_string();
+        let lower = if placement {
+            format!("nulls {}", self.nth_text(1).to_lowercase())
+        } else {
+            "nulls".to_string()
+        };
+        let d = Diagnostic::error(
+            codes::DS0105,
+            format!("SQL keyword `{written}` in capitals"),
+        )
+        .primary(span, "this is SQL")
+        .help_with(
+            format!("keywords are lowercase: write `{lower}`"),
+            Suggestion::replace(span, lower.clone()),
+        );
+        self.report(d);
+        true
     }
 
     /// DS0122: `join` without `on`. `right` is the source range of the right table.

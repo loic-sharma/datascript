@@ -174,6 +174,21 @@ fn unknown_meta_command_gets_did_you_mean() {
 }
 
 #[test]
+fn max_rows_cuts_tables_and_the_footer_names_the_command() {
+    repl(
+        ".max-rows 2\n\
+         from 'orders.csv' | project orderId;\n\
+         .max-rows 0\n\
+         from 'orders.csv' | count;\n",
+    )
+    .success()
+    .stdout(contains(
+        "o-0002\n… 48 more rows (show them with .max-rows 50)\n",
+    ))
+    .stdout(contains("--max-rows").not());
+}
+
+#[test]
 fn bad_format_argument() {
     repl(".format xml\n")
         .code(1)

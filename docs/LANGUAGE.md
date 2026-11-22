@@ -256,8 +256,8 @@ M1 operators are marked ●, M2 operators ○.
 | ● `extend` | `extend c = a * 2` | Adds columns at the end, or replaces a column in place. Unnamed expressions get `Column1`, …. An item sees the columns made by the items before it (D-040) |
 | ● `summarize` | `summarize [name =] agg(...) , ... [by key [, ...]]` | Keys may be expressions: `by bin(ts, 1h)`. Output: keys first, then aggregates. With no aggregates it returns the distinct keys. With neither, `DS2030` |
 | ● `sort` / `order` | `sort by a desc, b asc nulls last` | ≠ KQL: default direction is **asc** (D-005). Omitting the direction is warning `DS2103`, with a fix that inserts `asc`. See §3.4 |
-| ● `top` | `top 10 by revenue desc` | Default desc, as in KQL (top-N is about largest) |
-| ● `take` / `limit` | `take 100` | No ordering guarantee unless it follows `sort` |
+| ● `top` | `top 10 by revenue desc` | Default desc, as in KQL (top-N is about largest). The count is as for `take` |
+| ● `take` / `limit` | `take 100` | No ordering guarantee unless it follows `sort`. The count is a whole number of 0 or more, written as a literal or a scalar `let` bound to one; anything else is `DS2050` (D-049) |
 | ● `count` | `count` | One row, column `Count` |
 | ● `distinct` | `distinct a, b` or `distinct *` | Column names only (`DS1032`) |
 | ● `join` | `join kind = inner (right) on key` or `on $left.a == $right.b` | Kinds: `inner` (default), `leftouter`, `rightouter`, `fullouter`, `leftsemi`, `leftanti`, `rightsemi`, `rightanti`. ≠ KQL: no `innerunique` (`DS0124`), and the default is `inner`. Unknown kinds are `DS0123`. Decision D-004 |
@@ -556,6 +556,10 @@ never gives `DS5001`. The CLI prints it on stderr whatever the `--format`.
 The authoritative list is the function catalog in `datascript-compiler` (it generates the reference docs).
 Semantics follow KQL unless noted (D-014). All datetime functions work in UTC.
 
+A bad value for an argument the language restricts (a regular expression, a datetime part, a
+format, a percentage) is `DS4004`. When the argument is a constant (a literal, or a scalar `let`
+bound to one) `ds check` reports it; a computed one is reported when the query runs (D-049).
+
 - **Aggregates** (`sum` and `sumif` of integers return `long`, of reals `real`, of timespans
   `timespan`; `avg` returns `real`, or `timespan` for timespans, truncated to whole µs; `stdev`
   and `variance` return `real`): `count()`, `countif(p)`, `sum(x)`, `sumif(x, p)`, `avg(x)`, `min(x)`, `max(x)`,
@@ -587,7 +591,7 @@ Semantics follow KQL unless noted (D-014). All datetime functions work in UTC.
   8601 week), `dayofweek` (timespan since Sunday, as in KQL), `format_datetime(dt, fmt)` (KQL
   format specifiers: `yyyy`, `yy`, `MM`, `M`, `dd`, `d`, `HH`, `H`, `hh`, `h`, `mm`, `m`, `ss`,
   `s`, `f`…`fffffff`, `F`…`FFFFFFF`, `tt`; other non-letters are copied), `datetime_diff` (weeks
-  start on Sunday). An unknown part name or format specifier is `DS4004` when the query runs.
+  start on Sunday). An unknown part name or format specifier is `DS4004`.
 - **Math**: `abs`, `round(x [, digits])` (half away from zero; negative `digits` round integers to
   tens, hundreds, …), `floor`, `ceiling`, `sqrt`, `pow`, `log` (natural), `log10`, `exp`. `abs`,
   `round`, `floor`, `ceiling` and `bin` of an integer return `long`, like integer arithmetic

@@ -71,7 +71,7 @@ Two shared files are touched by many tasks:
 | [M1-10](M1-10-render-operator.md) | `render` operator semantics | M1-16, M1-06 | done | M1-14 |
 | [M1-11](M1-11-cli.md) | CLI: check, run, explain | M1-09 | done | |
 | [M1-12](M1-12-repl.md) | REPL | M1-11 | done | |
-| [M1-13](M1-13-m1-acceptance.md) | M1 acceptance and polish | M1-03, M1-10, M1-11, M1-12, M1-14, M1-18…M1-25 | todo | |
+| [M1-13](M1-13-m1-acceptance.md) | M1 acceptance and polish | M1-03, M1-10, M1-11, M1-12, M1-14, M1-18…M1-25 | done | |
 | [M1-14](M1-14-lints.md) | Warning lints | M1-16 | todo | M1-06…M1-12 |
 
 ## M2 — Language breadth
@@ -88,6 +88,8 @@ Two shared files are touched by many tasks:
 | [M2-08](M2-08-error-explanations.md) | Long-form error explanations | M1-13 | todo |
 | [M2-09](M2-09-schema-overrides.md) | Reader schema overrides | M1-13 | todo |
 | [M2-10](M2-10-decimal-guid.md) | `decimal` and `guid` types | M1-13 | todo |
+| [M2-11](M2-11-streaming-run.md) | Stream results in `ds run` | M1-13 | todo |
+| [M2-12](M2-12-runtime-source-errors.md) | Name the file in runtime read errors | M1-13 | todo |
 
 ## M3 — Editor experience
 

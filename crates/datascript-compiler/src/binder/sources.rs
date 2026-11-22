@@ -228,7 +228,7 @@ impl Binder<'_> {
                     Diagnostic::error(DS2043, format!("option `{name}` is given twice"))
                         .primary(name_span, "given again here")
                         .secondary(first, "first given here")
-                        .help("keep one of them"),
+                        .help("remove one of them"),
                 );
                 ok = false;
                 continue;
@@ -356,13 +356,19 @@ impl Binder<'_> {
                 return Some(OptionValue::String(s.clone()));
             }
             (OptionKind::OneOf(allowed), Value::String(s)) => {
-                let list: Vec<String> = allowed.iter().map(|a| format!("'{a}'")).collect();
+                let list: Vec<String> = allowed.iter().map(|a| format!("`'{a}'`")).collect();
+                let list = match list.split_last() {
+                    Some((last, rest)) if !rest.is_empty() => {
+                        format!("{} or {last}", rest.join(", "))
+                    }
+                    _ => list.join(""),
+                };
                 let fix = did_you_mean(s, allowed.iter().copied())
                     .single()
                     .map(|best| best.to_string());
                 (
-                    format!("`{name}` must be one of {}", list.join(", ")),
-                    format!("'{s}' is not one of them"),
+                    format!("`{name}` must be {list}"),
+                    format!("`'{s}'` is not one of them"),
                     fix,
                 )
             }
@@ -375,7 +381,7 @@ impl Binder<'_> {
         let mut d = Diagnostic::error(DS2041, message).primary(span, label);
         if let Some(best) = fix {
             d = d.help_with(
-                format!("did you mean '{best}'?"),
+                format!("did you mean `'{best}'`?"),
                 Suggestion::replace(span, format!("'{best}'")),
             );
         }

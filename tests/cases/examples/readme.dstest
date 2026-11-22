@@ -1,0 +1,50 @@
+# The README example (and `examples/top_customers.ds`) runs end to end: `on customerId` gives one
+# `customerId` column and no DS1007 (D-019), and `render timechart` picks its roles.
+mode: run
+---- query
+let orders = '../../data/orders.parquet';
+
+let topCustomers = from orders
+| summarize revenue = sum(amount) by customerId
+| top 10 by revenue desc;
+
+from orders
+| join kind = inner topCustomers on customerId
+| summarize revenue = sum(amount) by customerId, month = startofmonth(timestamp)
+| render timechart
+---- expected
+customerId | month                | revenue
+string     | datetime             | real
+-----------+----------------------+--------
+c-042      | 2023-12-01T00:00:00Z |  523.75
+c-077      | 2023-12-01T00:00:00Z |   84.75
+c-113      | 2023-12-01T00:00:00Z |  109.25
+c-007      | 2023-12-01T00:00:00Z |  162.25
+c-003      | 2023-12-01T00:00:00Z |   65.0
+c-113      | 2024-01-01T00:00:00Z |  203.5
+c-042      | 2024-01-01T00:00:00Z |  185.0
+c-007      | 2024-01-01T00:00:00Z |  125.0
+c-019      | 2024-01-01T00:00:00Z |  200.0
+c-001      | 2024-01-01T00:00:00Z |   75.0
+c-128      | 2024-02-01T00:00:00Z |   48.0
+c-002      | 2024-02-01T00:00:00Z |   69.5
+c-019      | 2024-02-01T00:00:00Z |  100.0
+c-001      | 2024-02-01T00:00:00Z |   75.0
+c-003      | 2024-02-01T00:00:00Z |    7.75
+c-011      | 2024-02-01T00:00:00Z |   14.25
+c-077      | 2024-02-01T00:00:00Z |   22.75
+c-042      | 2024-02-01T00:00:00Z |  451.25
+c-001      | 2024-03-01T00:00:00Z |  150.0
+c-128      | 2024-03-01T00:00:00Z |   47.5
+c-042      | 2024-03-01T00:00:00Z |   90.5
+c-011      | 2024-03-01T00:00:00Z |   66.0
+c-007      | 2024-03-01T00:00:00Z |  156.5
+c-002      | 2024-03-01T00:00:00Z |    7.5
+c-007      | 2024-04-01T00:00:00Z |  367.0
+c-128      | 2024-04-01T00:00:00Z |   66.25
+c-002      | 2024-05-01T00:00:00Z |  114.5
+c-007      | 2024-05-01T00:00:00Z |  169.25
+c-113      | 2024-05-01T00:00:00Z |   89.5
+c-011      | 2024-05-01T00:00:00Z |   52.0
+c-003      | 2024-05-01T00:00:00Z |   69.5
+render: timechart x=month y=[revenue] series=[customerId]

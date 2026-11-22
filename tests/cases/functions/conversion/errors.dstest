@@ -1,0 +1,61 @@
+# Common mistakes with the conversion functions: wrong argument counts. (They take a value of any type: one that
+# does not convert becomes null, LANGUAGE.md §7.)
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv'
+| project
+    a = tostring(),
+    b = toint(amount, 2),
+    c = tolong(),
+    d = toreal(qty, 1),
+    e = tobool(),
+    f = todatetime()
+---- expected
+error[DS2002]: `tostring` takes 1 argument, found 0
+  --> query:3:9
+  |
+3 |     a = tostring(),
+  |         ^^^^^^^^^^ missing `value`
+  |
+  = note: signature: `tostring(value: any) -> string`
+
+error[DS2002]: `toint` takes 1 argument, found 2
+  --> query:4:23
+  |
+4 |     b = toint(amount, 2),
+  |                       ^ this argument is not expected
+  |
+  = note: signature: `toint(value: any) -> int`
+
+error[DS2002]: `tolong` takes 1 argument, found 0
+  --> query:5:9
+  |
+5 |     c = tolong(),
+  |         ^^^^^^^^ missing `value`
+  |
+  = note: signature: `tolong(value: any) -> long`
+
+error[DS2002]: `toreal` takes 1 argument, found 2
+  --> query:6:21
+  |
+6 |     d = toreal(qty, 1),
+  |                     ^ this argument is not expected
+  |
+  = note: signature: `toreal(value: any) -> real`
+
+error[DS2002]: `tobool` takes 1 argument, found 0
+  --> query:7:9
+  |
+7 |     e = tobool(),
+  |         ^^^^^^^^ missing `value`
+  |
+  = note: signature: `tobool(value: any) -> bool`
+
+error[DS2002]: `todatetime` takes 1 argument, found 0
+  --> query:8:9
+  |
+8 |     f = todatetime()
+  |         ^^^^^^^^^^^^ missing `value`
+  |
+  = note: signature: `todatetime(value: any) -> datetime`

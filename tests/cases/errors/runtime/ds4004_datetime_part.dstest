@@ -1,13 +1,13 @@
-# An unknown datetime part is DS4004 and lists the parts.
+# An unknown computed datetime part is DS4004 when the query runs, and lists the parts.
 mode: run
 ---- query
 from '../../../data/orders.csv'
-| project p = datetime_part('fortnight', timestamp)
+| project p = datetime_part(strcat('fort', 'night'), timestamp)
 ---- expected
 error[DS4004]: `fortnight` is not a datetime part
   --> query:2:15
   |
-2 | | project p = datetime_part('fortnight', timestamp)
-  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ in this call of `datetime_part`
+2 | | project p = datetime_part(strcat('fort', 'night'), timestamp)
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ in this call of `datetime_part`
   |
   = note: the parts are "year", "quarter", "month", "week_of_year", "week", "day", "dayofyear", "hour", "minute", "second", "millisecond", "microsecond", "nanosecond"

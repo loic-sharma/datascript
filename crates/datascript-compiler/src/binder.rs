@@ -24,7 +24,7 @@ use std::sync::Arc;
 use arrow_schema::{Schema, SchemaRef};
 use datascript_diagnostics::codes::{
     DS0003, DS1001, DS1002, DS1003, DS1004, DS1006, DS1031, DS2001, DS2004, DS2005, DS2008, DS2010,
-    DS2011, DS2012, DS4001, DS9001,
+    DS2011, DS2012, DS2050, DS4001, DS4004,
 };
 use datascript_diagnostics::{
     Applicability, Diagnostic, FileId, Span, Suggestion, TextEdit, did_you_mean,
@@ -33,6 +33,7 @@ use datascript_syntax::ast::{self, AstNode, LiteralKind, Operator, PrefixOp, Stm
 use datascript_syntax::{SyntaxKind, SyntaxNode, literal};
 
 use crate::Type;
+use crate::arg_values::{self, DatetimePart};
 use crate::arrow::to_arrow;
 use crate::catalog::{CallSite, FunctionCatalog, FunctionKind, ResolveError};
 use crate::hir::{
@@ -42,11 +43,21 @@ use crate::hir::{
 
 mod join;
 mod ops;
+
+/// An argument whose constant value [`Binder::check_constant_arg`] checks.
+#[derive(Debug, Clone, Copy)]
+enum ConstArg {
+    DatetimePart,
+    DatetimeFormat,
+    Regex,
+    Percentage,
+}
+
 mod render;
 mod sources;
 
 use crate::capabilities::Capabilities;
-use crate::ir::{BinaryOp, Value};
+use crate::ir::{BinaryOp, RenderNumber, Value};
 use crate::operators::{self, Operand};
 use crate::source::{SchemaLookup, SchemaProvider, SourceRef};
 pub(crate) use ops::unique_name;
@@ -368,7 +379,9 @@ impl<'a> Binder<'a> {
                 (Op::Sort(keys), columns.clone())
             }
             Operator::Top(op) => {
-                let count = op.count().and_then(|count| self.take_count(&count, "top"));
+                let count = op
+                    .count()
+                    .and_then(|count| self.take_count(&count, "top", columns));
                 let key = op
                     .key()
                     .and_then(|key| self.bind_sort_key(&key, columns, "`top`", true));
@@ -378,7 +391,13 @@ impl<'a> Binder<'a> {
                 }
             }
             Operator::Take(op) => {
-                let count = op.count().and_then(|count| self.take_count(&count, "take"));
+                let keyword = op
+                    .syntax()
+                    .first_token()
+                    .map_or_else(|| "take".to_string(), |t| t.text().to_string());
+                let count = op
+                    .count()
+                    .and_then(|count| self.take_count(&count, &keyword, columns));
                 match count {
                     Some(count) => (Op::Take(count), columns.clone()),
                     None => (Op::Error, columns.clone()),
@@ -393,22 +412,131 @@ impl<'a> Binder<'a> {
         }
     }
 
-    fn take_count(&mut self, count: &ast::Expr, op: &str) -> Option<u64> {
-        let span = self.span(count);
+    /// The row count of `take` or `top`: a constant whole number of 0 or more, written as a
+    /// literal or as a scalar `let` bound to one (`DS2050`).
+    fn take_count(
+        &mut self,
+        count: &ast::Expr,
+        op: &str,
+        columns: &Option<Vec<Column>>,
+    ) -> Option<u64> {
         if self.broken.contains(count.syntax()) {
             return None;
         }
-        if let ast::Expr::Literal(lit) = count
-            && lit.kind() == Some(LiteralKind::Long)
+        let span = self.span(count);
+        let expr = self.const_value_of(count).ok()?;
+        let (message, label) = match render::const_number(&expr) {
+            Some(RenderNumber::Long(n)) => match u64::try_from(n) {
+                Ok(n) => return Some(n),
+                Err(_) => (
+                    format!("the row count of `{op}` cannot be negative"),
+                    format!("this is {n}"),
+                ),
+            },
+            Some(RenderNumber::Real(_)) => (
+                format!("the row count of `{op}` must be a whole number"),
+                "this is `real`".to_string(),
+            ),
+            None => match &expr.kind {
+                ExprKind::Column(word) if expr.ty.is_error() => {
+                    let is_column = columns
+                        .as_ref()
+                        .is_some_and(|cols| cols.iter().any(|c| &c.name == word));
+                    let label = if is_column {
+                        format!("`{word}` is a column, which can differ from row to row")
+                    } else {
+                        format!("`{word}` is not a constant")
+                    };
+                    (format!("the row count of `{op}` must be a constant"), label)
+                }
+                _ if expr.ty == Type::Long || expr.ty == Type::Int => (
+                    format!("the row count of `{op}` must be a constant"),
+                    "this is computed".to_string(),
+                ),
+                _ => (
+                    format!("the row count of `{op}` must be a whole number"),
+                    format!("this is `{}`", expr.ty),
+                ),
+            },
+        };
+        let example = if op == "top" {
+            "top 10 by x".to_string()
+        } else {
+            format!("{op} 10")
+        };
+        let mut d = Diagnostic::error(DS2050, message)
+            .primary(span, label)
+            .help(format!(
+                "write a whole number of 0 or more, such as `{example}`, or the name of a `let` \
+                 bound to one"
+            ));
+        if let ast::Expr::NameRef(name_ref) = count
+            && let Some(name) = name_ref.text()
+            && matches!(self.lets.get(&name), Some((_, LetEntry::Scalar(_))))
         {
-            // A bad literal was reported by the lexer.
-            return literal::long(lit.token()?.text(), span).ok();
+            d = d.note(format!("`{name}` is defined by a `let`"));
         }
-        self.not_implemented(
-            span,
-            &format!("a `{op}` count that is not a whole-number literal"),
-        );
+        self.diagnostics.push(d);
         None
+    }
+
+    /// Checks the constant arguments of a call whose values the language restricts
+    /// (`arg_values`), so a bad one is `DS4004` at check time rather than when the query runs.
+    fn check_constant_args(&mut self, function: &str, args: &[Expr]) {
+        let checks: &[(usize, ConstArg)] = match function {
+            "datetime_part" | "datetime_diff" => &[(0, ConstArg::DatetimePart)],
+            "format_datetime" => &[(1, ConstArg::DatetimeFormat)],
+            "trim" | "extract" => &[(0, ConstArg::Regex)],
+            "percentile" => &[(1, ConstArg::Percentage)],
+            _ => &[],
+        };
+        for &(index, kind) in checks {
+            if let Some(arg) = args.get(index) {
+                self.check_constant_arg(arg, kind);
+            }
+        }
+    }
+
+    fn check_constant_arg(&mut self, arg: &Expr, kind: ConstArg) {
+        let string = || match sources::const_value(arg) {
+            Some(Value::String(s)) => Some(s.as_str()),
+            _ => None,
+        };
+        let (result, label) = match kind {
+            ConstArg::DatetimePart => match string() {
+                Some(s) => (DatetimePart::parse(s).map(|_| ()), "not one of the parts"),
+                None => return,
+            },
+            ConstArg::DatetimeFormat => match string() {
+                Some(s) => (arg_values::check_datetime_format(s), "in this format"),
+                None => return,
+            },
+            ConstArg::Regex => match string() {
+                Some(s) => (arg_values::check_regex(s), "this pattern does not compile"),
+                None => return,
+            },
+            ConstArg::Percentage => {
+                let p = match render::const_number(arg) {
+                    Some(RenderNumber::Long(n)) => n as f64,
+                    Some(RenderNumber::Real(x)) => x,
+                    None => return,
+                };
+                (arg_values::check_percentage(p), "must be from 0 to 100")
+            }
+        };
+        if let Err(e) = result {
+            let mut d = Diagnostic::error(DS4004, e.message).primary(arg.span, label);
+            if let (ConstArg::DatetimePart, ExprKind::Literal(Value::String(s))) = (kind, &arg.kind)
+                && let Some(best) =
+                    did_you_mean(s, arg_values::DATETIME_PARTS.iter().copied()).single()
+            {
+                d = d.help_with(
+                    format!("did you mean `'{best}'`?"),
+                    Suggestion::replace(arg.span, format!("'{best}'")),
+                );
+            }
+            self.diagnostics.push(d.note(e.note));
+        }
     }
 
     /// Binds one item of `summarize`'s aggregate list: it must aggregate (`DS2005`).
@@ -767,15 +895,20 @@ impl<'a> Binder<'a> {
     ) -> Expr {
         match operators::binary(op, left.ty, right.ty) {
             Ok(typing) if typing.result.is_error() => Expr::error(span),
-            Ok(typing) => Expr {
-                kind: ExprKind::Binary {
-                    op,
-                    left: Box::new(convert(left, typing.left)),
-                    right: Box::new(convert(right, typing.right)),
-                },
-                ty: typing.result,
-                span,
-            },
+            Ok(typing) => {
+                if op == BinaryOp::MatchesRegex {
+                    self.check_constant_arg(&right, ConstArg::Regex);
+                }
+                Expr {
+                    kind: ExprKind::Binary {
+                        op,
+                        left: Box::new(convert(left, typing.left)),
+                        right: Box::new(convert(right, typing.right)),
+                    },
+                    ty: typing.result,
+                    span,
+                }
+            }
             Err(error) => {
                 let mut d = error.diagnostic(self.operand(left.span), self.operand(right.span));
                 self.annotate(&mut d, &left, cx);
@@ -909,6 +1042,7 @@ impl<'a> Binder<'a> {
                 if resolved.return_type.is_error() {
                     return Expr::error(span);
                 }
+                self.check_constant_args(function.name, &args);
                 if resolved.return_type.is_null() {
                     // Nothing gives the result a type: `abs(null)`, `iff(p, null, null)`.
                     let at = args
@@ -1071,13 +1205,6 @@ impl<'a> Binder<'a> {
     }
 
     // --- Diagnostics ---
-
-    fn not_implemented(&mut self, span: Span, what: &str) {
-        self.diagnostics.push(
-            Diagnostic::error(DS9001, format!("{what} is not implemented yet"))
-                .primary(span, "not supported by this version of DataScript"),
-        );
-    }
 
     fn aggregate_misplaced(&mut self, span: Span, call: &str, name: &str, place: &str) {
         let mut d = Diagnostic::error(

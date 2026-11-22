@@ -11,6 +11,8 @@ publish.workspace = true
 arrow-schema = { workspace = true, features = ["serde"] }
 datascript-diagnostics = { path = "../datascript-diagnostics" }
 datascript-syntax = { path = "../datascript-syntax" }
+# Checks constant regular expressions at check time (D-014); the parser only, not the engine.
+regex-syntax.workspace = true
 serde = { workspace = true, features = ["rc"] }
 
 [dev-dependencies]

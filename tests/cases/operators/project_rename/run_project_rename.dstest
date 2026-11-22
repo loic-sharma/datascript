@@ -1,0 +1,15 @@
+# `project-rename` renames columns in place; items apply in order, so names can be swapped through a
+# third name.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| sort by orderId asc
+| take 2
+| project-rename id = orderId, customer = customerId
+| project-rename tmp = id, id = customer, customer = tmp
+---- expected
+customer | id     | amount | timestamp
+string   | string | real   | datetime
+---------+--------+--------+---------------------
+o-0001   | c-042  |  183.5 | 2023-12-02T08:26:08Z
+o-0002   | c-042  |   88.5 | 2023-12-07T21:01:50Z

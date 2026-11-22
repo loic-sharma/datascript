@@ -119,7 +119,9 @@ fn run_the_readme_example() {
         )
         .stderr(
             contains("info[DS5001]: charts are not drawn on the command line")
-                .and(contains("this `timechart` is printed as a table")),
+                .and(contains("this `timechart` is printed as a table"))
+                // `on customerId` merges the key into one column (D-019).
+                .and(contains("DS1007").not()),
         );
 }
 

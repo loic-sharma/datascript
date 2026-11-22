@@ -617,6 +617,40 @@ tables** without the type row of a result: they show text, not data. **`--table`
 `args_conflicts_with_subcommands` would also reject the global `--color` there. In piped mode,
 `.quit` stops reading and keeps the exit status so far.
 
+### D-049 — M1 close-out: constant counts, check-time argument values, unicode widths (M1-13)
+**Accepted.** Choices made while closing M1 against the ROADMAP:
+
+- **`take`/`limit`/`top` counts** are a constant whole number of 0 or more: a literal or a scalar
+  `let` bound to one, like render titles and paths (D-020). Anything else is `DS2050` (block
+  DS2050–DS2059, reserved for M1-13), which says whether the count is a column, computed,
+  negative or not a whole number. Before, every non-literal count was `DS9001` "not implemented
+  yet", an internal-error code for what is a user mistake.
+- **Constant arguments the language restricts are checked by the binder**: a regular expression
+  (`matches regex`, `trim`, `extract`), a `datetime_part`/`datetime_diff` part, a
+  `format_datetime` format and a `percentile` percentage. A bad constant is `DS4004` from `ds
+  check`, pointing at the argument; a computed one is still `DS4004` when the query runs. The code
+  stays `DS4004` so the error is the same whenever it is found. The rules live in
+  `datascript_compiler::arg_values`, which the DataFusion engine also calls, so the two cannot
+  disagree. The binder parses regexes with `regex-syntax` (the parser half of `regex`, which
+  builds for wasm32); an engine may still reject a pattern that parses but is too large.
+- **`DS2006` help** suggests a conversion only when it gives a value: never `toreal(timestamp)`
+  (null, §7), never `todatetime(qty)`. A number where a `bool` is needed gets `x != 0`, as in
+  `DS2001`; a number where a `timespan` is needed gets "write a timespan with its unit". When
+  swapping two arguments makes the call type-check, the help says the arguments may be in the
+  wrong order and offers the swap (`datetime_part(ts, 'year')`).
+- **Signature notes** keep `where T is …` outside the code span, since it may name types in
+  backticks: `` `min(x: T) -> T`, where T is a number, `string`, … ``.
+- **Terminal widths** come from `unicode-width`: carets and table cells count CJK and most emoji
+  as two columns and combining marks as none. Summing per-string widths also gets emoji ZWJ
+  sequences right in the prefix before a caret; only the window cut from a very long line counts
+  per character. No grapheme segmentation was needed. `datascript_diagnostics::text_width` is the
+  one function both the renderer and the table formatter use.
+- **SQL habits**: `LEFT JOIN t`, `FULL OUTER JOIN t`, `LEFT ANTI JOIN t`, … in operator position
+  are `DS0105` with a fix to `join kind = …`; `CROSS JOIN` says there is none. `NULLS FIRST` in
+  capitals is `DS0105` with a fix to lowercase, and the key still parses.
+- **REPL** gets `.max-rows [n]`, and a cut table's footer names it instead of the startup flag.
+*(M1-13, 2026-11-22.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack
@@ -634,6 +668,10 @@ Show tabs per result, or stack them? Decide in M4-02.
 ### Q-005 — Quoted identifiers vs path strings
 `['order id']` (KQL bracket syntax) is a column name, while `'orders.csv'` at a pipe head is a
 path. This is unambiguous to the parser, but check with users that it is not confusing.
+
+*Deferred (M1-13, 2026-11-22):* nothing to decide without users. M1 keeps both forms; the
+`DS1001` help already says "a column name is written without string quotes" when a string is
+used where a column is expected. Revisit with the first user feedback, carried over to M6-01.
 
 ### Q-006 — Hive-style partitioned directories
 DuckDB users expect `'data/year=*/month=*/*.parquet'` to expose `year` and `month` as columns.
@@ -656,3 +694,8 @@ to try it. DataScript keeps the rule (errors, `DS4003`), which the DataFusion en
 implements without deviations. Still open: whoever can run KQL should check `print
 9223372036854775807 + 1` and `print 1 / 0`, then either mark the rule ≠ KQL in LANGUAGE.md §4.1 or
 close this question.
+
+*Deferred (M1-13, 2026-11-22):* still no Kusto cluster, and the documentation still says nothing
+about scalar integer overflow or division by zero (only `series_divide` documents IEEE behaviour
+for its element-wise division). The rule stays, LANGUAGE.md §4.1 keeps its "not yet verified"
+note, and the check is carried over to M6-01, whose reference docs carry the ≠ KQL marks.

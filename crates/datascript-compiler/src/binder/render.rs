@@ -218,7 +218,7 @@ fn props_note() -> String {
 }
 
 /// The value of a numeric constant: a literal, a negated literal, or a `let` bound to one.
-fn const_number(expr: &Expr) -> Option<RenderNumber> {
+pub(super) fn const_number(expr: &Expr) -> Option<RenderNumber> {
     match &expr.kind {
         ExprKind::Literal(Value::Long(n)) => Some(RenderNumber::Long(*n)),
         ExprKind::Literal(Value::Real(x)) => Some(RenderNumber::Real(*x)),
@@ -677,7 +677,7 @@ impl Binder<'_> {
 
     /// A constant expression: a literal, a negated literal, or a scalar `let`. `None` with no
     /// diagnostic when the value already has an error.
-    fn const_value_of(&mut self, value: &ast::Expr) -> Result<Expr, ()> {
+    pub(super) fn const_value_of(&mut self, value: &ast::Expr) -> Result<Expr, ()> {
         if let ast::Expr::NameRef(name_ref) = value
             && let Some(name) = name_ref.text()
         {

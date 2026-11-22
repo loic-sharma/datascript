@@ -22,6 +22,7 @@ use datafusion::error::{DataFusionError, Result};
 use datafusion::logical_expr::{
     ColumnarValue, ScalarFunctionArgs, ScalarUDF, ScalarUDFImpl, Signature, Volatility,
 };
+use datascript_compiler::arg_values;
 use datascript_diagnostics::Span;
 use regex::Regex;
 
@@ -631,28 +632,13 @@ impl Regexes {
     fn wrapped(&mut self, pattern: &str, source: &str) -> Result<&Regex> {
         if !self.0.contains_key(source) {
             let regex = Regex::new(source).map_err(|e| {
-                fail(Fail::invalid(
-                    format!("`{pattern}` is not a valid regular expression"),
-                    regex_problem(&e),
-                ))
+                let e = arg_values::invalid_regex(pattern, &e.to_string());
+                fail(Fail::invalid(e.message, e.note))
             })?;
             self.0.insert(source.to_string(), regex);
         }
         Ok(&self.0[source])
     }
-}
-
-/// The last line of a regex error, which says what is wrong ("unclosed group").
-fn regex_problem(e: &regex::Error) -> String {
-    let text = e.to_string();
-    let line = text
-        .lines()
-        .rev()
-        .find(|l| !l.trim().is_empty())
-        .unwrap_or(&text)
-        .trim();
-    let line = line.strip_prefix("error: ").unwrap_or(line);
-    format!("{line} (regexes use Rust `regex` syntax)")
 }
 
 pub(crate) fn k_matches_regex(arrays: &[ArrayRef], _: &DataType) -> Result<ArrayRef> {
@@ -998,12 +984,7 @@ pub(crate) fn k_endofyear(a: &[ArrayRef], r: &DataType) -> Result<ArrayRef> {
 }
 
 fn part(name: &str) -> Result<Part> {
-    Part::parse(name).ok_or_else(|| {
-        fail(Fail::invalid(
-            format!("`{name}` is not a datetime part"),
-            format!("the parts are {}", calendar::PART_NAMES),
-        ))
-    })
+    Part::parse(name).map_err(|e| fail(Fail::invalid(e.message, e.note)))
 }
 
 pub(crate) fn k_datetime_part(arrays: &[ArrayRef], ret: &DataType) -> Result<ArrayRef> {

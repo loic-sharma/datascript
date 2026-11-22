@@ -1,0 +1,90 @@
+# Common mistakes with the math functions: a string or datetime where a number is needed, and wrong
+# argument counts.
+mode: check
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, qty: long, timestamp: datetime)
+---- query
+from 'orders.csv'
+| project
+    a = abs(customerId),
+    b = round(amount, 1.5),
+    c = floor(timestamp),
+    d = ceiling(),
+    e = sqrt(customerId),
+    f = pow(amount),
+    g = log(timestamp),
+    h = log10(),
+    i = exp(amount, 2)
+---- expected
+error[DS2006]: argument `x` of `abs` must be a number or `timespan`, found `string`
+  --> query:3:13
+  |
+3 |     a = abs(customerId),
+  |             ^^^^^^^^^^ this is `string` (column `customerId` was read from orders.csv)
+  |
+  = note: `abs` has these forms: `abs(x: T) -> long or real`, where T is a number; `abs(x: timespan) -> timespan`
+
+error[DS2006]: argument `digits` of `round` must be an integer (`int` or `long`), found `real`
+  --> query:4:23
+  |
+4 |     b = round(amount, 1.5),
+  |                       ^^^ this is `real`
+  |
+  = help: convert it first if that is what you meant: `tolong(1.5)`
+  = note: signature: `round(x: T[, digits: integer]) -> long or real`, where T is a number
+
+error[DS2006]: argument `x` of `floor` must be a number, found `datetime`
+  --> query:5:15
+  |
+5 |     c = floor(timestamp),
+  |               ^^^^^^^^^ this is `datetime` (column `timestamp` was read from orders.csv)
+  |
+  = note: signature: `floor(x: T) -> long or real`, where T is a number
+
+error[DS2002]: `ceiling` takes 1 argument, found 0
+  --> query:6:9
+  |
+6 |     d = ceiling(),
+  |         ^^^^^^^^^ missing `x`
+  |
+  = note: signature: `ceiling(x: T) -> long or real`, where T is a number
+
+error[DS2006]: argument `x` of `sqrt` must be a number, found `string`
+  --> query:7:14
+  |
+7 |     e = sqrt(customerId),
+  |              ^^^^^^^^^^ this is `string` (column `customerId` was read from orders.csv)
+  |
+  = help: convert it first if that is what you meant: `toreal(customerId)`
+  = note: signature: `sqrt(x: number) -> real`
+
+error[DS2002]: `pow` takes 2 arguments, found 1
+  --> query:8:9
+  |
+8 |     f = pow(amount),
+  |         ^^^^^^^^^^^ missing `exponent`
+  |
+  = note: signature: `pow(base: number, exponent: number) -> real`
+
+error[DS2006]: argument `x` of `log` must be a number, found `datetime`
+  --> query:9:13
+  |
+9 |     g = log(timestamp),
+  |             ^^^^^^^^^ this is `datetime` (column `timestamp` was read from orders.csv)
+  |
+  = note: signature: `log(x: number) -> real`
+
+error[DS2002]: `log10` takes 1 argument, found 0
+   --> query:10:9
+   |
+10 |     h = log10(),
+   |         ^^^^^^^ missing `x`
+   |
+   = note: signature: `log10(x: number) -> real`
+
+error[DS2002]: `exp` takes 1 argument, found 2
+   --> query:11:21
+   |
+11 |     i = exp(amount, 2)
+   |                     ^ this argument is not expected
+   |
+   = note: signature: `exp(x: number) -> real`
