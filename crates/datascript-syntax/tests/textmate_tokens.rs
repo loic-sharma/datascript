@@ -95,7 +95,10 @@ fn grammar_fixture_tokens_are_up_to_date() {
         std::fs::write(&path, &json).unwrap();
         return;
     }
-    let current = std::fs::read_to_string(&path).unwrap_or_default();
+    // A checkout may have converted line endings; they don't change the tokens.
+    let current = std::fs::read_to_string(&path)
+        .unwrap_or_default()
+        .replace("\r\n", "\n");
     assert!(
         current == json,
         "{} is out of date; rerun with DS_BLESS=1 and then `npm run test:grammar` in editors/vscode",
