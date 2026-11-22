@@ -297,8 +297,8 @@ The web UI renders JSON diagnostics in the editor and can show the same snippet 
   The Rust type is `#[non_exhaustive]`; new keys are only ever added, and frontends ignore keys they
   do not know.
 - Frontends decide what to do with it:
-  - Web UI and VS Code results panel: draw the chart.
-  - CLI and REPL: print the table and an info line saying the chart was not drawn here. Later:
+  - Web UI and VS Code results panel (M3-06): draw the chart.
+  - CLI, REPL and VS Code's Run output in the terminal (M3-05): print the table and an info line saying the chart was not drawn here. Later:
     `--render-out chart.html`.
 - The mapping from RenderSpec to a chart library lives in `web/` (TypeScript). The Rust side only
   produces the spec.
@@ -309,8 +309,8 @@ The web UI renders JSON diagnostics in the editor and can show the same snippet 
 |---|---|---|
 | CLI | `datascript-cli` | `ds check`, `ds run`, `ds explain`, `ds fmt`; output as table, CSV, JSON, NDJSON or Arrow IPC; exit codes 0/1/2, 130 on Ctrl-C (D-046) |
 | REPL | `datascript-cli` | `ds` with no args; reedline; Enter submits complete input ending in `;`, or on a blank line; lets kept as text across inputs, each input its own `<repl:N>` snippet (D-048); `.schema`, `.tables`, `.format`, `.help`, `.quit`; piped stdin runs the same loop without the editor |
-| LSP | `datascript-lsp` | `ds lsp`; tower-lsp-server, incremental sync, a debounced `Session::check` per document with syntax errors first when schemas are slow, schema cache cleared on watched file changes (D-052); custom `datascript/run` request for the editor's Run button (M3-05) |
-| VS Code | `editors/vscode` | TS client, TextMate grammar, "▶ Run" CodeLens above each query statement, results webview reusing `web/` components. Honors Workspace Trust: in an untrusted workspace the server runs syntax-only (no schema reads, no Run), started with `initializationOptions.syntaxOnly`, and the server path comes from user settings only (D-053) |
+| LSP | `datascript-lsp` | `ds lsp`; tower-lsp-server, incremental sync, a debounced `Session::check` per document with syntax errors first when schemas are slow, schema cache cleared on watched file changes (D-052); Run CodeLens and a custom `datascript/run` request that runs the open document's current text and returns the text `ds run` prints (M3-05, D-054) |
+| VS Code | `editors/vscode` | TS client, TextMate grammar, "▶ Run" CodeLens above each query statement, printing the result in a terminal as `ds run` does (M3-05); later a results webview reusing `web/` components (M3-06). Honors Workspace Trust: in an untrusted workspace the server runs syntax-only (no schema reads, no Run), started with `initializationOptions.syntaxOnly`, and the server path comes from user settings only (D-053) |
 | Local web UI | `datascript-server` + `web/` | `ds ui` starts axum on 127.0.0.1 with a random port and a session token, serves the embedded SPA, exposes a JSON/WebSocket API. Query sources are confined to the root directory (D-016) |
 | WASM | `datascript-wasm` + `web/` | Same SPA with a client-side runtime adapter; files come from drag-drop, File System Access API, or URLs |
 

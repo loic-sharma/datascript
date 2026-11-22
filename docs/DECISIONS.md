@@ -745,12 +745,28 @@ incremental sync. It does not pick an engine; `ds lsp` passes a `Session` over D
   `PATH`) names it. Bundling platform binaries is M6-02's.
 *(M3-04, 2026-11-22.)*
 
+### D-054 — VS Code Run prints CLI output first; the results panel comes later
+**Accepted.**
+
+- **First, text in a terminal**: M3-05 shows a Run result the way `ds run --format table`
+  prints it, in a terminal, instead of waiting for the `web/` grid (M4-02) and charts (M4-03).
+  The results panel moves to M3-06. Charts are not drawn until then; the output says so, as the
+  CLI does.
+- **Through the language server, not by starting `ds run`**: Run must use unsaved edits. The
+  server already holds each open document's current text and a warm schema cache, publishes
+  diagnostics and supports request cancellation. `ds run -` could read the text from stdin, but
+  its errors would name `<stdin>`, relative paths would resolve against the working directory, and
+  `ds run` has no machine-readable diagnostics, so it would need two new flags and a process per
+  run. The custom `datascript/run` request returns the text the CLI would print, made by the same
+  code; M3-06 adds a data format to the same request.
+*(Planning, 2026-11-22.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack
 Proposal: TypeScript + Vite + **CodeMirror 6** (smaller than Monaco, easier to embed in WASM
 builds) + a light UI layer (Svelte or Preact) + **Vega-Lite** or **ECharts** for charts. Decide at
-the start of M4 (task M4-02). The VS Code results panel should reuse the same components.
+the start of M4 (task M4-02). The VS Code results panel (M3-06) should reuse the same components.
 
 ### Q-003 — `dynamic` representation
 JSON-encoded strings (simple, works everywhere) versus Arrow structs/unions or the emerging Arrow
