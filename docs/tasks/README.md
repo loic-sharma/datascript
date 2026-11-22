@@ -127,6 +127,9 @@ Two shared files are touched by many tasks:
 | [M6-02](M6-02-packaging.md) | Packaging and releases | M1-13 | todo |
 | [M6-03](M6-03-sql-backend.md) | Second backend: SQL emitter | M1-13 | todo |
 
+The editor (M3) and the local web UI (M4) are being done before language breadth (M2). Where an M2
+task adds something the editor or web UI must show, its "Carried over" section says so.
+
 After M1, milestones M2–M6 are largely independent tracks (language, editor, web, wasm) that can
 proceed in parallel. Keep wasm32 compatibility (checked in CI) intact on every track so M5 doesn't
 turn into a big-bang port.

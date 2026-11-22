@@ -27,6 +27,7 @@ stream instead, so output starts at once and memory stays flat.
 - [ ] CSV/NDJSON/Arrow output is byte-identical to the collected version.
 
 ## Carried over
+- [ ] (from planning, 2026-11-22) M4-01 also needs streaming and cancellation for long queries over WebSocket. Whichever task comes first builds the streaming `Session` API in `datascript-engine` for both; the other one reuses it.
 - [ ] (from M1-11) `ds run` collects each result fully before printing (`Session::run`). Large
       results should stream: print table rows as batches arrive and stop reading (which cancels
       the query) once `--max-rows` is reached, counting the rest only if cheap; write

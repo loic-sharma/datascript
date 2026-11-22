@@ -14,6 +14,7 @@ and comments preserved.
 - [ ] Refuses to format files with syntax errors, saying why.
 
 ## Carried over
+- [ ] (from planning, 2026-11-22) If M3-03 is done, add `textDocument/formatting` to the language server (M3-03 left it for after this task), with an LSP test.
 - [ ] (from M1-24) The formatter keeps `from <source>` on the first line of a pipeline, with operators on the following lines: `from orders⏎| where …`, never `from⏎orders`.
 
 ## Follow-ups

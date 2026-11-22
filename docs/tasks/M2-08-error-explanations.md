@@ -12,4 +12,7 @@
 - [ ] A test that fails if any registered code lacks an explanation file.
 - [ ] Each explanation's "wrong" example produces that code (checked automatically).
 
+## Carried over
+- [ ] (from planning, 2026-11-22) If M3-01 is done, switch the LSP's code description links from the DIAGNOSTICS.md registry rows to the new explanation pages, and use the same links in the web UI if M4-02 shows them.
+
 ## Follow-ups

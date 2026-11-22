@@ -16,4 +16,7 @@
       path built from a parameter is DS3006 unless the argument is constant at every call site
       after inlining. Source resolution stays in the binder; no pre-pass.
 
+## Carried over
+- [ ] (from planning, 2026-11-22) If M3-02 or M3-03 is done, extend the language server to UDFs: completion and signature help for UDF calls, and go to definition, find references and rename for UDFs and their parameters, each with an LSP test.
+
 ## Follow-ups

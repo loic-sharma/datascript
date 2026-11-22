@@ -19,6 +19,7 @@
 - [ ] Re-check latency < 100 ms for a 500-line script with warm schemas (measured).
 
 ## Carried over
+- [ ] (from planning, 2026-11-22) `docs/errors/DSxxxx.md` does not exist until M2-08. Until then, point each diagnostic's code description at its row in the DIAGNOSTICS.md code registry, built in one function so M2-08 can switch it.
 - [ ] (from M0-02) Diagnostic lines split on `\n` only; a lone `\r` is not a line break, while LSP treats it as one. Align the two.
 - [ ] (from M1-07) The session caches schemas and failed lookups until told otherwise (D-043). Watch the workspace's data files and call `Session::invalidate_source` / `invalidate_schemas` when they change, then re-check open documents. Call `parse` and `complete` through `datascript_engine::catch_panic`.
 
