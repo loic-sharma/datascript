@@ -132,7 +132,7 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS5001–DS5049 | M1-10 render |
 | DS0004, DS9001 | M0-02 diagnostics core |
 
-**Retired codes**: DS2007 (D-020). List them here when a code is retired.
+**Retired codes**: DS2007 (D-020), DS2101 (D-050). List them here when a code is retired.
 
 | Range | Area |
 |---|---|
@@ -217,7 +217,7 @@ design decision and implemented by the task named in the allocation table.
 | DS2042 | error | reader call without exactly one path argument |
 | DS2043 | error | reader option given twice |
 | DS2050 | error | `take`/`top` row count that is not a constant whole number of 0 or more |
-| DS2101 | warning | `take`/`limit` before `sort`: the rows kept are arbitrary *(planned, M1-14)* |
+| DS2101 | — | *retired, never implemented* (was: `take`/`limit` before `sort`, D-050) |
 | DS2102 | warning | predicate is always true or always false *(planned, M1-14)* |
 | DS2103 | warning | `sort` key without `asc`/`desc` (default is asc, ≠ KQL); machine-applicable fix inserts `asc` *(planned, M1-14, D-005)* |
 | DS3001 | error | file not found (with did-you-mean over nearby files) |

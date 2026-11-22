@@ -651,6 +651,22 @@ tables** without the type row of a result: they show text, not data. **`--table`
 - **REPL** gets `.max-rows [n]`, and a cut table's footer names it instead of the startup flag.
 *(M1-13, 2026-11-22.)*
 
+### D-050 — No lint for `take` before `sort`; DS2101 retired
+**Accepted.** M1-14 planned warning `DS2101` for `take`/`limit` followed later by `sort`. It is
+dropped before it shipped:
+
+- The pipe already says what happens: `take 10 | sort by x` reads as "take 10 rows, then sort
+  them". The SQL habit (`ORDER BY … LIMIT`) leads people to `sort | take`, which is correct.
+- The pattern is often intended: taking a few arbitrary rows and sorting them to look at them is
+  normal exploration, and KQL does not warn on it. LANGUAGE.md already says `take` keeps no
+  order unless it follows `sort`.
+- As written it would also flag deterministic queries (`sort by a | take 10 | sort by b`), and
+  fixing that still leaves false positives that make `--deny-warnings` a nuisance.
+
+`DS2103` stays: `sort` defaulting to ascending is a silent difference from KQL (D-005), which
+the pipe does not show. `DS2101` is retired, never to be reused. If users turn out to make this
+mistake, a new opt-in lint gets a new code. *(2026-11-22.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

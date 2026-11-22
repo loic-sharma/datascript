@@ -167,8 +167,6 @@ pub const DS2042: Code = Code::new(2042);
 pub const DS2043: Code = Code::new(2043);
 /// `take`/`top` row count that is not a constant whole number of 0 or more
 pub const DS2050: Code = Code::new(2050);
-/// `take`/`limit` before `sort`: the rows kept are arbitrary (planned, M1-14)
-pub const DS2101: Code = Code::new(2101);
 /// predicate is always true or always false (planned, M1-14)
 pub const DS2102: Code = Code::new(2102);
 /// `sort` key without `asc`/`desc` (default is asc, ≠ KQL); machine-applicable fix inserts `asc` (planned, M1-14, D-005)
@@ -611,10 +609,10 @@ pub const REGISTRY: &[CodeInfo] = &[
         status: CodeStatus::Active,
     },
     CodeInfo {
-        code: DS2101,
-        severity: Some(Severity::Warning),
-        summary: "`take`/`limit` before `sort`: the rows kept are arbitrary *(planned, M1-14)*",
-        status: CodeStatus::Planned,
+        code: Code::new(2101),
+        severity: None,
+        summary: "*retired, never implemented* (was: `take`/`limit` before `sort`, D-050)",
+        status: CodeStatus::Retired,
     },
     CodeInfo {
         code: DS2102,
