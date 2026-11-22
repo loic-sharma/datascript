@@ -484,7 +484,7 @@ impl ReplSession {
         let input = self.source(checked.file).clone();
         let ctx = ctx.clone();
         let layout = Layout {
-            format: self.format,
+            format: self.format.into(),
             max_rows: self.max_rows,
             frontend: Frontend::Repl,
         };

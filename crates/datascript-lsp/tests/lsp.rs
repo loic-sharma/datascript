@@ -55,6 +55,17 @@ impl Client {
         watch: bool,
         options: Value,
     ) -> Client {
+        Client::start_full(engine, config, watch, options, true).await
+    }
+
+    /// Starts a server; without `folder`, the client opens no workspace folder.
+    async fn start_full(
+        engine: Arc<dyn Engine>,
+        config: Config,
+        watch: bool,
+        options: Value,
+        folder: bool,
+    ) -> Client {
         let (client_end, server_end) = tokio::io::duplex(1 << 20);
         let (server_read, server_write) = tokio::io::split(server_end);
         let session = Arc::new(Session::new(engine, Arc::new(FixedClock(0))));
@@ -83,13 +94,18 @@ impl Client {
             dir: tempfile::tempdir().unwrap(),
         };
         let root = uri_of(client.dir.path());
+        let (root, folders) = if folder {
+            (json!(root), json!([{ "uri": root, "name": "w" }]))
+        } else {
+            (Value::Null, Value::Null)
+        };
         let result = client
             .request(
                 "initialize",
                 json!({
                     "processId": null,
                     "rootUri": root,
-                    "workspaceFolders": [{ "uri": root, "name": "w" }],
+                    "workspaceFolders": folders,
                     "initializationOptions": options,
                     "capabilities": {
                         "workspace": { "didChangeWatchedFiles": { "dynamicRegistration": watch } }
@@ -130,6 +146,53 @@ impl Client {
                 return message["result"].clone();
             }
             self.queued.push_back(message);
+        }
+    }
+
+    /// Sends a request and returns the whole response, `error` included.
+    async fn request_response(&mut self, method: &str, params: Value) -> Value {
+        let id = self.send_request(method, params).await;
+        self.response(id).await
+    }
+
+    /// Sends a request without waiting for its response; returns its id.
+    async fn send_request(&mut self, method: &str, params: Value) -> i64 {
+        self.next_id += 1;
+        let id = self.next_id;
+        self.send(json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }))
+            .await;
+        id
+    }
+
+    /// The response to request `id`.
+    async fn response(&mut self, id: i64) -> Value {
+        if let Some(index) = self
+            .queued
+            .iter()
+            .position(|m| m["id"] == id && m.get("method").is_none())
+        {
+            return self.queued.remove(index).unwrap();
+        }
+        loop {
+            let message = self.receive().await;
+            if message["id"] == id && message.get("method").is_none() {
+                return message;
+            }
+            self.queued.push_back(message);
+        }
+    }
+
+    /// `datascript/run` on `uri`: the output, or the error's message.
+    async fn run(&mut self, uri: &str, statement: Option<usize>) -> Result<String, String> {
+        let response = self
+            .request_response(
+                "datascript/run",
+                json!({ "textDocument": { "uri": uri }, "statement": statement }),
+            )
+            .await;
+        match response.get("error") {
+            Some(error) => Err(error["message"].as_str().unwrap().to_owned()),
+            None => Ok(response["result"]["output"].as_str().unwrap().to_owned()),
         }
     }
 
@@ -697,4 +760,456 @@ async fn recheck_latency_of_a_long_script() {
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+// ── Run (M3-05) ──────────────────────────────────────────────────────────────────────────────
+
+/// A program with a `let`, two queries, a chart and a warning-free check.
+const TWO_QUERIES: &str = "let big = from 'orders.csv' | where amount > 15;\n\
+                           from 'orders.csv' | count;\n\
+                           from big | project customerId, amount | render barchart\n";
+
+#[tokio::test(flavor = "multi_thread")]
+async fn run_prints_what_ds_run_prints() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.write("two.ds", TWO_QUERIES);
+    client.open(&uri, TWO_QUERIES).await;
+    assert_eq!(client.diagnostics(&uri).await.codes(), Vec::<&str>::new());
+
+    // The whole file: the chart's info line first, as `ds run` writes it to standard error,
+    // then a table per query. The `ds run` parity test is in the CLI's tests
+    // (crates/datascript-cli/tests/lsp_run.rs), which can run the `ds` binary.
+    let output = client.run(&uri, None).await.unwrap();
+    let tables = "== query 1 (line 2) ==\n\
+                  Count\n\
+                  long\n\
+                  -----\n\
+                  \x20   2\n\
+                  \n\
+                  == query 2 (line 3) ==\n\
+                  customerId | amount\n\
+                  string     | real\n\
+                  -----------+-------\n\
+                  c-2        |   20.0\n";
+    assert!(
+        output.starts_with("info[DS5001]: charts are not drawn on the command line\n"),
+        "{output}"
+    );
+    assert!(output.contains("┌─ two.ds:3:41\n"), "{output}");
+    assert!(output.ends_with(tables), "{output}");
+    assert!(!output.contains('\x1b'), "no color unless asked: {output}");
+
+    // One statement, with the `let` it needs: no header, as with `ds run --statement 2`.
+    let output = client.run(&uri, Some(2)).await.unwrap();
+    assert!(
+        output.ends_with("-----------+-------\nc-2        |   20.0\n"),
+        "{output}"
+    );
+    assert!(!output.contains("== query"), "{output}");
+    let output = client.run(&uri, Some(1)).await.unwrap();
+    assert_eq!(output, "Count\nlong\n-----\n    2\n");
+
+    // Out of range is refused with a reason.
+    let error = client.run(&uri, Some(3)).await.unwrap_err();
+    assert_eq!(
+        error,
+        "statement 3 is out of range: the document has 2 query statements"
+    );
+    // A document that is not open cannot run.
+    let error = client
+        .run(&client.uri("closed.ds"), None)
+        .await
+        .unwrap_err();
+    assert!(error.contains("is not open"), "{error}");
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn run_uses_max_rows_and_color() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("q.ds");
+    let text = "from 'orders.csv' | project orderId | where orderId > 'x'\n";
+    client.open(&uri, text).await;
+    client.diagnostics(&uri).await;
+    let response = client
+        .request(
+            "datascript/run",
+            json!({ "textDocument": { "uri": uri }, "color": true }),
+        )
+        .await;
+    assert_eq!(response["failed"], true);
+    let output = response["output"].as_str().unwrap();
+    assert!(output.contains("\x1b["), "colored: {output:?}");
+
+    let text = "from 'orders.csv' | project orderId\n";
+    client.replace_all(&uri, 2, text).await;
+    let response = client
+        .request(
+            "datascript/run",
+            json!({ "textDocument": { "uri": uri }, "maxRows": 1 }),
+        )
+        .await;
+    assert_eq!(response["failed"], false);
+    assert_eq!(
+        response["output"],
+        "orderId\nlong\n-------\n      1\n… 1 more row (show them with --max-rows 2)\n"
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn run_uses_unsaved_edits() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    // On disk the script counts; in the editor it was changed to sum, and not saved.
+    let uri = client.write("edited.ds", "from 'orders.csv' | count\n");
+    client.open(&uri, "from 'orders.csv' | count\n").await;
+    client.diagnostics(&uri).await;
+    assert_eq!(
+        client.run(&uri, None).await.unwrap(),
+        "Count\nlong\n-----\n    2\n"
+    );
+    client
+        .edit(&uri, 2, (0, 20), (0, 25), "summarize total = sum(amount)")
+        .await;
+    assert_eq!(
+        client.run(&uri, None).await.unwrap(),
+        "total\nreal\n-----\n 30.5\n"
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn runtime_errors_are_published_until_the_next_edit() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("big.csv", "x\n1\n10000\n");
+    let uri = client.uri("overflow.ds");
+    let text = "from 'big.csv' | count;\nfrom 'big.csv' | extend y = x * 1000000000000000\n";
+    client.open(&uri, text).await;
+    assert_eq!(client.diagnostics(&uri).await.codes(), Vec::<&str>::new());
+
+    let output = client.run(&uri, None).await.unwrap();
+    // The first table stays printed, and the error follows it, rendered as the CLI renders it.
+    assert!(
+        output.starts_with("== query 1 (line 1) ==\nCount\nlong\n-----\n    2\n"),
+        "{output}"
+    );
+    assert!(output.contains("error[DS4003]"), "{output}");
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.codes(), ["DS4003"]);
+    assert_eq!(published.version, Some(1));
+
+    // Running again publishes nothing new; the next check after an edit clears it.
+    client.edit(&uri, 2, (1, 32), (1, 48), "2").await;
+    assert_eq!(client.diagnostics(&uri).await.codes(), Vec::<&str>::new());
+    client.shutdown().await;
+}
+
+/// An engine whose queries never finish, recording when they are dropped (cancelled).
+#[derive(Debug)]
+struct Endless {
+    inner: DataFusionEngine,
+    started: Arc<tokio::sync::Notify>,
+    dropped: Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// A stream that never yields, and sets a flag when it is dropped.
+struct NeverEnds(Arc<std::sync::atomic::AtomicBool>);
+
+impl futures::Stream for NeverEnds {
+    type Item = Result<arrow_array::RecordBatch, Diagnostic>;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        std::task::Poll::Pending
+    }
+}
+
+impl Drop for NeverEnds {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+#[async_trait::async_trait]
+impl Engine for Endless {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn capabilities(&self) -> &Capabilities {
+        self.inner.capabilities()
+    }
+
+    async fn schema_of(
+        &self,
+        source: &SourceRef,
+        ctx: &ExecContext,
+    ) -> Result<SchemaRef, SourceError> {
+        self.inner.schema_of(source, ctx).await
+    }
+
+    async fn execute(
+        &self,
+        plan: &QueryPlan,
+        ctx: &ExecContext,
+    ) -> Result<ResultStream, Diagnostic> {
+        let real = self.inner.execute(plan, ctx).await?;
+        self.started.notify_one();
+        Ok(ResultStream {
+            schema: real.schema,
+            batches: Box::pin(NeverEnds(Arc::clone(&self.dropped))),
+        })
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cancelling_a_run_stops_the_query() {
+    let started = Arc::new(tokio::sync::Notify::new());
+    let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let engine = Arc::new(Endless {
+        inner: DataFusionEngine::default(),
+        started: Arc::clone(&started),
+        dropped: Arc::clone(&dropped),
+    });
+    let mut client = Client::start(engine, one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("slow.ds");
+    client.open(&uri, "from 'orders.csv' | count\n").await;
+    client.diagnostics(&uri).await;
+
+    let id = client
+        .send_request("datascript/run", json!({ "textDocument": { "uri": uri } }))
+        .await;
+    tokio::time::timeout(TIMEOUT, started.notified())
+        .await
+        .expect("the query started");
+    assert!(!dropped.load(std::sync::atomic::Ordering::SeqCst));
+    client.notify("$/cancelRequest", json!({ "id": id })).await;
+    let response = client.response(id).await;
+    assert_eq!(response["error"]["code"], -32800, "{response}");
+    // The query itself was dropped, not just the reply.
+    let deadline = Instant::now() + TIMEOUT;
+    while !dropped.load(std::sync::atomic::Ordering::SeqCst) {
+        assert!(Instant::now() < deadline, "the query kept running");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn code_lenses_sit_over_query_statements() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("two.ds");
+    client.open(&uri, TWO_QUERIES).await;
+    let lenses = client
+        .request(
+            "textDocument/codeLens",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    let summary: Vec<String> = lenses
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|lens| {
+            let r = &lens["range"];
+            format!(
+                "{}:{}-{}:{} {} {} {}",
+                r["start"]["line"],
+                r["start"]["character"],
+                r["end"]["line"],
+                r["end"]["character"],
+                lens["command"]["title"].as_str().unwrap(),
+                lens["command"]["command"].as_str().unwrap(),
+                lens["command"]["arguments"]
+            )
+        })
+        .collect();
+    // The `let` on line 0 gets none; "Run file" sits over the first query.
+    assert_eq!(
+        summary,
+        [
+            format!("1:0-1:25 ▶ Run datascript.runStatement [\"{uri}\",1]"),
+            format!("1:0-1:25 ▶ Run file datascript.runFile [\"{uri}\"]"),
+            format!("2:0-2:55 ▶ Run datascript.runStatement [\"{uri}\",2]"),
+        ]
+    );
+
+    // One query: no "Run file". Only `let`s: no lens.
+    let one = client.uri("one.ds");
+    client.open(&one, "from 'orders.csv' | count\n").await;
+    let lenses = client
+        .request(
+            "textDocument/codeLens",
+            json!({ "textDocument": { "uri": one } }),
+        )
+        .await;
+    assert_eq!(lenses.as_array().unwrap().len(), 1);
+    let lets = client.uri("lets.ds");
+    client.open(&lets, "let a = 1;\n").await;
+    let lenses = client
+        .request(
+            "textDocument/codeLens",
+            json!({ "textDocument": { "uri": lets } }),
+        )
+        .await;
+    assert_eq!(lenses, json!([]));
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_syntax_only_server_runs_nothing() {
+    let mut client = Client::start_with(
+        Arc::new(NoReads(DataFusionEngine::default())),
+        one_publish(20),
+        false,
+        json!({ "syntaxOnly": true }),
+    )
+    .await;
+    let uri = client.uri("q.ds");
+    client.open(&uri, "from 'orders.csv' | count\n").await;
+    client.diagnostics(&uri).await;
+    let lenses = client
+        .request(
+            "textDocument/codeLens",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    assert_eq!(lenses, Value::Null);
+    let response = client
+        .request_response("datascript/run", json!({ "textDocument": { "uri": uri } }))
+        .await;
+    assert_eq!(response["error"]["code"], -32803, "{response}");
+    assert!(
+        response["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("do not trust"),
+        "{response}"
+    );
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn untitled_documents_run_in_the_workspace_folder() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = "untitled:Untitled-1";
+    client.open(uri, "from 'orders.csv' | count\n").await;
+    client.diagnostics(uri).await;
+    assert_eq!(
+        client.run(uri, None).await.unwrap(),
+        "Count\nlong\n-----\n    2\n"
+    );
+    client.shutdown().await;
+}
+
+/// With no folder open, relative paths of an untitled document resolve against the server's
+/// working directory (D-056); the VS Code client starts the server in the home directory then.
+#[tokio::test(flavor = "multi_thread")]
+async fn untitled_documents_without_a_folder_run_in_the_working_directory() {
+    let mut client =
+        Client::start_full(datafusion(), one_publish(20), false, Value::Null, false).await;
+    // Tests run in the crate's directory.
+    let uri = "untitled:Untitled-1";
+    client
+        .open(
+            uri,
+            "from '../../tests/data/orders.csv' | take 1 | project orderId\n",
+        )
+        .await;
+    assert_eq!(client.diagnostics(uri).await.codes(), Vec::<&str>::new());
+    let output = client.run(uri, None).await.unwrap();
+    assert!(output.starts_with("orderId\n"), "{output}");
+    client.shutdown().await;
+}
+
+/// An engine whose queries compute for a long time without yielding, like a large aggregation
+/// between two polls.
+#[derive(Debug)]
+struct Busy(DataFusionEngine);
+
+/// Blocks its thread for two seconds on the first poll, then never ends.
+struct BusyStream(bool);
+
+impl futures::Stream for BusyStream {
+    type Item = Result<arrow_array::RecordBatch, Diagnostic>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        if !self.0 {
+            self.0 = true;
+            std::thread::sleep(Duration::from_secs(2));
+        }
+        std::task::Poll::Pending
+    }
+}
+
+#[async_trait::async_trait]
+impl Engine for Busy {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn capabilities(&self) -> &Capabilities {
+        self.0.capabilities()
+    }
+
+    async fn schema_of(
+        &self,
+        source: &SourceRef,
+        ctx: &ExecContext,
+    ) -> Result<SchemaRef, SourceError> {
+        self.0.schema_of(source, ctx).await
+    }
+
+    async fn execute(
+        &self,
+        plan: &QueryPlan,
+        ctx: &ExecContext,
+    ) -> Result<ResultStream, Diagnostic> {
+        let real = self.0.execute(plan, ctx).await?;
+        Ok(ResultStream {
+            schema: real.schema,
+            batches: Box::pin(BusyStream(false)),
+        })
+    }
+}
+
+/// The server keeps reading messages while a query computes, so a cancellation is answered at
+/// once instead of after the query's next yield.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_server_answers_while_a_query_computes() {
+    let mut client = Client::start(
+        Arc::new(Busy(DataFusionEngine::default())),
+        one_publish(20),
+        false,
+    )
+    .await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("busy.ds");
+    client.open(&uri, "from 'orders.csv' | count\n").await;
+    client.diagnostics(&uri).await;
+    let id = client
+        .send_request("datascript/run", json!({ "textDocument": { "uri": uri } }))
+        .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let start = Instant::now();
+    client.notify("$/cancelRequest", json!({ "id": id })).await;
+    let response = client.response(id).await;
+    assert_eq!(response["error"]["code"], -32800, "{response}");
+    assert!(
+        start.elapsed() < Duration::from_secs(1),
+        "the cancellation waited {:?} for the query",
+        start.elapsed()
+    );
+    client.shutdown().await;
 }

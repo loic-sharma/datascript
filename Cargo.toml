@@ -21,7 +21,7 @@ insta = "1"
 arrow-array = "59"
 arrow-schema = "59"
 arrow-cast = { version = "59", default-features = false }
-# Only the CLI writes Arrow IPC (`ds run --format arrow`, M1-11).
+# Arrow IPC output (`ds run --format arrow`, M1-11), written by `datascript_engine::printer`.
 arrow-ipc = { version = "59", default-features = false }
 # Only the fixture generator writes Parquet for now; M1-08 reads it through DataFusion.
 parquet = { version = "59", default-features = false, features = ["arrow"] }

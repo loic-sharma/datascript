@@ -22,4 +22,7 @@ Show Run results in a webview panel: a virtualized grid and, for `render`, the c
 - [ ] Cancellation and runtime errors work as in M3-05.
 - [ ] Still no Run in an untrusted workspace.
 
+## Carried over
+- [ ] (from M3-05) In the editor, `datascript/run`'s text is word for word what `ds run` prints, so a cut table says `show them with --max-rows N` and `DS5001` says charts are not drawn "on the command line". When the panel adds a setting for where results go, decide whether the terminal output should name the `datascript.run.maxRows` setting and the panel instead (a `Frontend` variant in `datascript_engine::printer`, and a `DS5001` wording per frontend), and record it in DECISIONS.md.
+
 ## Follow-ups

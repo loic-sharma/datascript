@@ -1,7 +1,7 @@
 {
   "name": "datascript",
   "displayName": "DataScript",
-  "description": "DataScript language support: highlighting, snippets and live diagnostics from the `ds` language server.",
+  "description": "DataScript language support: highlighting, snippets, live diagnostics and Run from the `ds` language server.",
   "version": "0.0.1",
   "publisher": "datascript",
   "license": "MIT OR Apache-2.0",
@@ -31,7 +31,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "In a workspace you do not trust, DataScript reports syntax errors only: it reads no data files (so no schema checks) and runs no queries.",
+      "description": "In a workspace you do not trust, DataScript reports syntax errors only: it reads no data files (so no schema checks) and runs no queries (no Run).",
       "restrictedConfigurations": [
         "datascript.server.path",
         "datascript.server.extraArgs"
@@ -74,6 +74,18 @@
         "command": "datascript.restartServer",
         "title": "Restart Language Server",
         "category": "DataScript"
+      },
+      {
+        "command": "datascript.runStatement",
+        "title": "Run Statement at Cursor",
+        "category": "DataScript",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "datascript.runFile",
+        "title": "Run File",
+        "category": "DataScript",
+        "enablement": "isWorkspaceTrusted"
       }
     ],
     "configuration": {
@@ -103,8 +115,26 @@
           ],
           "default": "off",
           "description": "Logs the messages between VS Code and the language server to the DataScript output channel."
+        },
+        "datascript.run.maxRows": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 100,
+          "markdownDescription": "Rows to show per table when running a query, like `ds run --max-rows`; the rest are counted below the table. 0 shows every row."
         }
       }
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "datascript.runStatement",
+          "when": "editorLangId == datascript"
+        },
+        {
+          "command": "datascript.runFile",
+          "when": "editorLangId == datascript"
+        }
+      ]
     }
   },
   "scripts": {

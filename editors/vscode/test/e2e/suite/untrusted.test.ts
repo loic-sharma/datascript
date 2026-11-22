@@ -4,7 +4,7 @@
 import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
 import type { DataScriptApi } from '../../../src/extension';
-import { activate, codes, open, sleep, waitForCodes, write } from './helpers';
+import { activate, codeLenses, codes, open, sleep, waitForCodes, write } from './helpers';
 
 describe('in an untrusted workspace', () => {
   let api: DataScriptApi;
@@ -52,5 +52,17 @@ describe('in an untrusted workspace', () => {
     write('regions.csv', 'id,area\n1,eu\n');
     await sleep(1_500);
     assert.deepEqual(codes(document.uri), []);
+  });
+
+  it('shows no Run CodeLens and runs nothing', async () => {
+    const document = await open('run.ds', "from 'orders.csv' | count;\nfrom 'orders.csv' | take 1\n");
+    await waitForCodes(document.uri, []);
+    assert.deepEqual(await codeLenses(document.uri), []);
+    assert.equal(await vscode.commands.executeCommand('datascript.runFile'), undefined);
+    assert.equal(
+      await vscode.commands.executeCommand('datascript.runStatement', document.uri.toString(), 1),
+      undefined,
+    );
+    assert.equal(api.lastRun(), undefined);
   });
 });

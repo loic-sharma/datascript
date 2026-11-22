@@ -12,8 +12,11 @@
 //!   an optional sandbox and an optional row limit.
 //! - [`table`] and [`writers`]: the ASCII result table, CSV and JSON, shared by the frontends and
 //!   the golden tests. All three print values the same way.
+//! - [`printer`]: streams a run's results as `ds run` prints them, for the CLI, the REPL and the
+//!   language server's Run (D-054).
 
 mod boundary;
+pub mod printer;
 mod session;
 pub mod table;
 pub mod writers;

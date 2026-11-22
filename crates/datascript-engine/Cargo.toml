@@ -11,6 +11,8 @@ publish.workspace = true
 arrow-array.workspace = true
 arrow-schema.workspace = true
 arrow-cast.workspace = true
+# `ds run --format arrow` and the shared printer (`printer`).
+arrow-ipc.workspace = true
 async-trait.workspace = true
 datascript-compiler = { path = "../datascript-compiler" }
 datascript-diagnostics = { path = "../datascript-diagnostics" }

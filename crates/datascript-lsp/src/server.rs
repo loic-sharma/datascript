@@ -1,4 +1,4 @@
-//! The language server: document sync, debounced checks and diagnostics.
+//! The language server: document sync, debounced checks and diagnostics, and Run (M3-05).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -10,18 +10,22 @@ use datascript_diagnostics::{Diagnostic, DiagnosticSink, Diagnostics, FileId, So
 use datascript_engine::{Session, catch_panic};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Mutex;
-use tower_lsp_server::jsonrpc::Result;
+use tower_lsp_server::jsonrpc::{self, Result};
 use tower_lsp_server::ls_types::{
-    DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-    DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, FileSystemWatcher, GlobPattern, InitializeParams, InitializeResult,
-    InitializedParams, Registration, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextDocumentSyncOptions, Uri,
+    self as lsp, CodeLens, CodeLensOptions, CodeLensParams, DidChangeTextDocumentParams,
+    DidChangeWatchedFilesParams, DidChangeWatchedFilesRegistrationOptions,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, FileSystemWatcher, GlobPattern,
+    InitializeParams, InitializeResult, InitializedParams, Registration, ServerCapabilities,
+    ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Uri,
 };
 use tower_lsp_server::{Client, ClientSocket, LanguageServer, LspService, Server};
 
 use crate::convert;
 use crate::document::apply_changes;
+use crate::run::{self, RUN_METHOD, RunParams, RunResult};
+
+/// The JSON-RPC error code for a request the server refuses (LSP `RequestFailed`).
+const REQUEST_FAILED: i64 = -32803;
 
 /// Every document is checked as file 0: the server checks one document at a time.
 const FILE: FileId = FileId(0);
@@ -80,6 +84,28 @@ struct Doc {
     version: i32,
     /// Changes whenever a check is scheduled; a check publishes only if it is still current.
     generation: u64,
+    /// What the latest check published, so a run's error can be published next to it.
+    checked: Vec<lsp::Diagnostic>,
+    /// The runtime error of the latest run of this text, published after the check's
+    /// diagnostics until the document changes.
+    runtime: Vec<lsp::Diagnostic>,
+}
+
+impl Doc {
+    fn new(text: String, version: i32) -> Self {
+        Doc {
+            text,
+            version,
+            generation: 0,
+            checked: Vec::new(),
+            runtime: Vec::new(),
+        }
+    }
+
+    /// Everything to publish: the check's diagnostics, then the run's.
+    fn published(&self) -> Vec<lsp::Diagnostic> {
+        self.checked.iter().chain(&self.runtime).cloned().collect()
+    }
 }
 
 /// The `initializationOptions` the server understands. Unknown fields, and fields of the wrong
@@ -108,7 +134,7 @@ impl InitOptions {
 
 /// The LSP service over `session`, for [`Server`] or an in-process client.
 pub fn service(session: Arc<Session>, config: Config) -> (LspService<Backend>, ClientSocket) {
-    LspService::new(move |client| Backend {
+    LspService::build(move |client| Backend {
         client,
         state: Arc::new(State {
             session,
@@ -120,6 +146,8 @@ pub fn service(session: Arc<Session>, config: Config) -> (LspService<Backend>, C
             generations: AtomicU64::new(0),
         }),
     })
+    .custom_method(RUN_METHOD, Backend::run)
+    .finish()
 }
 
 /// Serves the LSP over `input` and `output` until the client exits.
@@ -176,6 +204,9 @@ impl LanguageServer for Backend {
                         ..TextDocumentSyncOptions::default()
                     },
                 )),
+                code_lens_provider: Some(CodeLensOptions {
+                    resolve_provider: Some(false),
+                }),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -224,14 +255,11 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let doc = params.text_document;
-        self.state.docs.lock().await.insert(
-            doc.uri.clone(),
-            Doc {
-                text: doc.text,
-                version: doc.version,
-                generation: 0,
-            },
-        );
+        self.state
+            .docs
+            .lock()
+            .await
+            .insert(doc.uri.clone(), Doc::new(doc.text, doc.version));
         // Opening is not typing: check at once.
         self.schedule(doc.uri, Duration::ZERO).await;
     }
@@ -245,6 +273,8 @@ impl LanguageServer for Backend {
             };
             apply_changes(&mut doc.text, params.content_changes);
             doc.version = params.text_document.version;
+            // A run's error was about the old text; the next check publishes without it.
+            doc.runtime.clear();
         }
         self.schedule(uri, self.state.config.debounce).await;
     }
@@ -278,9 +308,91 @@ impl LanguageServer for Backend {
             self.schedule(uri, self.state.config.debounce).await;
         }
     }
+
+    async fn code_lens(&self, params: CodeLensParams) -> Result<Option<Vec<CodeLens>>> {
+        // Nothing runs in a workspace the user does not trust (D-053).
+        if self.state.syntax_only.load(Ordering::Relaxed) {
+            return Ok(None);
+        }
+        let uri = params.text_document.uri;
+        let Some(text) = self.state.text_of(&uri).await else {
+            return Ok(None);
+        };
+        let file = SourceFile::new(self.state.display_name(&uri), text);
+        Ok(Some(run::code_lenses(&file, FILE, &uri)))
+    }
 }
 
 impl Backend {
+    /// `datascript/run`: runs the server's text of an open document as `ds run` would, and
+    /// publishes the runtime error, if any, next to the check's diagnostics.
+    ///
+    /// Cancelling the request (`$/cancelRequest`) drops this future, and with it the running
+    /// query, which stops it.
+    pub async fn run(&self, params: RunParams) -> Result<RunResult> {
+        if self.state.syntax_only.load(Ordering::Relaxed) {
+            return Err(refused(
+                "running queries is off in a workspace you do not trust; trust the workspace to \
+                 run it",
+            ));
+        }
+        let uri = params.text_document.uri.clone();
+        let (text, version) = {
+            let docs = self.state.docs.lock().await;
+            match docs.get(&uri) {
+                Some(doc) => (doc.text.clone(), doc.version),
+                None => {
+                    return Err(jsonrpc::Error::invalid_params(format!(
+                        "`{}` is not open; open it in the editor before running it",
+                        uri.as_str()
+                    )));
+                }
+            }
+        };
+        let file = SourceFile::new(self.state.display_name(&uri), text);
+        let path = file_path(&uri);
+        let ctx = self
+            .state
+            .session
+            .exec_context(&self.state.base_dir(path.as_deref()));
+        // The query runs on its own task: the server reads and answers messages on one task, so
+        // a query polled there would hold up every message, `$/cancelRequest` included, while it
+        // computes. Cancelling drops this future, and the guard aborts the task, which drops the
+        // running query at its next yield.
+        let session = Arc::clone(&self.state.session);
+        let task_file = file.clone();
+        let mut task = AbortOnDrop(tokio::spawn(async move {
+            run::run(&session, &task_file, FILE, &ctx, &params).await
+        }));
+        let ran = match (&mut task.0).await {
+            Ok(ran) => ran.map_err(|refusal| refused(refusal.message()))?,
+            Err(e) => {
+                return Err(jsonrpc::Error {
+                    code: jsonrpc::ErrorCode::InternalError,
+                    message: format!("the run stopped unexpectedly: {e}").into(),
+                    data: None,
+                });
+            }
+        };
+
+        let runtime: Vec<lsp::Diagnostic> = ran
+            .runtime_error
+            .iter()
+            .map(|d| convert::to_lsp(d, &file, &uri))
+            .collect();
+        let mut docs = self.state.docs.lock().await;
+        // Publish only about the text that ran; an edit since then makes the error stale.
+        if let Some(doc) = docs.get_mut(&uri).filter(|doc| doc.version == version)
+            && doc.runtime != runtime
+        {
+            doc.runtime = runtime;
+            self.client
+                .publish_diagnostics(uri, doc.published(), Some(version))
+                .await;
+        }
+        Ok(ran.result)
+    }
+
     /// Checks `uri` after `delay`, unless it changes again first, and publishes its diagnostics.
     async fn schedule(&self, uri: Uri, delay: Duration) {
         let generation = self.state.generations.fetch_add(1, Ordering::Relaxed) + 1;
@@ -358,14 +470,34 @@ impl State {
         file: &SourceFile,
         diagnostics: &[Diagnostic],
     ) {
-        let docs = self.docs.lock().await;
-        if docs.get(uri).is_none_or(|doc| doc.generation != generation) {
+        let mut docs = self.docs.lock().await;
+        let Some(doc) = docs.get_mut(uri).filter(|doc| doc.generation == generation) else {
             return;
-        }
-        let diagnostics = convert::to_lsp_all(diagnostics, file, uri);
+        };
+        doc.checked = convert::to_lsp_all(diagnostics, file, uri);
         client
-            .publish_diagnostics(uri.clone(), diagnostics, Some(version))
+            .publish_diagnostics(uri.clone(), doc.published(), Some(version))
             .await;
+    }
+
+    /// The server's text of an open document.
+    async fn text_of(&self, uri: &Uri) -> Option<String> {
+        self.docs.lock().await.get(uri).map(|doc| doc.text.clone())
+    }
+
+    /// The name a document's diagnostics show (`--> name:line:col`): its path relative to the
+    /// workspace folder when it is inside it, as `ds run` run from that folder shows it; else
+    /// its full path, or its URI when it is not a file.
+    fn display_name(&self, uri: &Uri) -> String {
+        let Some(path) = file_path(uri) else {
+            return uri.as_str().to_owned();
+        };
+        let root = self.root.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let shown = root
+            .as_deref()
+            .and_then(|root| path.strip_prefix(root).ok())
+            .unwrap_or(&path);
+        shown.display().to_string()
     }
 
     /// Relative paths in a document resolve against its directory; for a document that is not
@@ -378,6 +510,24 @@ impl State {
             return root;
         }
         std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+    }
+}
+
+/// Aborts a task when dropped, so cancelling a request stops the work it started.
+struct AbortOnDrop<T>(tokio::task::JoinHandle<T>);
+
+impl<T> Drop for AbortOnDrop<T> {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// A refused request: the reason is for the user.
+fn refused(message: impl Into<String>) -> jsonrpc::Error {
+    jsonrpc::Error {
+        code: jsonrpc::ErrorCode::ServerError(REQUEST_FAILED),
+        message: message.into().into(),
+        data: None,
     }
 }
 

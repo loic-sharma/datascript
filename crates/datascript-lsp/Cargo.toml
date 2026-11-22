@@ -12,11 +12,13 @@ datascript-compiler = { path = "../datascript-compiler" }
 datascript-diagnostics = { path = "../datascript-diagnostics" }
 datascript-engine = { path = "../datascript-engine" }
 datascript-syntax = { path = "../datascript-syntax" }
+serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-std", "time", "sync"] }
 tower-lsp-server.workspace = true
 
 [dev-dependencies]
+arrow-array.workspace = true
 arrow-schema.workspace = true
 async-trait.workspace = true
 datascript-datafusion = { path = "../datascript-datafusion" }
