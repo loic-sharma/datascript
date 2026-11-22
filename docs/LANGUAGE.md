@@ -112,7 +112,8 @@ from big | summarize count() by customerId                // query statement (pr
 ```
 
 - `let name = <expr>` binds a scalar or tabular expression. Lets are immutable and lexically
-  scoped to the rest of the program. Re-binding a name is an error (`DS1003`) (≠ KQL, which allows
+  scoped to the rest of the program. Re-binding a name is an error (`DS1003`) (the REPL lets a new input replace a
+  saved `let`, D-048) (≠ KQL, which allows
   shadowing). In an expression, a column of the current row wins over a scalar `let` of the same
   name; a `let` value has no row, so it can only use earlier `let`s (D-038). A table cannot be used
   as a value: a tabular `let` in an expression is `DS1006`, a pipeline inside an expression `DS2010`.

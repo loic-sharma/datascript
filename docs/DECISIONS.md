@@ -577,6 +577,30 @@ expressions. **Unknown columns reuse `DS1001`**, as D-046 reuses codes for the s
 one summary line so plan and run cases agree. **JSON**: camelCase, absent rather than `null`,
 additive only (ARCHITECTURE.md, "Render layer").
 
+### D-048 — How the REPL keeps lets, submits input and reports errors (M1-12)
+Settled before implementation so the task stays inside `datascript-cli`. **Lets are kept as
+text**: each submission is checked and run as one program, the saved let statements followed by
+the new input, and every diagnostic span is mapped back to the input it came from. Each input is its
+own snippet (`<repl:N>`, lines from 1), so an error renders against what the user just typed, and
+an error in a saved let (its file was deleted) against that let's own snippet. The alternative, a
+compiler API taking earlier inputs as a prelude, is cleaner but changes `datascript-compiler` for
+one frontend; the LSP and web UI work on whole documents and don't need it. **Saving**: an input's
+lets are saved once it checks without errors, before its queries run; a check error saves nothing,
+a runtime error or Ctrl-C undoes nothing. **Redefinition is allowed in the REPL** (≠ `DS1003` in
+programs, LANGUAGE.md §2): a new `let x` removes the old one and every saved let that uses it,
+transitively, with an info line naming them. Keeping the users and re-binding them to the new `x`
+would need the new definition placed before them, where it may use names that don't exist yet;
+silently keeping a stale value would be worse. Two `let x` in one input are still `DS1003`. Saved
+scalar lets are evaluated per submission, so `ago(1d)` follows the clock (D-015 holds within one
+submission). **Submit rule**: Enter submits complete input (judged with the lexer) that ends with
+`;`, or any input on a blank line; meta commands submit on Enter. The old "continue while the line
+ends with `|`" rule is dropped, because the usual style puts `|` at the start of the next line.
+**Schemas are invalidated before every submission and `.schema`** (D-043), so no `.reload`.
+**Meta command mistakes** are plain messages with a tip, like CLI misuse in D-046: there is no
+program location, and the task owns no code block. **Piped stdin** runs the same loop without the
+editor and exits 1 if any input failed, which gives end-to-end tests a way in. *(Design review of
+M1-12, 2026-11-21.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack
