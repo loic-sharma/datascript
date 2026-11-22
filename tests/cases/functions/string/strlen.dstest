@@ -1,0 +1,17 @@
+# `strlen` counts Unicode scalar values, not bytes.
+mode: run
+---- query
+from '../../../data/edge/unicode.csv'
+| project id, name, n = strlen(name)
+| sort by id asc
+---- expected
+id   | name    | n
+long | string  | long
+-----+---------+-----
+   1 | Zoë     |    3
+   2 | José    |    4
+   3 | 李雷      |    2
+   4 | Даша    |    4
+   5 | سارة    |    4
+   6 | émile  |    6
+   7 | 😀 smile |    7

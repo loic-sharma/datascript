@@ -1,0 +1,11 @@
+# `floor` and `ceiling`; of an integer, the same `long`.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = floor(2.7), b = floor(-2.1), c = ceiling(2.1), d = ceiling(-2.7), e = floor(7), f = ceiling(toint(-7))
+---- expected
+a    | b    | c    | d    | e    | f
+real | real | real | real | long | long
+-----+------+------+------+------+-----
+ 2.0 | -3.0 |  3.0 | -2.0 |    7 |   -7

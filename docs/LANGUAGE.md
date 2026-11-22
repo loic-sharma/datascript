@@ -339,8 +339,12 @@ form `a contains x` for the string operators (D-033). Expressions may nest at mo
 
 String operators (case-insensitive unless the name ends in `_cs`): `contains`, `!contains`, `has`,
 `!has`, `startswith`, `endswith`, `matches regex`, and their `_cs` variants. `has` matches whole
-terms, where a term is a maximal run of letters and digits. Regexes use Rust `regex` syntax
-(RE2-like: no backreferences or lookaround, D-014).
+terms, where a term is a maximal run of letters and digits: where the searched text starts (ends)
+with a letter or digit, the character before (after) the match must not be one, so
+`"Error-42 found" has "error"` is true and `"Errors" has "error"` is false. Case-insensitive
+operators compare Unicode lowercase forms. `matches regex` is case-sensitive. Regexes use Rust
+`regex` syntax (RE2-like: no backreferences or lookaround, D-014); a pattern that does not compile
+is `DS4004` when the query runs.
 
 - `=` is **never** comparison. Using it where a predicate is expected gives `DS0110` with a
   machine-applicable fix to `==`.
@@ -377,8 +381,11 @@ columns cannot overflow at 2³¹.
 
 Anything else is `DS2003`, naming both types. Integer overflow and integer division or modulo by
 zero are runtime errors (`DS4003`, D-014). This is part of the contract: a backend that cannot
-match it lists a deviation in its `Capabilities` (ARCHITECTURE.md). Whether KQL behaves the same
-way is not yet verified (Q-008); if it does not, these rules get a ≠ KQL mark. Real division by
+match it lists a deviation in its `Capabilities` (ARCHITECTURE.md); the DataFusion engine lists
+none. Temporal arithmetic is checked the same way: a `datetime` or `timespan` outside the 64-bit
+microsecond range is `DS4003`. A `timespan` scaled by a `real` is rounded to whole microseconds,
+and divided by a number it truncates toward zero. Whether KQL behaves the same way is not yet
+verified (Q-008); if it does not, these rules get a ≠ KQL mark. Real division by
 zero follows IEEE 754 (`inf`, `nan`).
 
 ### 4.2 Implicit conversions
@@ -463,27 +470,42 @@ Runtimes without a UI ignore the chart, show the data, and print an info diagnos
 The authoritative list is the function catalog in `datascript-compiler` (it generates the reference docs).
 Semantics follow KQL unless noted (D-014). All datetime functions work in UTC.
 
-- **Aggregates** (`sum` and `sumif` of integers return `long`, of reals `real`; `avg`, `stdev`
+- **Aggregates** (`sum` and `sumif` of integers return `long`, of reals `real`, of timespans
+  `timespan`; `avg` returns `real`, or `timespan` for timespans, truncated to whole µs; `stdev`
   and `variance` return `real`): `count()`, `countif(p)`, `sum(x)`, `sumif(x, p)`, `avg(x)`, `min(x)`, `max(x)`,
   `dcount(x)` (exact in M1, ≠ KQL which estimates), `make_list(x)` (M2), `make_set(x)` (M2),
-  `percentile(x, p)` (exact, nearest-rank; ≠ KQL which estimates), `stdev(x)`, `variance(x)`
-  (sample), `arg_max(x, *)`/`arg_min(x, *)` (M2), `take_any(x)`. Aggregates ignore nulls;
-  `sum` of no non-null values is null, `count()` counts rows.
+  `percentile(x, p)` (exact, nearest-rank: the value at rank ⌈p/100 · n⌉ of the sorted values, the
+  smallest for `p = 0`; `p` outside 0–100 is `DS4004`; ≠ KQL which estimates), `stdev(x)`,
+  `variance(x)` (sample: null for one value), `arg_max(x, *)`/`arg_min(x, *)` (M2), `take_any(x)`.
+  Aggregates ignore nulls; `sum` of no non-null values is null, `count()` counts rows. `sum` of
+  integers overflows with `DS4003`, like integer arithmetic.
 - **Conditional**: `iff(p, a, b)`, `case(p1, v1, p2, v2, ..., else)`, `coalesce(a, b, ...)`,
   `isnull(x)`, `isnotnull(x)`, `isempty(x)`, `isnotempty(x)`.
 - **Conversion**: `tostring`, `toint`, `tolong`, `toreal`, `tobool`, `todatetime`, `totimespan`.
-  A value that does not convert becomes null (as in KQL).
+  A value that does not convert becomes null (as in KQL). `tolong`/`toint` read strings in integer
+  syntax and truncate reals toward zero; `toint` is null outside 32 bits. Converting a `datetime` or
+  `timespan` to a number is null (≠ KQL, which gives 100 ns ticks). `todatetime` and `totimespan`
+  read the `datetime(...)`/`timespan(...)` literal bodies of §1. `tostring` prints values as result
+  tables do, except that reals have no forced `.0` (`tostring(2.0)` is `"2"`); `tostring(null)` is
+  null.
 - **String**: `strlen` (in Unicode scalar values), `tolower`, `toupper`, `trim(regex, s)` (as in KQL, D-031),
-  `substring(s, start [, len])` (0-based), `strcat(...)`, `replace_string(s, find, repl)`,
-  `split(s, sep)` (M2, returns dynamic), `indexof` (0-based, -1 if absent),
-  `extract(regex, group, s)`.
-- **Datetime**: `now()`, `ago(ts)`, `bin(x, size)` (also numbers; bins datetimes from the Unix
-  epoch), `startofday`, `startofweek` (Sunday), `startofmonth`, `startofyear`, `endof*`,
-  `datetime_part(part, dt)`, `dayofweek` (timespan since Sunday, as in KQL),
-  `format_datetime(dt, fmt)` (KQL format specifiers such as `yyyy-MM-dd HH:mm:ss`), `datetime_diff`.
-- **Math**: `abs`, `round(x [, digits])` (half away from zero), `floor`, `ceiling`, `sqrt`, `pow`,
-  `log`, `log10`, `exp`. `abs`, `round`, `floor`, `ceiling` and `bin` of an integer return `long`,
-  like integer arithmetic (D-021).
+  `substring(s, start [, len])` (0-based in characters; a negative `start` counts from the end),
+  `strcat(...)` (a null argument adds nothing), `replace_string(s, find, repl)` (an empty `find`
+  changes nothing), `split(s, sep)` (M2, returns dynamic), `indexof` (0-based in characters, -1 if
+  absent; a `length` below -1 or an `occurrence` below 1 gives null), `extract(regex, group, s)`
+  (null when there is no match or no such group).
+- **Datetime**: `now()`, `ago(ts)`, `bin(x, size)` (also numbers; rounds toward negative
+  infinity, bins datetimes from the Unix epoch; a `size` that is not positive gives null),
+  `startofday`, `startofweek` (Sunday), `startofmonth`, `startofyear`, `endof*` (the last µs of the
+  period), `datetime_part(part, dt)` (part names are case-insensitive; `week_of_year` is the ISO
+  8601 week), `dayofweek` (timespan since Sunday, as in KQL), `format_datetime(dt, fmt)` (KQL
+  format specifiers: `yyyy`, `yy`, `MM`, `M`, `dd`, `d`, `HH`, `H`, `hh`, `h`, `mm`, `m`, `ss`,
+  `s`, `f`…`fffffff`, `F`…`FFFFFFF`, `tt`; other non-letters are copied), `datetime_diff` (weeks
+  start on Sunday). An unknown part name or format specifier is `DS4004` when the query runs.
+- **Math**: `abs`, `round(x [, digits])` (half away from zero; negative `digits` round integers to
+  tens, hundreds, …), `floor`, `ceiling`, `sqrt`, `pow`, `log` (natural), `log10`, `exp`. `abs`,
+  `round`, `floor`, `ceiling` and `bin` of an integer return `long`, like integer arithmetic
+  (D-021). The real functions follow IEEE 754 (`sqrt(-1.0)` is `NaN`, `log(0)` is `-inf`).
 
 `now()` is evaluated **once per program run** (D-015), from a clock the host provides (needed for
 WASM and for deterministic tests).

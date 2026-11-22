@@ -1,0 +1,15 @@
+# `isempty` is true for null and, for strings, the empty string; `isnotempty` the opposite.
+mode: run
+---- query
+from '../../../data/edge/nulls.csv'
+| project id, a = isempty(name), b = isnotempty(name), c = isempty(value), d = isempty(''), e = isnotempty(' ')
+| sort by id asc
+---- expected
+id   | a     | b     | c     | d    | e
+long | bool  | bool  | bool  | bool | bool
+-----+-------+-------+-------+------+-----
+   1 | false | true  | false | true | true
+   2 | true  | false | false | true | true
+   3 | false | true  | true  | true | true
+   4 | false | true  | false | true | true
+   5 | true  | false | true  | true | true

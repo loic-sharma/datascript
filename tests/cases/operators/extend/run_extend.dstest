@@ -1,0 +1,12 @@
+# `extend` adds columns at the end, replaces one in place, and sees earlier items (D-040).
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| extend doubled = amount * 2, amount = amount + 1, again = doubled + 1
+| project-away timestamp
+---- expected
+orderId | customerId | amount | doubled | again
+string  | string     | real   | real    | real
+--------+------------+--------+---------+------
+o-0001  | c-042      |  184.5 |   367.0 | 368.0

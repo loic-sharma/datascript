@@ -1,0 +1,11 @@
+# `percentile` is exact nearest-rank (≠ KQL): the smallest value with at least p percent at
+# or below it. It works on numbers, datetimes and timespans and keeps the type.
+mode: run
+---- query
+from '../../../data/reordered/*.csv'
+| summarize p0 = percentile(score, 0), p10 = percentile(score, 10), p50 = percentile(score, 50), p51 = percentile(score, 51), p100 = percentile(score, 100), r = percentile(toreal(score) / 4, 50), ts = percentile(id * 1m, 75), dt = percentile(datetime(2024-01-01) + id * 1d, 25)
+---- expected
+p0   | p10  | p50  | p51  | p100 | r    | ts       | dt
+long | long | long | long | long | real | timespan | datetime
+-----+------+------+------+------+------+----------+---------------------
+  10 |   10 |   40 |   50 |   80 | 10.0 | 00:06:00 | 2024-01-03T00:00:00Z

@@ -1,0 +1,18 @@
+# `avg` of numbers is `real`; of timespans a timespan truncated to whole µs; nulls ignored.
+mode: run
+---- query
+from '../../../data/reordered/*.csv'
+| summarize a = avg(score), b = avg(id), t = avg(id * 1s / 3);
+from '../../../data/orders.csv'
+| where customerId == 'c-011'
+| summarize a = avg(amount), n = count()
+---- expected
+a    | b    | t
+real | real | timespan
+-----+------+----------------
+45.0 |  4.5 | 00:00:01.499999
+
+a       | n
+real    | long
+--------+-----
+33.0625 |    5

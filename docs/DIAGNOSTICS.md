@@ -205,6 +205,7 @@ design decision and implemented by the task named in the allocation table.
 | DS4001 | error | function, `join` kind or file format not supported by this engine (reported by `check`, from the engine's capabilities) |
 | DS4002 | error | engine runtime error |
 | DS4003 | error | arithmetic error: integer division by zero, overflow, or out-of-range value (D-014) |
+| DS4004 | error | invalid argument value at runtime: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100 |
 | DS5001 | info | chart not drawn in this runtime |
 | DS5002 | error | chart needs a column of a kind the result lacks |
 | DS5003 | error | unknown render kind (did-you-mean) |

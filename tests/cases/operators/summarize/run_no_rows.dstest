@@ -1,0 +1,19 @@
+# With no keys, `summarize` returns one row even over no rows: `count()` is 0 and `sum` is null.
+# With keys, no rows give no groups.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where amount > 1000000
+| summarize n = count(), s = sum(amount), m = max(timestamp);
+from '../../../data/orders.csv'
+| where amount > 1000000
+| summarize n = count() by customerId
+---- expected
+n    | s    | m
+long | real | datetime
+-----+------+---------
+   0 | null | null
+
+customerId | n
+string     | long
+-----------+-----

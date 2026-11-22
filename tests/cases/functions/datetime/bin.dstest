@@ -1,0 +1,12 @@
+# `bin` rounds down to a multiple of the size: datetimes from the Unix epoch, negative numbers
+# toward negative infinity. A size that is not positive gives null.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project dt = bin(datetime(2024-02-29T23:59:59Z), 1h), wk = bin(datetime(2024-02-29), 7d), ts = bin(95m, 1h), l = bin(17, 5), neg = bin(-7, 5), r = bin(1.75, 0.5), rneg = bin(-0.1, 1.0), zero = bin(5, 0)
+---- expected
+dt                   | wk                   | ts       | l    | neg  | r    | rneg | zero
+datetime             | datetime             | timespan | long | long | real | real | long
+---------------------+----------------------+----------+------+------+------+------+-----
+2024-02-29T23:00:00Z | 2024-02-29T00:00:00Z | 01:00:00 |   15 |  -10 |  1.5 | -1.0 | null

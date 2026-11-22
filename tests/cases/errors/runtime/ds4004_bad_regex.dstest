@@ -1,0 +1,13 @@
+# A regular expression that does not compile is DS4004 at the call.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId matches regex '(o-'
+---- expected
+error[DS4004]: `(o-` is not a valid regular expression
+  --> query:2:9
+  |
+2 | | where orderId matches regex '(o-'
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ in this call of `matches regex`
+  |
+  = note: unclosed group (regexes use Rust `regex` syntax)

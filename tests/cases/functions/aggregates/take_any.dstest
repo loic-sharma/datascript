@@ -1,0 +1,22 @@
+# `take_any` returns a non-null value of the group (this engine returns the smallest).
+mode: run
+---- query
+from '../../../data/customers.csv'
+| summarize any = take_any(country), name = take_any(name) by country
+| sort by country asc nulls first
+---- expected
+country | any    | name
+string  | string | string
+--------+--------+-------------
+null    | null   | Jo Martin
+BG      | BG     | Ivan Petrov
+BR      | BR     | Ana Silva
+CN      | CN     | Chen Wei
+CZ      | CZ     | Dana Novak
+DE      | DE     | Kai Mueller
+DK      | DK     | Gus Larsen
+IL      | IL     | Eli Cohen
+JO      | JO     | Mo Haddad
+JP      | JP     | Hana Sato
+MA      | MA     | Fatima Zahra
+NG      | NG     | Ben Okafor

@@ -1,0 +1,22 @@
+# `distinct` over columns and over `*`.
+mode: run
+order: any
+---- query
+from '../../../data/customers.csv'
+| distinct country
+| where isnotnull(country) and country startswith 'D';
+from '../../../data/customers.csv'
+| project country
+| where country == 'DE'
+| distinct *
+---- expected
+country
+string
+-------
+DK
+DE
+
+country
+string
+-------
+DE

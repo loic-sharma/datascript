@@ -1,0 +1,14 @@
+# Overflow between two literals is found when the query runs, at the expression.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| take 1
+| extend x = 9223372036854775807 + 1
+---- expected
+error[DS4003]: the result of `+` does not fit in a `long`
+  --> query:3:14
+  |
+3 | | extend x = 9223372036854775807 + 1
+  |              ^^^^^^^^^^^^^^^^^^^^^^^ this overflowed
+  |
+  = note: a `long` holds whole numbers from -9223372036854775808 to 9223372036854775807

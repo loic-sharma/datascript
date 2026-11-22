@@ -1,0 +1,11 @@
+# `toreal`: numeric strings, integers and bools.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = toreal('1.25'), b = toreal('1e3'), c = toreal(7), d = toreal(true), e = toreal('abc'), f = toreal(1h)
+---- expected
+a    | b      | c    | d    | e    | f
+real | real   | real | real | real | real
+-----+--------+------+------+------+-----
+1.25 | 1000.0 |  7.0 |  1.0 | null | null

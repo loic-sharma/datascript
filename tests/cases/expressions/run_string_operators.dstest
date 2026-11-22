@@ -1,0 +1,24 @@
+# String operators: case-insensitive unless `_cs`; `has` matches whole terms of letters and
+# digits; `=~` is case-insensitive equality; regexes use Rust `regex` syntax (D-014).
+mode: run
+---- query
+from '../../data/orders.csv'
+| where orderId == 'o-0001'
+| project has1 = 'Error-42 found' has 'error', has2 = 'Errors found' has 'error', has3 = 'a 42 b' has '42',
+    has_cs = 'Error' has_cs 'error', nhas = 'x y' !has 'y',
+    contains = 'Hello' contains 'ELL', contains_cs = 'Hello' contains_cs 'ELL', ncontains = 'Hello' !contains 'z',
+    sw = 'Hello' startswith 'he', sw_cs = 'Hello' startswith_cs 'he', ew = 'Hello' endswith 'LO', ew_cs = 'Hello' endswith_cs 'lo';
+from '../../data/orders.csv'
+| where orderId == 'o-0001'
+| project eq = 'ABC' =~ 'abc', ne = 'ABC' !~ 'abd', inci = 'Ab' in~ ('aB', 'x'), ninci = 'Ab' !in~ ('ab'),
+    re = orderId matches regex @'^o-\d{4}$', re2 = 'abc' matches regex 'B', nul = string(null) has 'x'
+---- expected
+has1 | has2  | has3 | has_cs | nhas  | contains | contains_cs | ncontains | sw   | sw_cs | ew   | ew_cs
+bool | bool  | bool | bool   | bool  | bool     | bool        | bool      | bool | bool  | bool | bool
+-----+-------+------+--------+-------+----------+-------------+-----------+------+-------+------+------
+true | false | true | false  | false | true     | false       | true      | true | false | true | true
+
+eq   | ne   | inci | ninci | re   | re2   | nul
+bool | bool | bool | bool  | bool | bool  | bool
+-----+------+------+-------+------+-------+-----
+true | true | true | false | true | false | null

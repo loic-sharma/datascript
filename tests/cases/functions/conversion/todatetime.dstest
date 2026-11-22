@@ -1,0 +1,11 @@
+# `todatetime` reads ISO 8601 strings (UTC unless an offset is given).
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = todatetime('2024-01-31'), b = todatetime('2024-01-31T12:30:00+02:00'), c = todatetime('2024-01-31 08:00'), d = todatetime('not a date'), e = todatetime(timestamp), f = todatetime(42)
+---- expected
+a                    | b                    | c                    | d        | e                    | f
+datetime             | datetime             | datetime             | datetime | datetime             | datetime
+---------------------+----------------------+----------------------+----------+----------------------+---------
+2024-01-31T00:00:00Z | 2024-01-31T10:30:00Z | 2024-01-31T08:00:00Z | null     | 2023-12-02T08:26:08Z | null

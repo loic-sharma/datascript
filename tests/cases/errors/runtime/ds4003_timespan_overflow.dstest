@@ -1,0 +1,14 @@
+# Timespan arithmetic overflows past about 292,000 years.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| take 1
+| project t = timestamp + 1d * 200000000
+---- expected
+error[DS4003]: the result of `*` does not fit in a `timespan`
+  --> query:3:27
+  |
+3 | | project t = timestamp + 1d * 200000000
+  |                           ^^^^^^^^^^^^^^ this overflowed
+  |
+  = note: datetimes and timespans are counted in microseconds and hold about ±292,000 years

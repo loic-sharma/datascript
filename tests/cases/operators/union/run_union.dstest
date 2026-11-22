@@ -1,0 +1,18 @@
+# `union` matches columns by name, fills missing ones with null and widens types (LANGUAGE.md §3.2).
+mode: run
+---- query
+from '../../../data/widen/a.csv'
+| extend tag = 'a'
+| union (from '../../../data/widen/b.csv' | project id, score), '../../../data/reordered/a.csv'
+| sort by id asc, score asc nulls first
+---- expected
+id   | score | tag    | name
+long | real  | string | string
+-----+-------+--------+-------
+   1 | 10.0  | a      | null
+   1 | 10.0  | null   | ant
+   2 | 20.0  | a      | null
+   2 | 20.0  | null   | bee
+   3 | 30.0  | null   | cat
+   3 | 30.5  | null   | null
+   4 | 40.25 | null   | null

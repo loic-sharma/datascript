@@ -1,0 +1,11 @@
+# `extract` returns a capture group (0 is the whole match), or null.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = extract(@'(\w)-(\d+)', 2, orderId), b = extract(@'\d+', 0, orderId), c = extract('z(.)', 1, orderId), d = extract('(o)', 5, orderId)
+---- expected
+a      | b      | c      | d
+string | string | string | string
+-------+--------+--------+-------
+0001   | 0001   | null   | null

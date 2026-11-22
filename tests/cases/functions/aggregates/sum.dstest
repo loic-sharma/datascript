@@ -1,0 +1,11 @@
+# `sum` of reals is `real`, of integers `long`, of timespans `timespan`; nulls are ignored,
+# and a sum of no non-null values is null (LANGUAGE.md §7).
+mode: run
+---- query
+from '../../../data/orders.csv'
+| summarize r = sum(amount), l = sum(tolong(amount)), t = sum(30m), none = sumif(amount, isnull(amount))
+---- expected
+r      | l    | t          | none
+real   | long | timespan   | real
+-------+------+------------+-----
+4221.5 | 4210 | 1.01:00:00 | null

@@ -1,0 +1,15 @@
+# `iff` returns the second argument when true and the third when false or null.
+mode: run
+---- query
+from '../../../data/edge/nulls.csv'
+| project id, big = iff(value > 2, 'big', 'small'), num = iff(id > 2, id, 2.5)
+| sort by id asc
+---- expected
+id   | big    | num
+long | string | real
+-----+--------+-----
+   1 | small  |  2.5
+   2 | big    |  2.5
+   3 | small  |  3.0
+   4 | big    |  4.0
+   5 | small  |  5.0

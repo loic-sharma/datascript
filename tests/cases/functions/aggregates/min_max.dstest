@@ -1,0 +1,10 @@
+# `min` and `max` over numbers, strings, datetimes, timespans and bools; nulls ignored.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| summarize mina = min(amount), maxa = max(amount), mino = min(orderId), maxo = max(orderId), mint = min(timestamp), maxt = max(timestamp)
+---- expected
+mina | maxa   | mino   | maxo   | mint                 | maxt
+real | real   | string | string | datetime             | datetime
+-----+--------+--------+--------+----------------------+---------------------
+ 7.5 | 251.75 | o-0001 | o-0050 | 2023-12-02T08:26:08Z | 2024-05-28T15:22:15Z

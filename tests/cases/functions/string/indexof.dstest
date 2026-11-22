@@ -1,0 +1,11 @@
+# `indexof` is 0-based in characters, -1 when absent, with optional start, length and occurrence.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = indexof('abcabc', 'c'), b = indexof('abcabc', 'z'), c = indexof('abcabc', 'b', 2), d = indexof('abcabc', 'c', 0, 2), e = indexof('abcabc', 'bc', 0, -1, 2), f = indexof('héllo', 'l'), g = indexof('abc', 'c', -1), h = indexof('abc', 'a', 0, -1, 0)
+---- expected
+a    | b    | c    | d    | e    | f    | g    | h
+long | long | long | long | long | long | long | long
+-----+------+------+------+------+------+------+-----
+   2 |   -1 |    4 |   -1 |    4 |    2 |    2 | null

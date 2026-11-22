@@ -1,0 +1,11 @@
+# `strcat` joins the string forms of its arguments; a null adds nothing.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = strcat(orderId, '/', customerId), b = strcat('n=', 42, ' r=', 1.5, ' ', true), c = strcat('x', string(null), 'y'), d = strcat(timestamp)
+---- expected
+a            | b               | c      | d
+string       | string          | string | string
+-------------+-----------------+--------+---------------------
+o-0001/c-042 | n=42 r=1.5 true | xy     | 2023-12-02T08:26:08Z

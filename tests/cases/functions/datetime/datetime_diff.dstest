@@ -1,0 +1,12 @@
+# `datetime_diff(part, a, b)` counts `part` boundaries between `b` and `a`.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| extend a = datetime(2024-03-01T00:00:00Z), b = datetime(2023-12-31T23:59:59Z)
+| project y = datetime_diff('year', a, b), q = datetime_diff('quarter', a, b), m = datetime_diff('month', a, b), w = datetime_diff('week', a, b), d = datetime_diff('day', a, b), h = datetime_diff('hour', a, b), s = datetime_diff('second', a, b), back = datetime_diff('day', b, a), ms = datetime_diff('millisecond', a, b)
+---- expected
+y    | q    | m    | w    | d    | h    | s       | back | ms
+long | long | long | long | long | long | long    | long | long
+-----+------+------+------+------+------+---------+------+-----------
+   1 |    1 |    3 |    8 |   61 | 1441 | 5184001 |  -61 | 5184001000

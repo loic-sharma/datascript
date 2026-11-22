@@ -246,7 +246,10 @@ fn signature_display() {
     assert_eq!(lines("strcat"), ["strcat(value: any, ...) -> string"]);
     assert_eq!(
         lines("sum"),
-        ["sum(x: T) -> long or real, where T is a number"]
+        [
+            "sum(x: T) -> long or real, where T is a number",
+            "sum(x: timespan) -> timespan",
+        ]
     );
     assert_eq!(
         lines("bin"),
@@ -734,13 +737,13 @@ fn arg_type_error_for_mismatched_type_variable() {
 
 #[test]
 fn arg_type_error_for_class_constraint() {
-    let e = arg_error("sum", &[String]);
+    let e = arg_error("stdev", &[String]);
     assert_eq!(e.expected, Expected::OneOf(vec![TypeClass::Numeric]));
     let args = operands(&["price"]);
-    let d = e.diagnostic(def("sum"), call(&args));
+    let d = e.diagnostic(def("stdev"), call(&args));
     assert_eq!(
         d.message,
-        "argument `x` of `sum` must be a number, found `string`"
+        "argument `x` of `stdev` must be a number, found `string`"
     );
     assert_eq!(
         d.help[0].message,

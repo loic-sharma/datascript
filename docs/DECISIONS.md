@@ -501,6 +501,35 @@ DataScript type (`real`), and keeping the file's type in the HIR is not worth it
 decimals exact. **wasm**: the crate's `wasm` feature is empty and `compression` (default) is
 native-only; `.cargo/config.toml` sets the getrandom backend for wasm32. *(M1-08, 2026-11-21.)*
 
+### D-045 — How the DataFusion engine lowers and runs plans (M1-09)
+**Scalar functions are our own UDFs.** The engine builds DataFusion without its string, math,
+regex and datetime function sets, and every catalog function is a kernel in
+`datascript-datafusion` (`udf.rs`), so semantics follow LANGUAGE.md and not a DataFusion builtin
+(`log` is natural, `substring` is 0-based, `startofweek` is Sunday, `round` halves away from zero).
+DataFusion's own operators are used only where they match exactly: comparisons, `and`/`or`/`not`,
+`in`, `between`, real arithmetic, `CASE`, `coalesce` and widening casts. **Integer and temporal
+arithmetic is checked** (D-014): `+ - * / %` and unary `-` on `long`, `datetime` and `timespan`,
+`abs`, `bin`, `round` and `sum` over integers and timespans are UDFs/UDAFs that fail with `DS4003`,
+so the engine lists no deviations. **Every UDF carries its expression's span**, so a runtime
+error points at the expression that failed, whether DataFusion hits it while folding constants
+or while running; errors with no span (a malformed row) go to the scan when the query reads one
+source. **Invalid argument values** found at run time (a regex that does not compile, an unknown
+datetime part or format specifier, a percentile outside 0–100) are the new code `DS4004`, from
+M1-09's block; checking constant arguments at compile time is left to M1-13. **Aggregates**:
+`count`, `min`, `max`, `avg`, `stdev`, `variance` and `dcount` (`count(distinct)`, exact) are
+DataFusion's; `sum` of integers and timespans and `percentile` (nearest-rank: the value at rank
+⌈p/100·n⌉, the first percentage seen per group) are UDAFs; `take_any` is `min`, so it is
+deterministic. `stdev`/`variance` of one value are null (sample statistics). `sum`, `sumif` and
+`avg` also take a `timespan`, as in KQL (`avg` truncates to whole µs). **Conversions** return null
+when a value does not convert; `tolong`/`toint`/`toreal` of a `datetime` or `timespan` are null
+(≠ KQL, which gives ticks), strings must be in integer syntax for `tolong`, and `tostring(null)` is
+null while `strcat` skips nulls. **Joins** alias each side (`join<n>_left`/`_right`) and project
+the qualifiers away afterwards, so semi and anti joins whose sides share names work. **Results**
+are rebuilt with the plan's output schema, which carries extension-type metadata (D-024) and
+catches a lowering that returns the wrong type (`DS9001`). `Capabilities::functions` is the
+engine's mapping table (`lower::SUPPORTED`); a test checks it is the whole catalog and that every
+signature lowers. *(M1-09, 2026-11-21.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack
@@ -533,3 +562,10 @@ option to export the full result. Decide in M4-01.
 D-014 says these are runtime errors and calls that "following KQL". Check real KQL behaviour in
 M1-09. If KQL wraps or returns null, either keep the rule and mark it ≠ KQL in LANGUAGE.md §4.1,
 or follow KQL. Either way, record the answer here.
+
+*M1-09 (2026-11-21):* Microsoft's KQL documentation does not say; the numerical operators page
+covers truncating integer division and null propagation only, and no Kusto cluster was available
+to try it. DataScript keeps the rule (errors, `DS4003`), which the DataFusion engine now
+implements without deviations. Still open: whoever can run KQL should check `print
+9223372036854775807 + 1` and `print 1 / 0`, then either mark the rule ≠ KQL in LANGUAGE.md §4.1 or
+close this question.

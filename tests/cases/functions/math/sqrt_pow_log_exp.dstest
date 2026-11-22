@@ -1,0 +1,11 @@
+# `sqrt`, `pow`, `log` (natural), `log10` and `exp` return `real`.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project s = sqrt(16), p = pow(2, 10), p2 = pow(4, 0.5), l = log(exp(1)), l10 = log10(1000), e = exp(0), neg = sqrt(-1.0), lz = log(0)
+---- expected
+s    | p      | p2   | l    | l10  | e    | neg  | lz
+real | real   | real | real | real | real | real | real
+-----+--------+------+------+------+------+------+-----
+ 4.0 | 1024.0 |  2.0 |  1.0 |  3.0 |  1.0 |  NaN | -inf

@@ -1,0 +1,10 @@
+# `sumif` adds the values of the rows where the predicate is true.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| summarize big = sumif(amount, amount >= 250), cnt = sumif(1, amount >= 250), t = sumif(1h, amount >= 250)
+---- expected
+big    | cnt  | t
+real   | long | timespan
+-------+------+---------
+251.75 |    1 | 01:00:00

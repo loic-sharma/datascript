@@ -1,0 +1,11 @@
+# `tobool`: `"true"`/`"false"` in any case, numbers (0 is false).
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = tobool('TRUE'), b = tobool('false'), c = tobool('yes'), d = tobool(0), e = tobool(-3), f = tobool(0.0), g = tobool(true)
+---- expected
+a    | b     | c    | d     | e    | f     | g
+bool | bool  | bool | bool  | bool | bool  | bool
+-----+-------+------+-------+------+-------+-----
+true | false | null | false | true | false | true

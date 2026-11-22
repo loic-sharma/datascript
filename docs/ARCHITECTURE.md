@@ -190,6 +190,8 @@ pub struct ResultStream { pub schema: SchemaRef, pub batches: BatchStream }  // 
   web UI's Stop button work.
 - Engine errors are mapped to `Diagnostic`s by the backend. When the backend can trace an error
   back to an IR node, it attaches that node's source span. The IR carries spans for this reason.
+  The DataFusion backend lowers scalar functions and checked arithmetic to UDFs that carry their
+  expression's span, so their errors point at that expression (D-045).
 - A `Session` type in this crate wires everything together for frontends: it holds the engine, a
   schema cache, and the clock, and offers `check`, `explain`, and `run` over a `SourceFile`. It does
   not hold one document's text, so the LSP and the web server use one `Session` for many documents

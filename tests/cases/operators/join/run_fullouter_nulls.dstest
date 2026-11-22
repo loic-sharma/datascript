@@ -2,7 +2,6 @@
 # customer but no orders. The one `customerId` column is `coalesce(left, right)`, so it is never
 # null (D-019).
 mode: run
-skip: `join` cannot run yet (M1-06, M1-09)
 ---- query
 from '../../../data/orders.csv'
 | where customerId in ('c-001', 'c-999')

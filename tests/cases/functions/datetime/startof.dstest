@@ -1,0 +1,13 @@
+# `startof*` round down to the period; weeks start on Sunday (D-014). The optional offset
+# moves by whole periods.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| extend t = datetime(2024-02-29T23:59:59Z)
+| project d = startofday(t), w = startofweek(t), m = startofmonth(t), y = startofyear(t), prev_m = startofmonth(t, -1), next_w = startofweek(t, 1), next_y = startofyear(t, 1)
+---- expected
+d                    | w                    | m                    | y                    | prev_m               | next_w               | next_y
+datetime             | datetime             | datetime             | datetime             | datetime             | datetime             | datetime
+---------------------+----------------------+----------------------+----------------------+----------------------+----------------------+---------------------
+2024-02-29T00:00:00Z | 2024-02-25T00:00:00Z | 2024-02-01T00:00:00Z | 2024-01-01T00:00:00Z | 2024-01-01T00:00:00Z | 2024-03-03T00:00:00Z | 2025-01-01T00:00:00Z

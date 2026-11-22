@@ -1,0 +1,12 @@
+# `now()` and `ago()` use the injected clock (D-015); `now(offset)` adds the offset.
+mode: run
+now: 2024-03-15T10:30:00Z
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project n = now(), plus = now(1h), a = ago(1d), recent = timestamp > ago(365d)
+---- expected
+n                    | plus                 | a                    | recent
+datetime             | datetime             | datetime             | bool
+---------------------+----------------------+----------------------+-------
+2024-03-15T10:30:00Z | 2024-03-15T11:30:00Z | 2024-03-14T10:30:00Z | true

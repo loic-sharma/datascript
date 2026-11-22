@@ -1,0 +1,12 @@
+# `datetime_part` for every part name; `week_of_year` is the ISO 8601 week.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| extend t = datetime(2024-12-30T13:45:07.123456Z)
+| project y = datetime_part('year', t), q = datetime_part('quarter', t), mo = datetime_part('month', t), w = datetime_part('week_of_year', t), d = datetime_part('day', t), doy = datetime_part('dayofyear', t), h = datetime_part('hour', t), mi = datetime_part('minute', t), s = datetime_part('second', t), ms = datetime_part('millisecond', t), us = datetime_part('microsecond', t), ns = datetime_part('nanosecond', t), up = datetime_part('Year', t)
+---- expected
+y    | q    | mo   | w    | d    | doy  | h    | mi   | s    | ms   | us     | ns        | up
+long | long | long | long | long | long | long | long | long | long | long   | long      | long
+-----+------+------+------+------+------+------+------+------+------+--------+-----------+-----
+2024 |    4 |   12 |    1 |   30 |  365 |   13 |   45 |    7 |  123 | 123456 | 123456000 | 2024

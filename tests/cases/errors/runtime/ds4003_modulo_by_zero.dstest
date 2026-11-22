@@ -1,0 +1,13 @@
+# Integer modulo by zero is DS4003.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| extend m = 10 % (strlen(customerId) - 5)
+---- expected
+error[DS4003]: integer modulo by zero
+  --> query:2:14
+  |
+2 | | extend m = 10 % (strlen(customerId) - 5)
+  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the divisor is zero for at least one row
+  |
+  = help: convert to `real` to get `inf` or `NaN` instead, or filter out the zero divisors with `where`

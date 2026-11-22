@@ -1,0 +1,10 @@
+# `countif` counts the rows where the predicate is true; null counts as false.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| summarize big = countif(amount > 200), none = countif(amount > 1000000), nulls = countif(amount > 0 or isnull(amount))
+---- expected
+big  | none | nulls
+long | long | long
+-----+------+------
+   3 |    0 |    50

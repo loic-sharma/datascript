@@ -1,0 +1,11 @@
+# `tolower` and `toupper` use Unicode case mapping.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project l = tolower('ÄBC Straße'), u = toupper('äbc straße'), n = tolower(string(null))
+---- expected
+l          | u           | n
+string     | string      | string
+-----------+-------------+-------
+äbc straße | ÄBC STRASSE | null

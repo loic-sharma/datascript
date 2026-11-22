@@ -1,0 +1,10 @@
+# `dcount` is exact (≠ KQL) and ignores nulls.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| summarize customers = dcount(customerId), amounts = dcount(amount), all = count()
+---- expected
+customers | amounts | all
+long      | long    | long
+----------+---------+-----
+       13 |      42 |   50

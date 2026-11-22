@@ -1,0 +1,11 @@
+# `trim(regex, source)` removes leading and trailing matches of the regex (as in KQL).
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = trim(@'\s+', '  hi there  '), b = trim('-', '--x-y--'), c = trim('ab', 'ababcab'), d = trim(@'\d', '12a34')
+---- expected
+a        | b      | c      | d
+string   | string | string | string
+---------+--------+--------+-------
+hi there | x-y    | c      | a

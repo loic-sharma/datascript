@@ -1,0 +1,11 @@
+# `tostring` of every type; null stays null.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project b = tostring(true), l = tostring(-42), r = tostring(2.50), r2 = tostring(1e21), s = tostring('x'), dt = tostring(timestamp), ts = tostring(-1.5h), ts2 = tostring(1d + 1ms), n = tostring(long(null))
+---- expected
+b      | l      | r      | r2                     | s      | dt                   | ts        | ts2            | n
+string | string | string | string                 | string | string               | string    | string         | string
+-------+--------+--------+------------------------+--------+----------------------+-----------+----------------+-------
+true   | -42    | 2.5    | 1000000000000000000000 | x      | 2023-12-02T08:26:08Z | -01:30:00 | 1.00:00:00.001 | null

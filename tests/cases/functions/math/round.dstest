@@ -1,0 +1,11 @@
+# `round` rounds halves away from zero (LANGUAGE.md §7); integers stay `long`.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = round(2.5), b = round(-2.5), c = round(1.2345, 2), d = round(1250.0, -2), e = round(1249, -2), f = round(-1250, -2), g = round(7), h = round(0.5)
+---- expected
+a    | b    | c    | d      | e    | f     | g    | h
+real | real | real | real   | long | long  | long | real
+-----+------+------+--------+------+-------+------+-----
+ 3.0 | -3.0 | 1.23 | 1300.0 | 1200 | -1300 |    7 |  1.0

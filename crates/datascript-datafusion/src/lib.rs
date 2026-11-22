@@ -1,38 +1,38 @@
 //! Apache DataFusion backend for DataScript.
 //!
 //! [`DataFusionEngine`] implements [`Engine`]: it reads source schemas ([`sources`]), lowers the
-//! IR to a DataFusion `LogicalPlan`, and runs it. Lowering handles the `Scan`, `Filter`,
-//! `Project` and `Limit` nodes so far; M1-09 builds it out.
+//! IR to a DataFusion `LogicalPlan` ([`lower`]), and runs it. Scalar functions and checked
+//! arithmetic are UDFs ([`udf`], [`udaf`]) that carry the span of their expression, so runtime
+//! errors point at the expression that failed ([`errors`]).
 //!
 //! Features: `compression` (default) reads `.gz`, `.bz2`, `.xz` and `.zst` CSV, TSV and JSON
 //! files. `wasm` is the set that builds for `wasm32-unknown-unknown`; use it with
 //! `--no-default-features` (docs/spikes/datafusion-wasm.md).
 
+mod calendar;
 mod checked;
+mod errors;
+mod lower;
 mod sources;
+mod udaf;
+mod udf;
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use arrow_schema::{DataType, SchemaRef};
-use datafusion::common::{Column, ScalarValue};
-use datafusion::datasource::listing::{ListingTable, ListingTableConfig};
-use datafusion::datasource::provider_as_source;
-use datafusion::error::DataFusionError;
-use datafusion::functions::expr_fn::nullif;
-use datafusion::logical_expr::{LogicalPlan, LogicalPlanBuilder, Operator, binary_expr, cast};
-use datafusion::prelude::{Expr as DfExpr, SessionConfig, SessionContext, lit};
-use datascript_compiler::arrow::to_arrow_type;
-use datascript_compiler::ir::{
-    BinaryOp, Expr, ExprKind, Plan, PlanNode, PrefixOp, QueryPlan, Value,
-};
+use arrow_schema::SchemaRef;
+use datafusion::arrow::array::{ArrayRef, RecordBatch};
+use datafusion::arrow::compute::cast;
+use datafusion::prelude::{SessionConfig, SessionContext};
+use datascript_compiler::capabilities::FunctionSupport;
+use datascript_compiler::ir::{PlanNode, QueryPlan};
 use datascript_compiler::{Capabilities, SourceError, SourceRef};
-use datascript_diagnostics::codes::{DS4002, DS4003, DS9001};
-use datascript_diagnostics::{Diagnostic, Span};
+use datascript_diagnostics::Diagnostic;
 use datascript_engine::{Engine, ExecContext, ResultStream};
 use futures::StreamExt;
 
+use crate::lower::{Lowering, internal};
 use crate::sources::Resolved;
 
 /// Settings that make results deterministic in tests (D-017).
@@ -85,11 +85,20 @@ pub struct DataFusionEngine {
     resolved: Mutex<HashMap<SourceKey, Arc<Resolved>>>,
 }
 
+/// What this backend supports: every join kind and format, the functions it has a mapping for
+/// ([`lower::SUPPORTED`]), and no deviations (integer arithmetic is checked, D-014).
+fn capabilities() -> Capabilities {
+    Capabilities {
+        functions: FunctionSupport::Only(lower::SUPPORTED.iter().map(|f| f.to_string()).collect()),
+        ..Capabilities::full()
+    }
+}
+
 impl DataFusionEngine {
     pub fn new(config: DataFusionConfig) -> Self {
         DataFusionEngine {
             config,
-            capabilities: Capabilities::full(),
+            capabilities: capabilities(),
             tables: BTreeMap::new(),
             resolved: Mutex::new(HashMap::new()),
         }
@@ -185,318 +194,77 @@ impl Engine for DataFusionEngine {
         ctx: &ExecContext,
     ) -> Result<ResultStream, Diagnostic> {
         let session = self.context();
-        let mut lowering = Lowering {
-            engine: self,
-            session: &session,
-            ctx,
-            tables: 0,
-        };
-        let logical = lowering.plan(&plan.root).await?;
+        // Resolve every scan first: that reads files, lowering does not.
+        let mut resolved = Vec::new();
+        for scan in lower::scans(&plan.root) {
+            let PlanNode::Scan { source } = &scan.node else {
+                continue;
+            };
+            let r = self.resolved(&session, source, ctx).await.map_err(|e| {
+                // The schema was read during checking, so the files changed since.
+                internal(
+                    scan.span,
+                    &format!("the source changed while the query ran: {e:?}"),
+                )
+            })?;
+            resolved.push(r);
+        }
+        let mut lowering = Lowering::new(resolved, ctx.now_micros);
+        let logical = lowering.plan(&plan.root)?;
+        let errors = lowering.errors;
         let span = plan.root.span;
         let frame = session
             .execute_logical_plan(logical)
             .await
-            .map_err(|e| engine_error(span, &e))?;
+            .map_err(|e| errors.diagnostic(span, &e))?;
         let stream = frame
             .execute_stream()
             .await
-            .map_err(|e| engine_error(span, &e))?;
-        let batches = stream.map(move |batch| batch.map_err(|e| engine_error(span, &e)));
+            .map_err(|e| errors.diagnostic(span, &e))?;
+        let schema = plan.output_schema.clone();
+        let out = schema.clone();
+        let batches = stream.map(move |batch| {
+            let batch = batch.map_err(|e| errors.diagnostic(span, &e))?;
+            conform(&out, &batch).map_err(|message| internal(span, &message))
+        });
         Ok(ResultStream {
-            schema: plan.output_schema.clone(),
+            schema,
             batches: Box::pin(batches),
         })
     }
 }
 
-/// Lowers IR plans to DataFusion logical plans.
-struct Lowering<'a> {
-    engine: &'a DataFusionEngine,
-    session: &'a SessionContext,
-    ctx: &'a ExecContext,
-    /// Scans so far; each gets its own table name.
-    tables: usize,
-}
-
-impl Lowering<'_> {
-    async fn plan(&mut self, plan: &Plan) -> Result<LogicalPlan, Diagnostic> {
-        // Only single-input nodes lower for now, so walk the first inputs to the bottom and build
-        // upwards; the first node that cannot be lowered yet is reported (M1-09).
-        let mut chain = vec![plan];
-        while let Some(input) = chain.last().and_then(|p| p.first_input()) {
-            chain.push(input);
-        }
-        let mut builder: Option<LogicalPlanBuilder> = None;
-        for node in chain.into_iter().rev() {
-            let span = node.span;
-            let fail = |e: DataFusionError| engine_error(span, &e);
-            builder = Some(match (&node.node, builder) {
-                (PlanNode::Scan { source }, _) => self.scan(source, node).await?,
-                (PlanNode::Filter { predicate, .. }, Some(b)) => {
-                    b.filter(lower_expr(predicate)?).map_err(fail)?
-                }
-                (PlanNode::Project { columns, .. }, Some(b)) => {
-                    let exprs = columns
-                        .iter()
-                        .map(|item| Ok(lower_expr(&item.expr)?.alias(&item.name)))
-                        .collect::<Result<Vec<_>, Diagnostic>>()?;
-                    b.project(exprs).map_err(fail)?
-                }
-                (PlanNode::Limit { count, .. }, Some(b)) => {
-                    let count = usize::try_from(*count).unwrap_or(usize::MAX);
-                    b.limit(0, Some(count)).map_err(fail)?
-                }
-                (
-                    PlanNode::Values { .. }
-                    | PlanNode::Aggregate { .. }
-                    | PlanNode::Sort { .. }
-                    | PlanNode::TopN { .. }
-                    | PlanNode::Distinct { .. }
-                    | PlanNode::Join { .. }
-                    | PlanNode::Union { .. },
-                    _,
-                ) => return Err(cannot_run_yet(node)),
-                (_, None) => return Err(internal(span, "a plan node has no input")),
-            });
-        }
-        let builder = builder.ok_or_else(|| internal(plan.span, "the plan is empty"))?;
-        builder.build().map_err(|e| engine_error(plan.span, &e))
-    }
-
-    /// Scans a source and casts each column to the type of `plan.schema`.
-    ///
-    /// Files with the same schema are read by one table. Otherwise each file is read with its
-    /// own schema, projected to the merged columns (null where a file lacks one), and the files
-    /// are combined with `UNION ALL`, in path order. That keeps CSV columns aligned by name when
-    /// headers differ: DataFusion applies a table schema to CSV files by position.
-    async fn scan(
-        &mut self,
-        source: &SourceRef,
-        plan: &Plan,
-    ) -> Result<LogicalPlanBuilder, Diagnostic> {
-        let span = plan.span;
-        let resolved = self
-            .engine
-            .resolved(self.session, source, self.ctx)
-            .await
-            .map_err(|e| {
-                // The schema was read during checking, so the files changed since.
-                internal(
-                    span,
-                    &format!("the source changed while the query ran: {e:?}"),
-                )
-            })?;
-        let fail = |e: DataFusionError| engine_error(span, &e);
-        let groups: Vec<Vec<&sources::SourceFile>> = if resolved.uniform() {
-            vec![resolved.files.iter().collect()]
-        } else {
-            resolved.files.iter().map(|f| vec![f]).collect()
-        };
-        let mut combined: Option<LogicalPlanBuilder> = None;
-        let null_value = resolved.reader.null_value();
-        for files in groups {
-            let raw = files[0].raw.clone();
-            // With `null_value`, read text and turn the value into null here (see `CsvReader`).
-            let read_as = match null_value {
-                Some(_) => as_text(&raw),
-                None => raw.clone(),
-            };
-            let urls = files.iter().map(|f| f.url.clone()).collect();
-            let config = ListingTableConfig::new_with_multi_paths(urls)
-                .with_listing_options(resolved.reader.listing_options())
-                .with_schema(read_as.clone());
-            let provider = ListingTable::try_new(config).map_err(fail)?;
-            self.tables += 1;
-            let name = format!("source{}", self.tables);
-            let builder =
-                LogicalPlanBuilder::scan(name, provider_as_source(Arc::new(provider)), None)
-                    .map_err(fail)?;
-            let columns = plan
-                .schema
-                .fields()
-                .iter()
-                .map(|field| scan_column(&read_as, field.name(), field.data_type(), null_value))
-                .collect::<Vec<_>>();
-            let builder = builder.project(columns).map_err(fail)?;
-            combined = Some(match combined {
-                None => builder,
-                Some(before) => before.union(builder.build().map_err(fail)?).map_err(fail)?,
-            });
-        }
-        combined.ok_or_else(|| internal(span, "a source with no files"))
-    }
-}
-
-/// Column `name` of a file with schema `raw`, as type `target`: cast if needed, null if the
-/// file does not have it, null where it holds `null_value`. `UInt64` is converted with a check,
-/// since values above `i64::MAX` must be an error naming the column (LANGUAGE.md §5.1).
-fn scan_column(
-    raw: &arrow_schema::Schema,
-    name: &str,
-    target: &DataType,
-    null_value: Option<&str>,
-) -> DfExpr {
-    let Ok(field) = raw.field_with_name(name) else {
-        return cast(lit(ScalarValue::Null), target.clone()).alias(name);
-    };
-    let mut column = DfExpr::Column(Column::new_unqualified(name));
-    if let Some(text) = null_value {
-        column = nullif(column, lit(text));
-    }
-    if field.data_type() == target {
-        column.alias(name)
-    } else if field.data_type() == &DataType::UInt64 && target == &DataType::Int64 {
-        checked::uint64_to_long(name).call(vec![column]).alias(name)
-    } else {
-        cast(column, target.clone()).alias(name)
-    }
-}
-
-/// `schema` with every column read as text.
-fn as_text(schema: &arrow_schema::Schema) -> SchemaRef {
-    let fields: Vec<arrow_schema::Field> = schema
-        .fields()
-        .iter()
-        .map(|f| arrow_schema::Field::new(f.name(), DataType::Utf8, true))
-        .collect();
-    Arc::new(arrow_schema::Schema::new(fields))
-}
-
-fn lower_expr(expr: &Expr) -> Result<DfExpr, Diagnostic> {
-    Ok(match &expr.kind {
-        // `Column::new_unqualified`, not `col()`, which lowercases unquoted names.
-        ExprKind::Column(name) => DfExpr::Column(Column::new_unqualified(name)),
-        ExprKind::Literal(value) => lit(match value {
-            Value::Bool(b) => ScalarValue::Boolean(Some(*b)),
-            Value::Long(n) => ScalarValue::Int64(Some(*n)),
-            Value::Real(x) => ScalarValue::Float64(Some(*x)),
-            Value::String(s) => ScalarValue::Utf8(Some(s.clone())),
-            Value::DateTime(us) => ScalarValue::TimestampMicrosecond(Some(*us), Some("UTC".into())),
-            Value::TimeSpan(us) => ScalarValue::DurationMicrosecond(Some(*us)),
-            Value::Null => ScalarValue::try_from(&to_arrow_type(expr.ty))
-                .map_err(|e| engine_error(expr.span, &e))?,
-        }),
-        ExprKind::Binary { op, left, right } => binary_expr(
-            lower_expr(left)?,
-            lower_op(*op, expr.span)?,
-            lower_expr(right)?,
-        ),
-        ExprKind::Unary { op, operand } => match op {
-            PrefixOp::Neg => DfExpr::Negative(Box::new(lower_expr(operand)?)),
-            PrefixOp::Not => DfExpr::Not(Box::new(lower_expr(operand)?)),
-        },
-        ExprKind::In {
-            expr: lhs,
-            list,
-            negated,
-            case_insensitive: false,
-        } => {
-            let list = list.iter().map(lower_expr).collect::<Result<Vec<_>, _>>()?;
-            lower_expr(lhs)?.in_list(list, *negated)
-        }
-        ExprKind::Between {
-            expr: lhs,
-            low,
-            high,
-            negated,
-        } => {
-            let (lhs, low, high) = (lower_expr(lhs)?, lower_expr(low)?, lower_expr(high)?);
-            if *negated {
-                lhs.not_between(low, high)
-            } else {
-                lhs.between(low, high)
-            }
-        }
-        ExprKind::Cast(inner) => cast(lower_expr(inner)?, to_arrow_type(expr.ty)),
-        ExprKind::In {
-            case_insensitive: true,
-            ..
-        } => return Err(not_implemented(expr.span, "`in~`")),
-        ExprKind::Call { function, .. } => {
-            return Err(not_implemented(
-                expr.span,
-                &format!("the function `{function}`"),
-            ));
-        }
-    })
-}
-
-/// The arithmetic, comparison and logical operators; M1-09 maps the string operators.
-fn lower_op(op: BinaryOp, span: Span) -> Result<Operator, Diagnostic> {
-    Ok(match op {
-        BinaryOp::Eq => Operator::Eq,
-        BinaryOp::NotEq => Operator::NotEq,
-        BinaryOp::Lt => Operator::Lt,
-        BinaryOp::LtEq => Operator::LtEq,
-        BinaryOp::Gt => Operator::Gt,
-        BinaryOp::GtEq => Operator::GtEq,
-        BinaryOp::And => Operator::And,
-        BinaryOp::Or => Operator::Or,
-        BinaryOp::Add => Operator::Plus,
-        BinaryOp::Sub => Operator::Minus,
-        BinaryOp::Mul => Operator::Multiply,
-        BinaryOp::Div => Operator::Divide,
-        BinaryOp::Mod => Operator::Modulo,
-        BinaryOp::EqCi | BinaryOp::NotEqCi | BinaryOp::String { .. } | BinaryOp::MatchesRegex => {
-            let symbol = datascript_compiler::operators::op_symbol(op);
-            return Err(not_implemented(span, &format!("the `{symbol}` operator")));
-        }
-    })
-}
-
-/// A plan this engine cannot run yet (M1-09).
-fn not_implemented(span: Span, what: &str) -> Diagnostic {
-    Diagnostic::error(
-        DS9001,
-        format!("{what} is not implemented in the DataFusion engine yet"),
-    )
-    .primary(span, "not supported by this version of DataScript")
-}
-
-/// DS4002: DataFusion failed. Its message goes in a note (DIAGNOSTICS.md rule 10). A value
-/// out of range at the scan is DS4003 instead.
-fn engine_error(span: Span, error: &DataFusionError) -> Diagnostic {
-    if let Some(out_of_range) = checked::find_out_of_range(error) {
-        return Diagnostic::error(
-            DS4003,
-            format!("a value in column `{}` is too large", out_of_range.column),
-        )
-        .primary(span, "while reading this source")
-        .note(format!(
-            "the file has {}, but the largest `long` is {}",
-            out_of_range.value,
-            i64::MAX
+/// `batch` with the plan's output schema: the canonical types and the field metadata that
+/// carries extension types (D-024). A column whose type differs is cast; a cast that fails is
+/// a lowering bug.
+fn conform(schema: &SchemaRef, batch: &RecordBatch) -> Result<RecordBatch, String> {
+    if batch.num_columns() != schema.fields().len() {
+        return Err(format!(
+            "the engine returned {} columns for {} in the plan",
+            batch.num_columns(),
+            schema.fields().len()
         ));
     }
-    Diagnostic::error(DS4002, "the query failed while running")
-        .primary(span, "this step failed")
-        .note(format!("DataFusion said: {}", error.strip_backtrace()))
-}
-
-/// `DS9001` for a plan node this backend cannot lower yet (M1-09).
-fn cannot_run_yet(plan: &Plan) -> Diagnostic {
-    let what = match &plan.node {
-        PlanNode::Aggregate { .. } => "`summarize` and `count` cannot run yet",
-        PlanNode::Sort { .. } => "`sort` cannot run yet",
-        PlanNode::TopN { .. } => "`top` cannot run yet",
-        PlanNode::Distinct { .. } => "`distinct` cannot run yet",
-        PlanNode::Join { .. } => "`join` cannot run yet",
-        PlanNode::Union { .. } => "`union` cannot run yet",
-        PlanNode::Values { .. } => "`getschema` cannot run yet",
-        _ => "this operator cannot run yet",
-    };
-    Diagnostic::error(DS9001, what)
-        .primary(plan.span, "this version can check it, but not run it")
-        .note(
-            "this version can run `where`, `project`, `project-away`, `project-rename`, \
-             `extend` and `take`",
-        )
-}
-
-fn internal(span: Span, message: &str) -> Diagnostic {
-    Diagnostic::error(DS9001, format!("internal error: {message}"))
-        .primary(span, "while running this")
-        .note("this is a bug in DataScript; please report it")
+    let columns = batch
+        .columns()
+        .iter()
+        .zip(schema.fields())
+        .map(|(column, field)| {
+            if column.data_type() == field.data_type() {
+                Ok(column.clone())
+            } else {
+                cast(column, field.data_type()).map_err(|e| {
+                    format!(
+                        "column `{}` came back as {}, not {}: {e}",
+                        field.name(),
+                        column.data_type(),
+                        field.data_type()
+                    )
+                })
+            }
+        })
+        .collect::<Result<Vec<ArrayRef>, String>>()?;
+    RecordBatch::try_new(schema.clone(), columns).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

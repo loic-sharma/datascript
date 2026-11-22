@@ -1,0 +1,18 @@
+# `count` returns one row with column `Count`, also over no rows.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| count;
+from '../../../data/orders.csv'
+| where amount > 1000000
+| count
+---- expected
+Count
+long
+-----
+   50
+
+Count
+long
+-----
+    0

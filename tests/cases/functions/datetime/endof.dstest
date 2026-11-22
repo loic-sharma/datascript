@@ -1,0 +1,12 @@
+# `endof*` give the last microsecond of the period (the week ends on Saturday).
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| extend t = datetime(2024-02-29T23:59:59Z)
+| project d = endofday(t), w = endofweek(t), m = endofmonth(t), y = endofyear(t), next_m = endofmonth(t, 1)
+---- expected
+d                           | w                           | m                           | y                           | next_m
+datetime                    | datetime                    | datetime                    | datetime                    | datetime
+----------------------------+-----------------------------+-----------------------------+-----------------------------+----------------------------
+2024-02-29T23:59:59.999999Z | 2024-03-02T23:59:59.999999Z | 2024-02-29T23:59:59.999999Z | 2024-12-31T23:59:59.999999Z | 2024-03-31T23:59:59.999999Z

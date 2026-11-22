@@ -1,0 +1,13 @@
+# `sum` of integers checks for overflow.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| summarize total = sum(9000000000000000000)
+---- expected
+error[DS4003]: the result of `sum` does not fit in a `long`
+  --> query:2:21
+  |
+2 | | summarize total = sum(9000000000000000000)
+  |                     ^^^^^^^^^^^^^^^^^^^^^^^^ this overflowed
+  |
+  = note: a `long` holds whole numbers from -9223372036854775808 to 9223372036854775807

@@ -1,0 +1,16 @@
+# A `bin` key takes the column's name (LANGUAGE.md §3.3) and bins datetimes from the epoch.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where timestamp < datetime(2024-01-01)
+| summarize orders = count() by bin(timestamp, 7d)
+| sort by timestamp asc
+---- expected
+timestamp            | orders
+datetime             | long
+---------------------+-------
+2023-11-30T00:00:00Z |      1
+2023-12-07T00:00:00Z |      2
+2023-12-14T00:00:00Z |      1
+2023-12-21T00:00:00Z |      3
+2023-12-28T00:00:00Z |      2

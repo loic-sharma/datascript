@@ -1,0 +1,10 @@
+# `stdev` and `variance` are the sample statistics (n - 1).
+mode: run
+---- query
+from '../../../data/reordered/*.csv'
+| summarize v = variance(score), s = stdev(score), one = stdev(iff(id == 1, score, long(null)))
+---- expected
+v     | s                 | one
+real  | real              | real
+------+-------------------+-----
+600.0 | 24.49489742783178 | null

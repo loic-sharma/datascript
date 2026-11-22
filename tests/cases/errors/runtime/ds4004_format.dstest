@@ -1,0 +1,13 @@
+# An unknown format specifier is DS4004.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| project f = format_datetime(timestamp, 'yyyy-QQ')
+---- expected
+error[DS4004]: `QQ` is not a datetime format specifier
+  --> query:2:15
+  |
+2 | | project f = format_datetime(timestamp, 'yyyy-QQ')
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ in this call of `format_datetime`
+  |
+  = note: the specifiers are yyyy, yy, y, MM, M, dd, d, HH, H, hh, h, mm, m, ss, s, f to fffffff, F to FFFFFFF and tt; other characters that are not letters are copied

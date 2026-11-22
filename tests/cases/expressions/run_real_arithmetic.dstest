@@ -1,0 +1,11 @@
+# Real arithmetic follows IEEE 754: division by zero gives `inf`, `-inf` or `NaN` (LANGUAGE.md §4.1).
+mode: run
+---- query
+from '../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = 1.0 / 0, b = -1.0 / 0, c = 0.0 / 0, d = 7 / 2.0, e = -amount, f = amount * 2 - 0.5
+---- expected
+a    | b    | c    | d    | e      | f
+real | real | real | real | real   | real
+-----+------+------+------+--------+------
+ inf | -inf |  NaN |  3.5 | -183.5 | 366.5

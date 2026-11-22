@@ -1,0 +1,25 @@
+# Every `timespan` row of LANGUAGE.md §4.1.
+mode: run
+---- query
+from '../../data/orders.csv'
+| where orderId == 'o-0001'
+| project dt_minus_dt = datetime(2024-01-02) - datetime(2024-01-01T12:00:00Z),
+    dt_plus_ts = datetime(2024-01-01) + 90m,
+    ts_plus_dt = 1d + datetime(2024-01-01),
+    dt_minus_ts = datetime(2024-01-01) - 1s,
+    ts_plus_ts = 1h + 30m,
+    ts_minus_ts = 1h - 2h,
+    neg = -1.5h,
+    times_n = 1h * 3,
+    n_times = 2 * 45m,
+    times_real = 1h * 1.5,
+    div_n = 1h / 7,
+    div_real = 1h / 2.5,
+    div_ts = 90m / 1h,
+    div_zero_ts = 1h / 0s,
+    cmp = 1h > 59m
+---- expected
+dt_minus_dt | dt_plus_ts           | ts_plus_dt           | dt_minus_ts          | ts_plus_ts | ts_minus_ts | neg       | times_n  | n_times  | times_real | div_n           | div_real | div_ts | div_zero_ts | cmp
+timespan    | datetime             | datetime             | datetime             | timespan   | timespan    | timespan  | timespan | timespan | timespan   | timespan        | timespan | real   | real        | bool
+------------+----------------------+----------------------+----------------------+------------+-------------+-----------+----------+----------+------------+-----------------+----------+--------+-------------+-----
+12:00:00    | 2024-01-01T01:30:00Z | 2024-01-02T00:00:00Z | 2023-12-31T23:59:59Z | 01:30:00   | -01:00:00   | -01:30:00 | 03:00:00 | 01:30:00 | 01:30:00   | 00:08:34.285714 | 00:24:00 |    1.5 |         inf | true

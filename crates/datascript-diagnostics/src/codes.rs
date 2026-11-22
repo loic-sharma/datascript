@@ -195,6 +195,8 @@ pub const DS4001: Code = Code::new(4001);
 pub const DS4002: Code = Code::new(4002);
 /// arithmetic error: integer division by zero, overflow, or out-of-range value (D-014)
 pub const DS4003: Code = Code::new(4003);
+/// invalid argument value at runtime: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100
+pub const DS4004: Code = Code::new(4004);
 /// chart not drawn in this runtime
 pub const DS5001: Code = Code::new(5001);
 /// chart needs a column of a kind the result lacks
@@ -680,6 +682,12 @@ pub const REGISTRY: &[CodeInfo] = &[
         code: DS4003,
         severity: Some(Severity::Error),
         summary: "arithmetic error: integer division by zero, overflow, or out-of-range value (D-014)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS4004,
+        severity: Some(Severity::Error),
+        summary: "invalid argument value at runtime: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100",
         status: CodeStatus::Active,
     },
     CodeInfo {

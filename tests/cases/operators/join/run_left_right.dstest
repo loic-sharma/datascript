@@ -1,0 +1,23 @@
+# `$left.a == $right.b` keeps both columns; colliding names are renamed (DS1007).
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId in ('o-0001', 'o-0002')
+| project orderId, who = customerId, amount
+| join (from '../../../data/customers.csv' | project customerId, amount = 1.5) on $left.who == $right.customerId
+| sort by orderId asc
+---- expected
+info[DS1007]: `join` renamed column `amount` of the right table to `amount1`
+  --> query:4:8
+  |
+4 | | join (from '../../../data/customers.csv' | project customerId, amount = 1.5) on $left.who == $right.customerId
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this table also has a column `amount`
+  |
+  = help: to choose the names yourself, rename them on the right: `join (from '../../../data/customers.csv' | project customerId, amount = 1.5 | project-rename right_amount = amount)`
+  = note: a column named in `on` is not renamed: the two sides make one column (only `$left.a == $right.b` keeps both)
+
+orderId | who    | amount | customerId | amount1
+string  | string | real   | string     | real
+--------+--------+--------+------------+--------
+o-0001  | c-042  |  183.5 | c-042      |     1.5
+o-0002  | c-042  |   88.5 | c-042      |     1.5

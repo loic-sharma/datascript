@@ -1,0 +1,15 @@
+# `case` returns the value of the first true condition, else the last argument.
+mode: run
+---- query
+from '../../../data/edge/nulls.csv'
+| project id, size = case(value > 4, 'large', value > 2, 'medium', isnull(value), 'unknown', 'small')
+| sort by id asc
+---- expected
+id   | size
+long | string
+-----+--------
+   1 | small
+   2 | medium
+   3 | unknown
+   4 | large
+   5 | unknown

@@ -1,0 +1,15 @@
+# `isnull` and `isnotnull` on any type.
+mode: run
+---- query
+from '../../../data/edge/nulls.csv'
+| project id, a = isnull(name), b = isnotnull(value), c = isnull(when)
+| sort by id asc
+---- expected
+id   | a     | b     | c
+long | bool  | bool  | bool
+-----+-------+-------+------
+   1 | false | true  | false
+   2 | true  | true  | false
+   3 | false | false | false
+   4 | false | true  | true
+   5 | true  | false | true

@@ -1,0 +1,13 @@
+# Integer overflow is DS4003 (D-014): DataFusion wraps, so the engine checks.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| extend big = tolong(amount) * 9223372036854775807
+---- expected
+error[DS4003]: the result of `*` does not fit in a `long`
+  --> query:2:16
+  |
+2 | | extend big = tolong(amount) * 9223372036854775807
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this overflowed
+  |
+  = note: a `long` holds whole numbers from -9223372036854775808 to 9223372036854775807

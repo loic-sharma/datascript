@@ -1,0 +1,12 @@
+# `format_datetime` with KQL specifiers.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| extend t = datetime(2024-03-05T13:07:01.25Z)
+| project a = format_datetime(t, 'yyyy-MM-dd HH:mm:ss'), b = format_datetime(t, 'M/d/yy h:mm tt'), c = format_datetime(t, 'HH:mm:ss.fff'), d = format_datetime(t, 's.FFFFFFF'), e = format_datetime(t, '[yyyy_MM]')
+---- expected
+a                   | b              | c            | d      | e
+string              | string         | string       | string | string
+--------------------+----------------+--------------+--------+----------
+2024-03-05 13:07:01 | 3/5/24 1:07 PM | 13:07:01.250 | 1.25   | [2024_03]

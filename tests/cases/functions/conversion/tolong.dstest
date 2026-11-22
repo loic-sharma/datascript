@@ -1,0 +1,11 @@
+# `tolong`: integer strings, reals truncated toward zero, bools; anything else is null.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = tolong(' 42 '), b = tolong('4.2'), c = tolong(-2.9), d = tolong(true), e = tolong('x'), f = tolong(1e30), g = tolong(timestamp), h = tolong(toint(7))
+---- expected
+a    | b    | c    | d    | e    | f    | g    | h
+long | long | long | long | long | long | long | long
+-----+------+------+------+------+------+------+-----
+  42 | null |   -2 |    1 | null | null | null |    7

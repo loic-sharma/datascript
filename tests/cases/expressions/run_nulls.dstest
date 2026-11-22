@@ -1,0 +1,16 @@
+# Nulls: arithmetic and comparisons with null are null, `and`/`or` use three-valued logic, and
+# `where` keeps only true rows (LANGUAGE.md §4).
+mode: run
+---- query
+from '../../data/edge/nulls.csv'
+| project id, plus = value + 1, cmp = value > 2, both = value > 2 and isnotnull(name), either = value > 2 or id == 5
+| sort by id asc
+---- expected
+id   | plus   | cmp   | both  | either
+long | real   | bool  | bool  | bool
+-----+--------+-------+-------+-------
+   1 |    2.5 | false | false | false
+   2 |    3.5 | true  | false | true
+   3 | null   | null  | null  | null
+   4 |    5.5 | true  | true  | true
+   5 | null   | null  | false | true

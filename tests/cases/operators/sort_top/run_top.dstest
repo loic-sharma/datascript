@@ -1,0 +1,32 @@
+# `top` defaults to descending and sorts on expressions; `order by` is `sort by`.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| top 3 by amount
+| project orderId, amount;
+from '../../../data/orders.csv'
+| top 2 by strcat('x', orderId) asc
+| project orderId;
+from '../../../data/customers.csv'
+| order by name asc
+| take 2
+| project name
+---- expected
+orderId | amount
+string  | real
+--------+-------
+o-0006  | 251.75
+o-0028  | 245.75
+o-0029  | 205.5
+
+orderId
+string
+-------
+o-0001
+o-0002
+
+name
+string
+----------
+Ana Silva
+Ben Okafor

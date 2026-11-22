@@ -1,0 +1,10 @@
+# `min`/`max` over timespans, bools and longs.
+mode: run
+---- query
+from '../../../data/reordered/*.csv'
+| summarize mints = min(id * 1h), maxts = max(id * 1h), minb = min(id > 4), maxb = max(id > 4), minl = min(score), maxl = max(score)
+---- expected
+mints    | maxts    | minb  | maxb | minl | maxl
+timespan | timespan | bool  | bool | long | long
+---------+----------+-------+------+------+-----
+01:00:00 | 08:00:00 | false | true |   10 |   80

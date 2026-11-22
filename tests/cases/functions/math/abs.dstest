@@ -1,0 +1,11 @@
+# `abs` of integers (`long`), reals and timespans.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = abs(-5), b = abs(toint(-3)), c = abs(-2.5), d = abs(-90m)
+---- expected
+a    | b    | c    | d
+long | long | real | timespan
+-----+------+------+---------
+   5 |    3 |  2.5 | 01:30:00

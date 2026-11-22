@@ -1,0 +1,15 @@
+# Integer division by zero is DS4003, pointing at the division even when a later operator
+# follows (D-014).
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where 1 / (strlen(orderId) - 6) > 0
+| project orderId
+---- expected
+error[DS4003]: integer division by zero
+  --> query:2:9
+  |
+2 | | where 1 / (strlen(orderId) - 6) > 0
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^ the divisor is zero for at least one row
+  |
+  = help: convert to `real` to get `inf` or `NaN` instead, or filter out the zero divisors with `where`

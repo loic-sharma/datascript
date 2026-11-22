@@ -35,24 +35,6 @@ impl fmt::Display for ValueOutOfRange {
 
 impl Error for ValueOutOfRange {}
 
-/// The [`ValueOutOfRange`] that caused `error`, if any. DataFusion and Arrow wrap external
-/// errors at several levels, so this walks the whole chain.
-pub(crate) fn find_out_of_range(error: &DataFusionError) -> Option<&ValueOutOfRange> {
-    let mut current: Option<&(dyn Error + 'static)> = Some(error);
-    while let Some(e) = current {
-        if let Some(found) = e.downcast_ref::<ValueOutOfRange>() {
-            return Some(found);
-        }
-        if let Some(DataFusionError::External(inner)) = e.downcast_ref::<DataFusionError>()
-            && let Some(found) = inner.downcast_ref::<ValueOutOfRange>()
-        {
-            return Some(found);
-        }
-        current = e.source();
-    }
-    None
-}
-
 /// `ds_uint64_to_long(column)` for the source column `column`.
 pub(crate) fn uint64_to_long(column: &str) -> ScalarUDF {
     ScalarUDF::from(UInt64ToLong {

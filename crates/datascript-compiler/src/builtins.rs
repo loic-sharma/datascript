@@ -144,18 +144,28 @@ pub(crate) fn functions() -> Vec<FunctionDef> {
         aggregate(
             "sum",
             "Adds up the non-null values in each group. The sum of integers is `long`; of reals, \
-             `real`. With no non-null values the result is null.",
+             `real`; of timespans, `timespan`. With no non-null values the result is null.",
         )
         .sig(sig(vec![p("x", T_NUM)], FIRST_AS_LONG))
+        .sig(sig(vec![p("x", TIMESPAN)], fixed(Type::TimeSpan)))
         .examples(&["sum(amount)"]),
         aggregate(
             "sumif",
             "Adds up the non-null values in each group for the rows where `predicate` is true.",
         )
         .sig(sig(vec![p("x", T_NUM), p("predicate", BOOL)], FIRST_AS_LONG))
+        .sig(sig(
+            vec![p("x", TIMESPAN), p("predicate", BOOL)],
+            fixed(Type::TimeSpan),
+        ))
         .examples(&["sumif(amount, status == \"shipped\")"]),
-        aggregate("avg", "The mean of the non-null values in each group, as a `real`.")
-            .sig(sig(vec![p("x", NUMBER)], fixed(Type::Real)))
+        aggregate(
+            "avg",
+            "The mean of the non-null values in each group: a `real` for numbers, a `timespan` \
+             (truncated to whole microseconds) for timespans.",
+        )
+        .sig(sig(vec![p("x", NUMBER)], fixed(Type::Real)))
+        .sig(sig(vec![p("x", TIMESPAN)], fixed(Type::TimeSpan)))
             .examples(&["avg(amount)"]),
         aggregate("min", "The smallest non-null value in each group.")
             .sig(sig(vec![p("x", T_CMP)], SAME_AS_FIRST))

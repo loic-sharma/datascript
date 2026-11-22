@@ -1,7 +1,6 @@
 # Sample `run` case: summarize revenue per customer, sorted.
 mode: run
 order: strict
-skip: needs `summarize` and `sort` (M1-16)
 ---- query
 from '../../data/orders.csv'
 | summarize revenue = sum(amount) by customerId

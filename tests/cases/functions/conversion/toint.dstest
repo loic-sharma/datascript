@@ -1,0 +1,11 @@
+# `toint` gives an `int`, null when the value does not fit 32 bits.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = toint('2147483647'), b = toint('2147483648'), c = toint(3.99), d = toint(false), e = toint(5000000000)
+---- expected
+a          | b    | c   | d   | e
+int        | int  | int | int | int
+-----------+------+-----+-----+-----
+2147483647 | null |   3 |   0 | null

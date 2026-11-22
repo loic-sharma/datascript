@@ -1,0 +1,11 @@
+# `replace_string` replaces every occurrence; an empty lookup changes nothing.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = replace_string('a.b.c', '.', '/'), b = replace_string('aaa', 'aa', 'b'), c = replace_string('abc', '', 'x')
+---- expected
+a      | b      | c
+string | string | string
+-------+--------+-------
+a/b/c  | ba     | abc

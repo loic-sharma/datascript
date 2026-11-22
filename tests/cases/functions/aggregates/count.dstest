@@ -1,0 +1,14 @@
+# `count()` counts rows, nulls included.
+mode: run
+order: any
+---- query
+from '../../../data/orders.csv'
+| summarize n = count() by customerId
+| where customerId in ('c-001', 'c-011', 'c-999')
+---- expected
+customerId | n
+string     | long
+-----------+-----
+c-999      |    2
+c-001      |    4
+c-011      |    5

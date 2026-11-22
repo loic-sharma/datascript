@@ -1,0 +1,13 @@
+# `where` keeps the rows whose predicate is true; null predicates drop the row (LANGUAGE.md §4).
+mode: run
+order: any
+---- query
+from '../../../data/edge/nulls.csv'
+| where value > 2
+| project id, value
+---- expected
+id   | value
+long | real
+-----+------
+   2 |   2.5
+   4 |   4.5

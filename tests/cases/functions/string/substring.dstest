@@ -1,0 +1,11 @@
+# `substring` is 0-based in characters; a negative start counts from the end.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| where orderId == 'o-0001'
+| project a = substring('abcdef', 2), b = substring('abcdef', 1, 3), c = substring('abcdef', -2), d = substring('abcdef', 4, 10), e = substring('abcdef', 9), f = substring('héllo', 1, 2), g = substring('abc', 1, -1)
+---- expected
+a      | b      | c      | d      | e      | f      | g
+string | string | string | string | string | string | string
+-------+--------+--------+--------+--------+--------+-------
+cdef   | bcd    | ef     | ef     |        | él     |

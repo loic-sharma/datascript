@@ -1,0 +1,58 @@
+# Every `join` kind on the orders of two customers and a customer with no orders (`c-200`)
+# and orders with no customer (`c-999`).
+mode: run
+---- query
+let o = from '../../../data/orders.csv' | where customerId in ('c-001', 'c-999') | summarize orders = count() by customerId;
+let c = from '../../../data/customers.csv' | where customerId in ('c-001', 'c-200') | project customerId, name;
+from o | join c on customerId | sort by customerId asc;
+from o | join kind = leftouter c on customerId | sort by customerId asc;
+from o | join kind = rightouter c on customerId | sort by customerId asc;
+from o | join kind = fullouter c on customerId | sort by customerId asc;
+from o | join kind = leftsemi c on customerId;
+from o | join kind = leftanti c on customerId;
+from o | join kind = rightsemi c on customerId;
+from o | join kind = rightanti c on customerId
+---- expected
+customerId | orders | name
+string     | long   | string
+-----------+--------+----------
+c-001      |      4 | Ana Silva
+
+customerId | orders | name
+string     | long   | string
+-----------+--------+----------
+c-001      |      4 | Ana Silva
+c-999      |      2 | null
+
+customerId | orders | name
+string     | long   | string
+-----------+--------+----------
+c-001      |      4 | Ana Silva
+c-200      |   null | Mo Haddad
+
+customerId | orders | name
+string     | long   | string
+-----------+--------+----------
+c-001      |      4 | Ana Silva
+c-200      |   null | Mo Haddad
+c-999      |      2 | null
+
+customerId | orders
+string     | long
+-----------+-------
+c-001      |      4
+
+customerId | orders
+string     | long
+-----------+-------
+c-999      |      2
+
+customerId | name
+string     | string
+-----------+----------
+c-001      | Ana Silva
+
+customerId | name
+string     | string
+-----------+----------
+c-200      | Mo Haddad

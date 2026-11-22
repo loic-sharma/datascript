@@ -1,0 +1,27 @@
+# `summarize` with expression keys, unnamed aggregates, an item computed over aggregates (D-042),
+# and keys only.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| summarize revenue = sum(amount), avg_ = sum(amount) / count(), count() by month = startofmonth(timestamp)
+| sort by month asc;
+from '../../../data/orders.csv'
+| where customerId in ('c-001', 'c-019')
+| summarize by customerId
+| sort by customerId asc
+---- expected
+month                | revenue | avg_               | count_
+datetime             | real    | real               | long
+---------------------+---------+--------------------+-------
+2023-12-01T00:00:00Z |  979.0  | 108.77777777777777 |      9
+2024-01-01T00:00:00Z |  851.75 | 106.46875          |      8
+2024-02-01T00:00:00Z |  851.75 |  70.97916666666667 |     12
+2024-03-01T00:00:00Z |  518.0  |  64.75             |      8
+2024-04-01T00:00:00Z |  516.25 | 103.25             |      5
+2024-05-01T00:00:00Z |  504.75 |  63.09375          |      8
+
+customerId
+string
+----------
+c-001
+c-019

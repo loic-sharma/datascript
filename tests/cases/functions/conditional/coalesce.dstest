@@ -1,0 +1,15 @@
+# `coalesce` returns its first non-null argument.
+mode: run
+---- query
+from '../../../data/edge/nulls.csv'
+| project id, n = coalesce(name, 'anonymous'), v = coalesce(value, real(null), 0)
+| sort by id asc
+---- expected
+id   | n         | v
+long | string    | real
+-----+-----------+-----
+   1 | alpha     |  1.5
+   2 | anonymous |  2.5
+   3 | gamma     |  0.0
+   4 | delta     |  4.5
+   5 | anonymous |  0.0

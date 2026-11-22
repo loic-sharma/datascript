@@ -1,0 +1,18 @@
+# A column with no DataScript type passes through `project`, `sort`, `join` and `union`; the
+# lowering never needs its type (D-042).
+mode: run
+---- query
+from '../../../data/types.parquet'
+| project id, bin
+| join kind = leftouter (from '../../../data/types.parquet' | project id, i16) on id
+| union (from '../../../data/types.parquet' | project id, bin | where id == 1)
+| sort by id desc, i16 asc nulls first
+| take 3
+| project id, bin
+---- expected
+id   | bin
+long | arrow:Binary
+-----+-------------
+   4 | null
+   3 | ff
+   2 |

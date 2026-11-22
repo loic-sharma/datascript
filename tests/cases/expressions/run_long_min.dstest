@@ -1,0 +1,11 @@
+# The smallest `long` literal is accepted (LANGUAGE.md §1) and computes.
+mode: run
+---- query
+from '../../data/orders.csv'
+| where orderId == 'o-0001'
+| project m = -9223372036854775808, plus = -9223372036854775808 + 1
+---- expected
+m                    | plus
+long                 | long
+---------------------+---------------------
+-9223372036854775808 | -9223372036854775807

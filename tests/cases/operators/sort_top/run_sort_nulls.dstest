@@ -1,0 +1,40 @@
+# Null placement: `asc` puts nulls first and `desc` last by default; `nulls first`/`nulls last`
+# override it (LANGUAGE.md §3.4).
+mode: run
+---- query
+from '../../../data/edge/nulls.csv'
+| sort by value asc, id asc
+| project id, value;
+from '../../../data/edge/nulls.csv'
+| sort by value desc, id asc
+| project id, value;
+from '../../../data/edge/nulls.csv'
+| sort by value asc nulls last, id asc
+| project id, value
+---- expected
+id   | value
+long | real
+-----+-------
+   3 | null
+   5 | null
+   1 |    1.5
+   2 |    2.5
+   4 |    4.5
+
+id   | value
+long | real
+-----+-------
+   4 |    4.5
+   2 |    2.5
+   1 |    1.5
+   3 | null
+   5 | null
+
+id   | value
+long | real
+-----+-------
+   1 |    1.5
+   2 |    2.5
+   4 |    4.5
+   3 | null
+   5 | null
