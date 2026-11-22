@@ -189,6 +189,24 @@ fn max_rows_cuts_tables_and_the_footer_names_the_command() {
 }
 
 #[test]
+fn a_cut_table_of_a_large_result_stops_reading_and_names_the_command() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("big.csv"),
+        format!("x\n{}", "1\n".repeat(30_000)),
+    )
+    .unwrap();
+    Command::new(env!("CARGO_BIN_EXE_ds"))
+        .current_dir(dir.path())
+        .write_stdin(".max-rows 1\nfrom 'big.csv';\n")
+        .assert()
+        .success()
+        .stdout(
+            contains("… at least ").and(contains(" more rows (show them all with .max-rows 0)\n")),
+        );
+}
+
+#[test]
 fn bad_format_argument() {
     repl(".format xml\n")
         .code(1)

@@ -24,8 +24,23 @@ use crate::table::{datascript_type, value_text};
 
 /// Writes the result as CSV with a header row.
 pub fn write_csv(out: &mut dyn Write, schema: &Schema, batches: &[RecordBatch]) -> io::Result<()> {
+    write_csv_header(out, schema)?;
+    write_csv_rows(out, schema, batches)
+}
+
+/// Writes the CSV header row of `schema`. With [`write_csv_rows`], this writes a result batch by
+/// batch, byte for byte as [`write_csv`] does.
+pub fn write_csv_header(out: &mut dyn Write, schema: &Schema) -> io::Result<()> {
     let names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
-    write_csv_line(out, names.iter().map(|name| Some(*name)))?;
+    write_csv_line(out, names.iter().map(|name| Some(*name)))
+}
+
+/// Writes the rows of `batches` as CSV lines, with no header.
+pub fn write_csv_rows(
+    out: &mut dyn Write,
+    schema: &Schema,
+    batches: &[RecordBatch],
+) -> io::Result<()> {
     let types: Vec<Option<Type>> = schema.fields().iter().map(|f| datascript_type(f)).collect();
     for batch in batches {
         for row in 0..batch.num_rows() {

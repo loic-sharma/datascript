@@ -1362,6 +1362,7 @@ dependencies = [
  "datascript-lsp",
  "datascript-syntax",
  "dirs",
+ "futures",
  "nu-ansi-term",
  "predicates",
  "reedline",

@@ -26,7 +26,7 @@ Design-review additions:
 - [ ] `/api/run` with `'/etc/passwd' | take 1`, `'../x.csv'` and a symlink pointing out of the root all fail with DS3007.
 
 ## Carried over
-- [ ] (from planning, 2026-11-22) M2-11 also needs a streaming variant of `Session::run`. Whichever task comes first builds it in `datascript-engine` for both; the other one reuses it.
+- [ ] (from M2-11) The streaming API exists: `Session::start` returns a `RunStream` (`Send`, owns its engine and context) whose `next_query()` yields a `QueryStream` per query, batches arriving as they are produced, behind the panic boundary (D-055). Use it for streaming and cancellation over WebSocket (dropping it cancels the query) instead of building another.
 - [ ] (from M1-07) `ExecContext::row_limit` is enforced by the session and sets `QueryResult::truncated` (D-043). Decide Q-007's wording (an info diagnostic needs a code from this task's block) and show it. Invalidate the session's schema cache when files under the root change, since failed lookups are cached too.
 - [ ] (from M1-08) The sandbox hook exists: with `ExecContext::sandbox` set, the DataFusion engine returns `SourceError::OutsideSandbox` (paths compared after resolving symlinks and `..`, globs per match) and the binder reports DS3007 with draft wording. Set the sandbox to the UI root, review the wording, add golden or API tests, and mark DS3007 active in `codes.rs` and DIAGNOSTICS.md.
 

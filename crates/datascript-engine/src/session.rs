@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use arrow_schema::SchemaRef;
 use datascript_compiler::hir::Hir;
+use datascript_compiler::ir::QueryPlan;
 use datascript_compiler::{
     Analysis, Program, SchemaLookup, SchemaProvider, SourceError, SourceRef,
 };
@@ -14,7 +15,7 @@ use datascript_diagnostics::codes::{DS0004, DS9001};
 use datascript_diagnostics::{Diagnostic, FileId, SourceFile};
 
 use crate::boundary::catch_panic_async;
-use crate::{Clock, Engine, ExecContext, QueryResult};
+use crate::{Clock, Engine, ExecContext, QueryResult, QueryStream, guard_panics};
 
 /// The diagnostics and results of [`Session::run`].
 #[derive(Debug, Clone, Default)]
@@ -24,6 +25,86 @@ pub struct RunOutput {
     pub diagnostics: Vec<Diagnostic>,
     /// One result per query statement, in source order. Empty if there were errors.
     pub results: Vec<QueryResult>,
+}
+
+/// A program checked and planned, run one query at a time ([`Session::start`]).
+///
+/// It owns what it needs, so it can move to another task or thread (on native targets it is
+/// `Send`). Dropping it, or a [`QueryStream`] it handed out, cancels the running query.
+pub struct RunStream {
+    engine: Arc<dyn Engine>,
+    ctx: ExecContext,
+    file: FileId,
+    /// Diagnostics from checking: warnings and `DS0004`, or the errors that stop the run (then
+    /// there are no queries).
+    pub diagnostics: Vec<Diagnostic>,
+    queries: Vec<QueryPlan>,
+    next: usize,
+    failed: bool,
+}
+
+impl fmt::Debug for RunStream {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RunStream")
+            .field("engine", &self.engine.name())
+            .field("diagnostics", &self.diagnostics)
+            .field("queries", &self.queries.len())
+            .field("next", &self.next)
+            .finish_non_exhaustive()
+    }
+}
+
+impl RunStream {
+    /// Whether checking found errors. Then nothing runs.
+    pub fn has_errors(&self) -> bool {
+        self.diagnostics.iter().any(Diagnostic::is_error)
+    }
+
+    /// The plans of the queries that will run, in source order. Frontends read their spans and
+    /// `render` specs before anything runs.
+    pub fn queries(&self) -> &[QueryPlan] {
+        &self.queries
+    }
+
+    /// Keeps only the query statement at `index` (0-based, in source order, counting query
+    /// statements only). Past the last query, nothing runs. Call it before
+    /// [`next_query`](Self::next_query).
+    pub fn select(&mut self, index: usize) {
+        let kept = self.queries.get(index).cloned();
+        self.queries = kept.into_iter().collect();
+    }
+
+    /// Starts the next query: `None` when every query has run, or after one failed to start.
+    /// Read each [`QueryStream`] to its end (or drop it) before starting the next; a batch error
+    /// means the program failed, and the caller stops there.
+    pub async fn next_query(&mut self) -> Option<Result<QueryStream, Diagnostic>> {
+        if self.failed {
+            return None;
+        }
+        let index = self.next;
+        self.next += 1;
+        let query = self.queries.get(index)?;
+        let started = catch_panic_async(
+            Some(self.file),
+            "running the program",
+            self.engine.execute(query, &self.ctx),
+        )
+        .await
+        .and_then(|started| started);
+        match started {
+            Ok(stream) => Some(Ok(QueryStream {
+                schema: stream.schema,
+                batches: guard_panics(self.file, stream.batches),
+                render: query.render.clone(),
+                render_span: query.render_span,
+                statement: query.span,
+            })),
+            Err(diagnostic) => {
+                self.failed = true;
+                Some(Err(diagnostic))
+            }
+        }
+    }
 }
 
 /// A schema lookup as the engine answered it.
@@ -185,6 +266,19 @@ impl Session {
             .unwrap_or_else(|diagnostic| Err(vec![diagnostic]))
     }
 
+    /// Checks and plans `src`, ready to run its queries one at a time as streams: the
+    /// streaming form of [`run`](Session::run). The diagnostics are the ones `run` would give
+    /// before running anything, `DS0004` included. A panic while checking becomes `DS9001`.
+    pub async fn start(&self, src: &SourceFile, file: FileId, ctx: &ExecContext) -> RunStream {
+        catch_panic_async(
+            Some(file),
+            "running the program",
+            self.start_inner(src, file, ctx),
+        )
+        .await
+        .unwrap_or_else(|diagnostic| self.run_stream(file, ctx, vec![diagnostic], Vec::new()))
+    }
+
     /// Checks, plans and runs every query in `src`. Warnings from checking are kept. Warns
     /// (DS0004) if the program has no query.
     pub async fn run(&self, src: &SourceFile, file: FileId, ctx: &ExecContext) -> RunOutput {
@@ -268,6 +362,46 @@ impl Session {
         datascript_compiler::program_of(analysis, file)
     }
 
+    fn run_stream(
+        &self,
+        file: FileId,
+        ctx: &ExecContext,
+        diagnostics: Vec<Diagnostic>,
+        queries: Vec<QueryPlan>,
+    ) -> RunStream {
+        RunStream {
+            engine: self.engine.clone(),
+            ctx: ctx.clone(),
+            file,
+            diagnostics,
+            queries,
+            next: 0,
+            failed: false,
+        }
+    }
+
+    async fn start_inner(&self, src: &SourceFile, file: FileId, ctx: &ExecContext) -> RunStream {
+        let analysis = self.check_inner(src, file, ctx).await;
+        if analysis.has_errors() {
+            return self.run_stream(file, ctx, analysis.diagnostics, Vec::new());
+        }
+        let mut diagnostics = analysis.diagnostics.clone();
+        let program = match datascript_compiler::program_of(analysis, file) {
+            Ok(program) => program,
+            // These diagnostics already include the warnings.
+            Err(diagnostics) => return self.run_stream(file, ctx, diagnostics, Vec::new()),
+        };
+        if program.queries.is_empty() {
+            // Valid for `check`, but `run` has nothing to show (LANGUAGE.md §2).
+            diagnostics.push(
+                Diagnostic::warning(DS0004, "program has no query to run")
+                    .in_file(file)
+                    .help("add a query, such as `from 'data.csv' | take 10`"),
+            );
+        }
+        self.run_stream(file, ctx, diagnostics, program.queries)
+    }
+
     async fn run_inner(
         &self,
         src: &SourceFile,
@@ -275,54 +409,21 @@ impl Session {
         ctx: &ExecContext,
         index: Option<usize>,
     ) -> RunOutput {
-        let analysis = self.check_inner(src, file, ctx).await;
-        if analysis.has_errors() {
-            return RunOutput {
-                diagnostics: analysis.diagnostics,
-                results: Vec::new(),
-            };
+        let mut run = self.start_inner(src, file, ctx).await;
+        if let Some(index) = index {
+            run.select(index);
         }
-        let warnings = analysis.diagnostics.clone();
-        let program = match datascript_compiler::program_of(analysis, file) {
-            Ok(program) => program,
-            // These diagnostics already include the warnings.
-            Err(diagnostics) => {
-                return RunOutput {
-                    diagnostics,
-                    results: Vec::new(),
-                };
-            }
-        };
         let mut output = RunOutput {
-            diagnostics: warnings,
+            diagnostics: std::mem::take(&mut run.diagnostics),
             results: Vec::new(),
         };
-        if program.queries.is_empty() {
-            // Valid for `check`, but `run` has nothing to show (LANGUAGE.md §2).
-            output.diagnostics.push(
-                Diagnostic::warning(DS0004, "program has no query to run")
-                    .in_file(file)
-                    .help("add a query, such as `from 'data.csv' | take 10`"),
-            );
-        }
-        let selected = program
-            .queries
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| index.is_none_or(|index| index == *i))
-            .map(|(_, query)| query);
-        for query in selected {
-            let result = match self.engine.execute(query, ctx).await {
+        while let Some(started) = run.next_query().await {
+            let result = match started {
                 Ok(stream) => stream.collect(ctx.row_limit).await,
                 Err(diagnostic) => Err(diagnostic),
             };
             match result {
-                Ok(mut result) => {
-                    result.render = query.render.clone();
-                    result.render_span = query.render_span;
-                    result.statement = Some(query.span);
-                    output.results.push(result);
-                }
+                Ok(result) => output.results.push(result),
                 Err(diagnostic) => {
                     output.diagnostics.push(diagnostic);
                     output.results.clear();

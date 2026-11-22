@@ -3,17 +3,20 @@
 
 use std::collections::HashSet;
 use std::fmt;
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use datascript_compiler::Analysis;
 use datascript_compiler::hir::Column;
+use datascript_compiler::ir::RenderSpec;
 use datascript_diagnostics::{Diagnostic, FileId, SourceFile, Span, did_you_mean};
-use datascript_engine::{ExecContext, QueryResult, RunOutput, Session};
+use datascript_engine::{ExecContext, Session};
 use datascript_syntax::ast::{AstNode, Stmt};
 use datascript_syntax::{SyntaxKind, lex, literal, parse};
 
 use crate::args::{RunFormat, TableArg};
+use crate::output::{self, Frontend, Layout, OutputError, Sink};
 use crate::script::Sources;
 
 /// The file id of the combined program. It is never in the source map: every span in it is
@@ -153,13 +156,6 @@ impl ReplProgram {
             .filter(|d| d.is_error() || d.file_id().is_none_or(|f| f == self.input))
             .collect()
     }
-
-    fn map_result(&self, mut result: QueryResult) -> QueryResult {
-        result.statement = result.statement.map(|s| self.map_span(s));
-        result.render_span = result.render_span.map(|s| self.map_span(s));
-        result.diagnostics = self.map_diagnostics(std::mem::take(&mut result.diagnostics));
-        result
-    }
 }
 
 fn len32(text: &str) -> u32 {
@@ -217,20 +213,34 @@ impl Checked {
     }
 }
 
-/// The second phase of a submission: the queries ran.
+/// The second phase of a submission: the queries ran, and their results were written as they
+/// arrived (M2-11).
 #[derive(Debug, Default)]
 pub struct Ran {
     /// Diagnostics from running, mapped, without the ones [`Checked`] already has. Includes
     /// `DS5001` for charts.
     pub diagnostics: Vec<Diagnostic>,
-    /// One result per query, spans mapped to the input.
-    pub results: Vec<QueryResult>,
+    /// The statement of each query that started, mapped to the input. Only tests read it.
+    #[cfg_attr(not(test), expect(dead_code))]
+    pub statements: Vec<Span>,
+    /// Writing the results failed (not for a closed pipe): the message to show.
+    pub write_error: Option<String>,
 }
 
 impl Ran {
     pub fn failed(&self) -> bool {
         self.diagnostics.iter().any(Diagnostic::is_error)
     }
+}
+
+/// What a [`ReplSession::run_task`] future reports, before spans are mapped to the input.
+#[derive(Debug, Default)]
+pub struct RunReport {
+    diagnostics: Vec<Diagnostic>,
+    /// The `render` specs of the queries, for `DS5001`.
+    charts: Vec<(RenderSpec, Option<Span>)>,
+    statements: Vec<Span>,
+    write_error: Option<String>,
 }
 
 /// A meta command mistake: a plain message with a tip, not a [`Diagnostic`], because there is no
@@ -313,11 +323,13 @@ impl ReplSession {
     }
 
     /// The output format `.format` set.
+    #[cfg(test)]
     pub fn format(&self) -> RunFormat {
         self.format
     }
 
     /// Rows shown per table, as `--max-rows` or `.max-rows` set it; 0 shows every row.
+    #[cfg(test)]
     pub fn max_rows(&self) -> usize {
         self.max_rows
     }
@@ -450,49 +462,85 @@ impl ReplSession {
         checked
     }
 
-    /// Runs the queries of a checked input.
-    pub async fn run_checked(&self, checked: &Checked) -> Ran {
-        match self.run_task(checked) {
+    /// Runs the queries of a checked input, writing results to `out`.
+    pub async fn run_checked(&self, checked: &Checked, out: Box<dyn Write + Send>) -> Ran {
+        match self.run_task(checked, out) {
             Some(task) => self.finish_run(checked, task.await),
             None => Ran::default(),
         }
     }
 
-    /// Runs the queries of a checked input, if it has any. Like
-    /// [`check_task`](Self::check_task), the future can run on another thread; dropping it
-    /// cancels the running query.
+    /// Runs the queries of a checked input, if it has any, writing each result to `out` as it
+    /// arrives. Like [`check_task`](Self::check_task), the future can run on another thread;
+    /// dropping it cancels the running query.
     pub fn run_task(
         &self,
         checked: &Checked,
-    ) -> Option<impl Future<Output = RunOutput> + Send + 'static> {
+        out: Box<dyn Write + Send>,
+    ) -> Option<impl Future<Output = RunReport> + Send + 'static> {
         let (program, ctx) = checked.run.as_ref()?;
         let session = self.session.clone();
-        let src = program.source();
+        let program = program.clone();
+        let input = self.source(checked.file).clone();
         let ctx = ctx.clone();
-        Some(async move { session.run(&src, PROGRAM_FILE, &ctx).await })
+        let layout = Layout {
+            format: self.format,
+            max_rows: self.max_rows,
+            frontend: Frontend::Repl,
+        };
+        Some(async move {
+            let src = program.source();
+            let mut run = session.start(&src, PROGRAM_FILE, &ctx).await;
+            let mut report = RunReport {
+                diagnostics: std::mem::take(&mut run.diagnostics),
+                charts: crate::charts_of(run.queries())
+                    .map(|(spec, span)| (spec.clone(), span))
+                    .collect(),
+                ..RunReport::default()
+            };
+            let mut sink = Sink::writer(out);
+            let line_of = |span: Span| Some(input.line_col(program.map_span(span).start).line);
+            let streamed = output::stream_results(&mut sink, layout, &mut run, &line_of).await;
+            drop(run);
+            match streamed.and_then(|streamed| sink.finish().map(|()| streamed)) {
+                Ok(streamed) => {
+                    report.diagnostics.extend(streamed.error);
+                    report.statements = streamed.statements;
+                }
+                Err(OutputError::BrokenPipe) => {}
+                Err(OutputError::Io { target, error }) => {
+                    report.write_error = Some(format!("cannot write to {target}: {error}"));
+                }
+            }
+            report
+        })
     }
 
     /// Maps what [`run_task`](Self::run_task) returned onto the input, and adds `DS5001` for
     /// charts.
-    pub fn finish_run(&self, checked: &Checked, output: RunOutput) -> Ran {
+    pub fn finish_run(&self, checked: &Checked, report: RunReport) -> Ran {
         let Some((program, _)) = &checked.run else {
             return Ran::default();
         };
         let mut diagnostics: Vec<Diagnostic> = program
-            .map_diagnostics(output.diagnostics)
+            .map_diagnostics(report.diagnostics)
             .into_iter()
             .filter(|d| !checked.diagnostics.contains(d))
             .collect();
-        let results: Vec<QueryResult> = output
-            .results
-            .into_iter()
-            .map(|r| program.map_result(r))
-            .collect();
         // One input is one program run (M1-10).
-        diagnostics.extend(crate::chart_not_drawn(&results));
+        let charts = report
+            .charts
+            .iter()
+            .map(|(spec, span)| (spec, span.map(|s| program.map_span(s))));
+        diagnostics.extend(crate::chart_not_drawn(charts));
         Ran {
             diagnostics,
-            results,
+            statements: report
+                .statements
+                .into_iter()
+                .map(|s| program.map_span(s))
+                .collect(),
+            write_error: report.write_error,
         }
     }
 
@@ -791,7 +839,7 @@ mod tests {
     fn submit(repl: &mut ReplSession, text: &str) -> (Checked, Ran) {
         runtime().block_on(async {
             let checked = repl.check_input(text).await;
-            let ran = repl.run_checked(&checked).await;
+            let ran = repl.run_checked(&checked, Box::new(std::io::sink())).await;
             (checked, ran)
         })
     }
@@ -838,7 +886,7 @@ mod tests {
         );
         assert!(!checked.failed(), "{:?}", checked.diagnostics);
         assert!(!ran.failed(), "{:?}", ran.diagnostics);
-        assert_eq!(ran.results.len(), 1);
+        assert_eq!(ran.statements.len(), 1);
         assert_eq!(saved_names(&repl), ["n", "m"]);
     }
 
@@ -934,7 +982,7 @@ mod tests {
         std::fs::write(&path, "x\n1\n2\n").unwrap();
         let (checked, ran) = submit(&mut repl, &query);
         assert!(!checked.failed(), "{:?}", checked.diagnostics);
-        assert_eq!(ran.results.len(), 1);
+        assert_eq!(ran.statements.len(), 1);
     }
 
     #[test]
@@ -948,9 +996,9 @@ mod tests {
         );
         let src = repl.source(checked.file);
         let lines: Vec<u32> = ran
-            .results
+            .statements
             .iter()
-            .map(|r| src.line_col(r.statement.unwrap().start).line)
+            .map(|s| src.line_col(s.start).line)
             .collect();
         assert_eq!(lines, [1, 3]);
     }

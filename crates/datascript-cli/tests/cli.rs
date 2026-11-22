@@ -419,6 +419,112 @@ fn max_rows_does_not_cut_csv() {
     );
 }
 
+// ---- run: streaming (M2-11) ----
+
+/// A CSV of `rows` rows with one column `x`: 1 everywhere except the last row, which is 10000.
+/// `x * 1000000000000000` overflows `long` (DS4003) on that row only, so a query that fails
+/// shows how far the engine read. The engine reads 8192 rows per batch.
+fn big_csv(dir: &Path, rows: usize) -> String {
+    let mut text = String::from("x\n");
+    text.push_str(&"1\n".repeat(rows - 1));
+    text.push_str("10000\n");
+    std::fs::write(dir.join("big.csv"), text).unwrap();
+    "from 'big.csv' | extend y = x * 1000000000000000".to_string()
+}
+
+#[test]
+fn csv_is_written_batch_by_batch_before_the_query_finishes() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = big_csv(dir.path(), 20_000);
+    let output = ds()
+        .current_dir(dir.path())
+        .args(["run", "-e", &program, "--format", "csv"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    // The last batch fails, but the batches before it were already written.
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("DS4003"), "{stderr}");
+    assert!(
+        stdout.starts_with("x,y\n1,1000000000000000\n"),
+        "{stdout:.100}"
+    );
+    let lines = stdout.lines().count();
+    assert!((8_193..20_000).contains(&lines), "{lines} lines");
+}
+
+#[test]
+fn a_cut_table_stops_reading_and_says_at_least() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = big_csv(dir.path(), 30_000);
+    // Read in full, the query fails on its last row.
+    ds().current_dir(dir.path())
+        .args(["run", "-e", &program, "--max-rows", "0"])
+        .assert()
+        .code(1)
+        .stderr(contains("DS4003"));
+    // Cut at 3 rows, it stops reading before that row: counting gives up after a few thousand
+    // rows, and dropping the stream cancels the rest.
+    let output = ds()
+        .current_dir(dir.path())
+        .args(["run", "-e", &program, "--max-rows", "3"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(stdout.starts_with("x    | y\n"), "{stdout}");
+    assert_eq!(stdout.lines().count(), 3 + 3 + 1, "{stdout}");
+    let footer = stdout.lines().last().unwrap();
+    assert!(
+        footer.starts_with("… at least ")
+            && footer.ends_with(" more rows (show them all with --max-rows 0)"),
+        "{footer}"
+    );
+}
+
+#[test]
+fn a_runtime_error_keeps_the_results_already_printed() {
+    let dir = tempfile::tempdir().unwrap();
+    let failing = big_csv(dir.path(), 10);
+    let program = format!("from 'big.csv' | count;\n{failing}");
+    let output = ds()
+        .current_dir(dir.path())
+        .args(["run", "-e", &program])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("DS4003"), "{stderr}");
+    // The second query fails on its first batch, so nothing of it is printed.
+    assert_eq!(
+        stdout,
+        "== query 1 (line 1) ==\n\
+         Count\n\
+         long\n\
+         -----\n\
+         \x20  10\n"
+    );
+}
+
+#[test]
+fn a_failed_run_creates_no_output_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = big_csv(dir.path(), 10);
+    let out = dir.path().join("out.csv");
+    ds().current_dir(dir.path())
+        .args(["run", "-e", &program, "--format", "csv", "--output"])
+        .arg(&out)
+        .assert()
+        .code(1);
+    assert!(!out.exists());
+}
+
 // ---- run: errors ----
 
 #[test]
