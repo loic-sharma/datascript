@@ -37,6 +37,7 @@ pub(crate) fn plan_query(query: &hir::Query) -> Result<ir::QueryPlan, Diagnostic
         output_schema: root.schema.clone(),
         root,
         render: None,
+        span: query.span,
     })
 }
 

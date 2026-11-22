@@ -9,7 +9,7 @@ use arrow_array::{ArrayRef, Float64Array, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema};
 use datascript_compiler::capabilities::FunctionSupport;
 use datascript_compiler::ir::QueryPlan;
-use datascript_diagnostics::codes::{DS0004, DS1007, DS3001, DS4001, DS4002, DS9001};
+use datascript_diagnostics::codes::{DS0004, DS1001, DS1007, DS3001, DS4001, DS4002, DS9001};
 use datascript_diagnostics::{FileId, Severity, SourceFile};
 use futures::executor::block_on;
 
@@ -418,6 +418,39 @@ fn run_executes_each_query() {
             .iter()
             .all(|r| r.render.is_none() && !r.truncated)
     );
+    let statements: Vec<_> = output
+        .results
+        .iter()
+        .map(|r| r.statement.map(|s| (s.start, s.end)))
+        .collect();
+    assert_eq!(statements, [Some((0, 34)), Some((36, 62))]);
+}
+
+#[test]
+fn run_statement_executes_only_the_chosen_query() {
+    let (session, engine) = session();
+    let src =
+        source("let o = 'orders.csv';\nfrom o | project amount;\nfrom o | take 1 | project name");
+    let output = block_on(session.run_statement(&src, FileId(0), &ctx(&session), 1));
+    assert!(output.diagnostics.is_empty(), "{:?}", output.diagnostics);
+    assert_eq!(output.results.len(), 1);
+    assert_eq!(output.results[0].schema.field(0).name(), "name");
+    assert_eq!(engine.executions.load(Ordering::SeqCst), 1);
+
+    let past_the_end = block_on(session.run_statement(&src, FileId(0), &ctx(&session), 2));
+    assert!(past_the_end.diagnostics.is_empty());
+    assert!(past_the_end.results.is_empty());
+    assert_eq!(engine.executions.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn run_statement_still_reports_errors_in_other_statements() {
+    let (session, engine) = session();
+    let src = source("from 'orders.csv' | project nope; from 'orders.csv'");
+    let output = block_on(session.run_statement(&src, FileId(0), &ctx(&session), 1));
+    assert_eq!(codes(&output.diagnostics), [DS1001]);
+    assert!(output.results.is_empty());
+    assert_eq!(engine.executions.load(Ordering::SeqCst), 0);
 }
 
 #[test]

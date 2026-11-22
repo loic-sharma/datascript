@@ -188,10 +188,34 @@ impl Session {
     /// Checks, plans and runs every query in `src`. Warnings from checking are kept. Warns
     /// (DS0004) if the program has no query.
     pub async fn run(&self, src: &SourceFile, file: FileId, ctx: &ExecContext) -> RunOutput {
+        self.run_selected(src, file, ctx, None).await
+    }
+
+    /// Like [`run`](Session::run), but runs only the query statement at `index` (0-based, in
+    /// source order, counting query statements only). The whole program is still checked, so an
+    /// error anywhere stops the run. With `index` past the last query, nothing runs and
+    /// `results` is empty; frontends check the index against [`Program::queries`] first.
+    pub async fn run_statement(
+        &self,
+        src: &SourceFile,
+        file: FileId,
+        ctx: &ExecContext,
+        index: usize,
+    ) -> RunOutput {
+        self.run_selected(src, file, ctx, Some(index)).await
+    }
+
+    async fn run_selected(
+        &self,
+        src: &SourceFile,
+        file: FileId,
+        ctx: &ExecContext,
+        index: Option<usize>,
+    ) -> RunOutput {
         catch_panic_async(
             Some(file),
             "running the program",
-            self.run_inner(src, file, ctx),
+            self.run_inner(src, file, ctx, index),
         )
         .await
         .unwrap_or_else(|diagnostic| RunOutput {
@@ -244,7 +268,13 @@ impl Session {
         datascript_compiler::program_of(analysis, file)
     }
 
-    async fn run_inner(&self, src: &SourceFile, file: FileId, ctx: &ExecContext) -> RunOutput {
+    async fn run_inner(
+        &self,
+        src: &SourceFile,
+        file: FileId,
+        ctx: &ExecContext,
+        index: Option<usize>,
+    ) -> RunOutput {
         let analysis = self.check_inner(src, file, ctx).await;
         if analysis.has_errors() {
             return RunOutput {
@@ -275,7 +305,13 @@ impl Session {
                     .help("add a query, such as `from 'data.csv' | take 10`"),
             );
         }
-        for query in &program.queries {
+        let selected = program
+            .queries
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| index.is_none_or(|index| index == *i))
+            .map(|(_, query)| query);
+        for query in selected {
             let result = match self.engine.execute(query, ctx).await {
                 Ok(stream) => stream.collect(ctx.row_limit).await,
                 Err(diagnostic) => Err(diagnostic),
@@ -283,6 +319,7 @@ impl Session {
             match result {
                 Ok(mut result) => {
                     result.render = query.render.clone();
+                    result.statement = Some(query.span);
                     output.results.push(result);
                 }
                 Err(diagnostic) => {

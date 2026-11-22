@@ -1,140 +1,297 @@
-//! The `ds` command-line tool.
+//! The `ds` command-line tool: `ds check`, `ds run` and `ds explain` (ARCHITECTURE.md
+//! § Frontends).
 //!
-//! The walking skeleton (M1-15) has `ds check`, `ds run` and `ds explain` over one script file.
-//! M1-11 adds the rest (formats, `-e`, stdin, `--table`, colors, several files).
+//! - [`args`]: the command line, with examples in every `--help`.
+//! - [`script`]: loading a script from a file, `-e` or stdin, and reporting diagnostics.
+//! - [`output`]: printing results as a table, CSV, JSON, NDJSON or Arrow IPC.
+//!
+//! Exit codes: 0 success, 1 the program has errors (or warnings with `--deny-warnings`), 2 usage
+//! or internal error, 130 interrupted by Ctrl-C.
 
-use std::io::IsTerminal;
-use std::path::{Path, PathBuf};
+mod args;
+mod output;
+mod script;
+
+use std::io::Write;
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
+use datascript_compiler::SourceRef;
+use datascript_compiler::source::format_of_path;
 use datascript_datafusion::DataFusionEngine;
-use datascript_diagnostics::{Diagnostic, FileId, Renderer, SourceFile, SourceMap};
-use datascript_engine::{Session, SystemClock, table::format_table};
+use datascript_diagnostics::codes::DS3002;
+use datascript_diagnostics::{Diagnostic, JsonReport, Severity};
+use datascript_engine::{Session, SystemClock};
 
-/// DataScript: a pipe-based query language for local data files.
-#[derive(Debug, Parser)]
-#[command(name = "ds", version, about)]
-struct Cli {
-    #[command(subcommand)]
-    command: Command,
-}
+use crate::args::{CheckArgs, CheckFormat, Cli, Command, ExplainArgs, RunArgs, TableArg};
+use crate::output::{Destination, OutputError};
+use crate::script::{Reporter, Sources};
 
-#[derive(Debug, Subcommand)]
-enum Command {
-    /// Check a script and print its diagnostics, without running it.
-    Check {
-        /// The script to check.
-        file: PathBuf,
-    },
-    /// Run a script and print each query's result as a table.
-    Run {
-        /// The script to run.
-        file: PathBuf,
-    },
-    /// Print the logical plan of each query in a script.
-    Explain {
-        /// The script to explain.
-        file: PathBuf,
-    },
-}
-
-/// Exit codes: 0 success, 1 the program has errors, 2 usage or internal error.
+/// The program has errors.
 const EXIT_ERRORS: u8 = 1;
+/// A usage error, an unreadable script or an internal error.
 const EXIT_USAGE: u8 = 2;
+/// Interrupted by Ctrl-C (128 + SIGINT, as shells report it).
+const EXIT_INTERRUPTED: u8 = 130;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let runtime = match tokio::runtime::Builder::new_current_thread().build() {
+    // A worker thread runs the program, so the main thread stays free to notice Ctrl-C even
+    // while a query is busy computing.
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
         Ok(runtime) => runtime,
         Err(e) => {
             eprintln!("error: cannot start the async runtime: {e}");
             return ExitCode::from(EXIT_USAGE);
         }
     };
-    runtime.block_on(run(cli.command))
+    runtime.block_on(async {
+        let work = tokio::spawn(run(cli));
+        tokio::select! {
+            joined = work => joined.unwrap_or_else(|e| {
+                eprintln!("error: internal error: {e}");
+                eprintln!("  = note: this is a bug in DataScript; please report it");
+                ExitCode::from(EXIT_USAGE)
+            }),
+            _ = tokio::signal::ctrl_c() => {
+                eprintln!("\ninterrupted: stopped before the program finished");
+                let _ = std::io::stderr().flush();
+                // Exiting drops the running query, which cancels it.
+                std::process::exit(i32::from(EXIT_INTERRUPTED));
+            }
+        }
+    })
 }
 
-/// A loaded script, with what is needed to report diagnostics against it.
-struct Script {
-    sources: SourceMap,
-    src: SourceFile,
-    file: FileId,
-    base_dir: PathBuf,
+async fn run(cli: Cli) -> ExitCode {
+    let reporter = Reporter::new(cli.color);
+    let code = match cli.command {
+        Command::Check(args) => check(args, &reporter).await,
+        Command::Run(args) => run_script(args, &reporter).await,
+        Command::Explain(args) => explain(args, &reporter).await,
+    };
+    ExitCode::from(code)
 }
 
-impl Script {
-    fn load(path: &Path) -> Result<Script, String> {
-        let text = std::fs::read_to_string(path)
-            .map_err(|e| format!("cannot read `{}`: {e}", path.display()))?;
-        let name = path.display().to_string();
-        let mut sources = SourceMap::new();
-        let file = sources.add(name.clone(), text.clone());
-        let base_dir = match path.parent() {
-            Some(dir) if !dir.as_os_str().is_empty() => dir.to_path_buf(),
-            _ => PathBuf::from("."),
+/// A session over the DataFusion engine with the `--table` host tables, or the diagnostic for a
+/// table whose format cannot be told.
+fn session(tables: &[TableArg]) -> Result<Session, Diagnostic> {
+    let mut engine = DataFusionEngine::default();
+    for table in tables {
+        if format_of_path(&table.path).is_none() {
+            return Err(unknown_table_format(table));
+        }
+        // The engine resolves a host table's relative path against the script's directory, but
+        // on the command line the user means the current directory (D-044).
+        let path = std::path::absolute(&table.path).unwrap_or_else(|_| PathBuf::from(&table.path));
+        engine = engine.with_table(
+            table.name.clone(),
+            SourceRef::for_path(path.to_string_lossy()),
+        );
+    }
+    Ok(Session::new(Arc::new(engine), Arc::new(SystemClock)))
+}
+
+/// `DS3002` for `--table name=path` whose path has no known extension.
+fn unknown_table_format(table: &TableArg) -> Diagnostic {
+    let stem = std::path::Path::new(&table.path)
+        .file_stem()
+        .map_or_else(|| "data".into(), |s| s.to_string_lossy());
+    Diagnostic::error(
+        DS3002,
+        format!("cannot tell the format of `{}`", table.path),
+    )
+    .help(format!(
+        "rename the file so its name ends in a known extension, such as `{stem}.csv`, and pass \
+         `--table {}=<new path>`",
+        table.name
+    ))
+    .note(
+        "formats come from the extension: .csv, .tsv, .parquet, .json, .ndjson and .jsonl, and \
+         CSV, TSV and JSON may end in .gz, .bz2, .xz or .zst",
+    )
+}
+
+async fn check(args: CheckArgs, reporter: &Reporter) -> u8 {
+    let session = match session(&args.tables.tables) {
+        Ok(session) => session,
+        Err(d) => return reporter.fail_usage(&Sources::new(), &d),
+    };
+    let mut sources = Sources::new();
+    let mut all = Vec::new();
+    let mut unreadable = false;
+    for path in &args.files {
+        let script = match sources.load_path(path) {
+            Ok(script) => script,
+            Err(d) => {
+                unreadable = true;
+                all.push(d);
+                continue;
+            }
         };
-        Ok(Script {
-            sources,
-            src: SourceFile::new(name, text),
-            file,
-            base_dir,
-        })
+        let ctx = session.exec_context(&script.base_dir);
+        let analysis = session
+            .check(sources.file(&script), script.file, &ctx)
+            .await;
+        all.extend(analysis.diagnostics);
     }
-
-    /// Prints diagnostics to stderr. Returns whether any is an error.
-    fn report(&self, diagnostics: &[Diagnostic]) -> bool {
-        if !diagnostics.is_empty() {
-            let stderr = std::io::stderr();
-            let renderer = Renderer::terminal(stderr.is_terminal());
-            eprint!("{}", renderer.render_all(diagnostics, &self.sources));
+    match args.format {
+        CheckFormat::Human => reporter.report(&sources, &all),
+        CheckFormat::Json => {
+            println!("{}", JsonReport::new(&all, sources.map()).to_json_pretty());
         }
-        diagnostics.iter().any(Diagnostic::is_error)
+    }
+    check_exit_code(unreadable, &all, args.deny_warnings)
+}
+
+/// 2 if a script could not be read, 1 for errors (and warnings with `--deny-warnings`), else 0.
+fn check_exit_code(unreadable: bool, diagnostics: &[Diagnostic], deny_warnings: bool) -> u8 {
+    let fails = |d: &Diagnostic| d.is_error() || (deny_warnings && d.severity == Severity::Warning);
+    if unreadable {
+        EXIT_USAGE
+    } else if diagnostics.iter().any(fails) {
+        EXIT_ERRORS
+    } else {
+        0
     }
 }
 
-async fn run(command: Command) -> ExitCode {
-    let path = match &command {
-        Command::Check { file } | Command::Run { file } | Command::Explain { file } => file,
-    };
-    let script = match Script::load(path) {
+async fn explain(args: ExplainArgs, reporter: &Reporter) -> u8 {
+    let mut sources = Sources::new();
+    let script = match sources.load(&args.script) {
         Ok(script) => script,
-        Err(message) => {
-            eprintln!("error: {message}");
-            return ExitCode::from(EXIT_USAGE);
-        }
+        Err(d) => return reporter.fail_usage(&sources, &d),
     };
-    let session = Session::new(Arc::new(DataFusionEngine::default()), Arc::new(SystemClock));
+    let session = match session(&args.tables.tables) {
+        Ok(session) => session,
+        Err(d) => return reporter.fail_usage(&sources, &d),
+    };
     let ctx = session.exec_context(&script.base_dir);
-    let failed = match command {
-        Command::Check { .. } => {
-            let analysis = session.check(&script.src, script.file, &ctx).await;
-            script.report(&analysis.diagnostics)
-        }
-        Command::Explain { .. } => match session.explain(&script.src, script.file, &ctx).await {
-            Ok(text) => {
-                print!("{text}");
-                false
-            }
-            Err(diagnostics) => script.report(&diagnostics),
+    match session
+        .explain(sources.file(&script), script.file, &ctx)
+        .await
+    {
+        Ok(text) => match output::write_stdout(text.as_bytes()) {
+            Ok(()) => 0,
+            Err(e) => e.exit_code(),
         },
-        Command::Run { .. } => {
-            let output = session.run(&script.src, script.file, &ctx).await;
-            let failed = script.report(&output.diagnostics);
-            for (i, result) in output.results.iter().enumerate() {
-                if i > 0 {
-                    println!();
-                }
-                print!("{}", format_table(&result.schema, &result.batches));
-            }
-            failed
+        Err(diagnostics) => {
+            reporter.report(&sources, &diagnostics);
+            EXIT_ERRORS
         }
+    }
+}
+
+async fn run_script(args: RunArgs, reporter: &Reporter) -> u8 {
+    let mut sources = Sources::new();
+    let script = match sources.load(&args.script) {
+        Ok(script) => script,
+        Err(d) => return reporter.fail_usage(&sources, &d),
     };
-    if failed {
-        ExitCode::from(EXIT_ERRORS)
+    let session = match session(&args.tables.tables) {
+        Ok(session) => session,
+        Err(d) => return reporter.fail_usage(&sources, &d),
+    };
+    let destination = Destination::new(args.output.as_deref());
+    if args.format.is_binary() && destination.is_terminal() {
+        args::usage_error(
+            "refusing to write binary Arrow data to the terminal",
+            "send it to a file with `--output result.arrow`, or pipe it to another program",
+        );
+    }
+    let src = sources.file(&script);
+    let ctx = session.exec_context(&script.base_dir);
+
+    // Formats that hold one result, and `--statement`, need the number of queries before
+    // anything runs. Schemas are cached, so compiling twice reads each source once.
+    let mut selected = None;
+    if args.statement.is_some() || args.format.single_result() {
+        let program = match session.compile(src, script.file, &ctx).await {
+            Ok(program) => program,
+            Err(diagnostics) => {
+                reporter.report(&sources, &diagnostics);
+                return EXIT_ERRORS;
+            }
+        };
+        let lines: Vec<u32> = program
+            .queries
+            .iter()
+            .map(|q| src.line_col(q.span.start).line)
+            .collect();
+        match args.statement {
+            Some(n) if n.get() > lines.len() => args::usage_error(
+                &format!(
+                    "`--statement {n}` is out of range: the program has {}",
+                    output::count(lines.len(), "query statement", "query statements")
+                ),
+                &statement_help(&lines),
+            ),
+            Some(n) => selected = Some(n.get() - 1),
+            None if lines.len() > 1 => args::usage_error(
+                &format!(
+                    "`--format {}` prints one result, but the program has {} query statements",
+                    args.format.name(),
+                    lines.len()
+                ),
+                &format!(
+                    "{}, or use `--format table` or `--format json`, which print them all",
+                    statement_help(&lines)
+                ),
+            ),
+            None => {}
+        }
+    }
+
+    let output = match selected {
+        Some(index) => session.run_statement(src, script.file, &ctx, index).await,
+        None => session.run(src, script.file, &ctx).await,
+    };
+    reporter.report(&sources, &output.diagnostics);
+    let failed = output.diagnostics.iter().any(Diagnostic::is_error);
+    let written = output::write_results(
+        &destination,
+        args.format,
+        &output.results,
+        src,
+        args.max_rows,
+    );
+    match written {
+        Ok(()) if failed => EXIT_ERRORS,
+        Ok(()) => 0,
+        Err(e) => e.exit_code(),
+    }
+}
+
+/// "pick one with `--statement <n>`: 1 (line 3), 2 (line 8)".
+fn statement_help(lines: &[u32]) -> String {
+    let choices: Vec<String> = lines
+        .iter()
+        .enumerate()
+        .map(|(i, line)| format!("{} (line {line})", i + 1))
+        .collect();
+    if choices.is_empty() {
+        "the program has no query to pick".to_string()
     } else {
-        ExitCode::SUCCESS
+        format!("pick one with `--statement <n>`: {}", choices.join(", "))
+    }
+}
+
+impl OutputError {
+    /// Reports the error and returns the exit code. A closed pipe (`ds run … | head`) is not an
+    /// error: the reader has what it wanted.
+    fn exit_code(self) -> u8 {
+        match self {
+            OutputError::BrokenPipe => 0,
+            OutputError::Io { target, error } => {
+                eprintln!("error: cannot write to {target}: {error}");
+                EXIT_USAGE
+            }
+        }
     }
 }
 
@@ -146,5 +303,27 @@ mod tests {
     #[test]
     fn cli_definition_is_valid() {
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn warnings_fail_check_only_when_denied() {
+        use datascript_diagnostics::codes::{DS0004, DS1007, DS9001};
+        let warning = [Diagnostic::warning(DS0004, "w")];
+        let info = [Diagnostic::info(DS1007, "i")];
+        let error = [Diagnostic::error(DS9001, "e")];
+        assert_eq!(check_exit_code(false, &warning, false), 0);
+        assert_eq!(check_exit_code(false, &warning, true), EXIT_ERRORS);
+        assert_eq!(check_exit_code(false, &info, true), 0);
+        assert_eq!(check_exit_code(false, &error, false), EXIT_ERRORS);
+        assert_eq!(check_exit_code(true, &error, false), EXIT_USAGE);
+        assert_eq!(check_exit_code(false, &[], true), 0);
+    }
+
+    #[test]
+    fn statement_help_lists_each_query_with_its_line() {
+        assert_eq!(
+            statement_help(&[3, 8]),
+            "pick one with `--statement <n>`: 1 (line 3), 2 (line 8)"
+        );
     }
 }

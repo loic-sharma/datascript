@@ -33,6 +33,9 @@ pub struct QueryPlan {
     pub output_schema: SchemaRef,
     /// What a final `render` asks frontends to draw; `None` without one.
     pub render: Option<RenderSpec>,
+    /// The whole query statement, from `from` to its last operator. Frontends name a result by
+    /// the line it starts on.
+    pub span: Span,
 }
 
 /// Placeholder for the chart a `render` operator describes. M1-10 defines its contents.

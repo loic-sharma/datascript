@@ -530,6 +530,30 @@ catches a lowering that returns the wrong type (`DS9001`). `Capabilities::functi
 engine's mapping table (`lower::SUPPORTED`); a test checks it is the whole catalog and that every
 signature lowers. *(M1-09, 2026-11-21.)*
 
+### D-046 — How `ds` reports, prints and stops (M1-11)
+**Exit codes** are 0, 1 (the program has errors, or warnings with `--deny-warnings`) and 2 (usage
+error, unreadable script, unwritable output, internal error), plus **130 for Ctrl-C** (128 +
+SIGINT, what shells report). The program runs on a tokio worker thread so the main thread notices
+Ctrl-C even while a query computes; the CLI then exits, which drops and cancels the query.
+**Diagnostics** use the terminal renderer (Unicode, colored unless `NO_COLOR` is set and not
+empty) when stderr is a terminal, and the plain ASCII renderer otherwise, so logs stay readable;
+`--color always` forces the colored terminal renderer, `--color never` drops color. **A missing or
+unreadable script** is `DS3001` / `DS3008` with no span (did-you-mean over the script's directory),
+and `--table` with an unknown extension is `DS3002`: the existing codes for the same problems, not
+new ones. **Command-line misuse** (`--format csv` with several queries, `--statement` out of range,
+Arrow to a terminal, a bad `--table` value) is a clap usage error with a tip, not a `Diagnostic`:
+there is no program location and no code block for the CLI, and clap's format matches its other
+usage errors. **Several queries**: `--format table` prints `== query <n> (line <l>) ==` before each
+table (only when there is more than one), `json` prints `[{statement, columns: [{name, type}],
+rows}]` with the type as the table names it, and `csv`, `ndjson` and `arrow` need one result
+(`--statement <n>`). `--statement` checks the whole program, so an error in another statement
+still stops the run, and runs only the chosen query (`Session::run_statement`); the line comes
+from the new `QueryPlan::span` / `QueryResult::statement`. **`--format arrow`** writes the Arrow
+IPC *file* format (what `.arrow` and Feather v2 readers open). **`--max-rows`** (default 100, 0 =
+all) cuts only tables, after the whole result is collected, so the footer can say how many rows
+were left out; `csv`, `json`, `ndjson` and `arrow` always hold every row. Nothing is written (and
+no `--output` file created) when there are no results. A closed pipe (`ds run … | head`) exits 0.
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

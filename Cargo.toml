@@ -19,10 +19,16 @@ insta = "1"
 arrow-array = "59"
 arrow-schema = "59"
 arrow-cast = { version = "59", default-features = false }
+# Only the CLI writes Arrow IPC (`ds run --format arrow`, M1-11).
+arrow-ipc = { version = "59", default-features = false }
 # Only the fixture generator writes Parquet for now; M1-08 reads it through DataFusion.
 parquet = { version = "59", default-features = false, features = ["arrow"] }
 libtest-mimic = "0.8"
 similar = "3"
+# CLI integration tests (M1-11).
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
 proptest = "1"
 rowan = "0.16"
 # DataFusion 55's MSRV is Rust 1.94 (M0-05). Feature set per docs/spikes/datafusion-wasm.md;

@@ -268,7 +268,7 @@ The web UI renders JSON diagnostics in the editor and can show the same snippet 
 
 | Frontend | Crate | Notes |
 |---|---|---|
-| CLI | `datascript-cli` | `ds check`, `ds run`, `ds explain`, `ds fmt`; output as table, CSV, JSON, or Arrow IPC; exit codes 0/1/2 |
+| CLI | `datascript-cli` | `ds check`, `ds run`, `ds explain`, `ds fmt`; output as table, CSV, JSON, NDJSON or Arrow IPC; exit codes 0/1/2, 130 on Ctrl-C (D-046) |
 | REPL | `datascript-cli` | `ds` with no args; reedline; multi-line input until `;` or a blank line; `.schema <source>`, `.help` |
 | LSP | `datascript-lsp` | tower-lsp-server; uses `parse`/`check` with a caching SchemaProvider; custom `datascript/run` request for the editor's Run button |
 | VS Code | `editors/vscode` | TS client, TextMate grammar, "▶ Run" CodeLens above each query statement, results webview reusing `web/` components. Honors Workspace Trust: in an untrusted workspace the server runs syntax-only (no schema reads, no Run) |

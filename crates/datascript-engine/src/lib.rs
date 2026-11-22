@@ -24,7 +24,7 @@ use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use datascript_compiler::ir::RenderSpec;
 use datascript_compiler::{Capabilities, SourceError, SourceRef};
-use datascript_diagnostics::Diagnostic;
+use datascript_diagnostics::{Diagnostic, Span};
 use futures::{Stream, StreamExt};
 
 pub use boundary::{catch_panic, catch_panic_async};
@@ -97,7 +97,7 @@ impl ResultStream {
     /// row arrives, the stream is dropped, which cancels the rest of the query, and the result
     /// is marked [`truncated`](QueryResult::truncated).
     ///
-    /// The result has no `render` spec; [`Session::run`] adds the plan's.
+    /// The result has no `render` spec or statement span; [`Session::run`] adds the plan's.
     pub async fn collect(mut self, row_limit: Option<usize>) -> Result<QueryResult, Diagnostic> {
         let mut batches = Vec::new();
         let mut rows = 0;
@@ -121,6 +121,7 @@ impl ResultStream {
             schema: self.schema,
             batches,
             render: None,
+            statement: None,
             diagnostics: Vec::new(),
             truncated,
         })
@@ -135,6 +136,11 @@ pub struct QueryResult {
     pub batches: Vec<RecordBatch>,
     /// What a final `render` asks frontends to draw; `None` without one.
     pub render: Option<RenderSpec>,
+    /// The query statement this is the result of ([`QueryPlan::span`]). [`Session::run`] sets
+    /// it.
+    ///
+    /// [`QueryPlan::span`]: datascript_compiler::ir::QueryPlan::span
+    pub statement: Option<Span>,
     /// Warnings and notes about running this query. Errors stop the run instead and are in
     /// [`RunOutput::diagnostics`].
     pub diagnostics: Vec<Diagnostic>,

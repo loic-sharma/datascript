@@ -12,11 +12,22 @@ name = "ds"
 path = "src/main.rs"
 
 [dependencies]
+arrow-array.workspace = true
+arrow-ipc.workspace = true
+arrow-schema.workspace = true
 clap.workspace = true
+datascript-compiler = { path = "../datascript-compiler" }
 datascript-datafusion = { path = "../datascript-datafusion" }
 datascript-diagnostics = { path = "../datascript-diagnostics" }
 datascript-engine = { path = "../datascript-engine" }
-tokio.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+# The CLI runs the program on a worker thread so the main thread can catch Ctrl-C (`signal`).
+tokio = { workspace = true, features = ["rt-multi-thread", "signal", "macros"] }
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true
