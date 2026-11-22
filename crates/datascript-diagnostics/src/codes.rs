@@ -167,9 +167,9 @@ pub const DS2042: Code = Code::new(2042);
 pub const DS2043: Code = Code::new(2043);
 /// `take`/`top` row count that is not a constant whole number of 0 or more
 pub const DS2050: Code = Code::new(2050);
-/// predicate is always true or always false (planned, M1-14)
+/// `where` condition that is always true or always false after folding literals (D-051)
 pub const DS2102: Code = Code::new(2102);
-/// `sort` key without `asc`/`desc` (default is asc, ≠ KQL); machine-applicable fix inserts `asc` (planned, M1-14, D-005)
+/// `sort` key without `asc`/`desc` (default is asc, ≠ KQL); machine-applicable fix inserts `asc` (D-005)
 pub const DS2103: Code = Code::new(2103);
 /// file not found (with did-you-mean over nearby files)
 pub const DS3001: Code = Code::new(3001);
@@ -617,14 +617,14 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS2102,
         severity: Some(Severity::Warning),
-        summary: "predicate is always true or always false *(planned, M1-14)*",
-        status: CodeStatus::Planned,
+        summary: "`where` condition that is always true or always false after folding literals (D-051)",
+        status: CodeStatus::Active,
     },
     CodeInfo {
         code: DS2103,
         severity: Some(Severity::Warning),
-        summary: "`sort` key without `asc`/`desc` (default is asc, ≠ KQL); machine-applicable fix inserts `asc` *(planned, M1-14, D-005)*",
-        status: CodeStatus::Planned,
+        summary: "`sort` key without `asc`/`desc` (default is asc, ≠ KQL); machine-applicable fix inserts `asc` (D-005)",
+        status: CodeStatus::Active,
     },
     CodeInfo {
         code: DS3001,

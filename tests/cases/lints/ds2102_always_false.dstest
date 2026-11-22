@@ -1,0 +1,31 @@
+# DS2102: conditions that are false for every row; the help offers `take 0` for an empty result.
+mode: check
+schema: t(x: long, y: real, s: string, ts: datetime, b: bool)
+---- query
+from t | where false;
+from t | where x > 0 and 1 == 2;
+from t | where 1d > 2d
+---- expected
+warning[DS2102]: `where` condition is always false
+  --> query:1:16
+  |
+1 | from t | where false;
+  |                ^^^^^ false for every row, so the result is empty
+  |
+  = help: to get the columns with no rows, use `take 0`
+
+warning[DS2102]: `where` condition is always false
+  --> query:2:16
+  |
+2 | from t | where x > 0 and 1 == 2;
+  |                ^^^^^^^^^^^^^^^^ false for every row, so the result is empty
+  |
+  = help: to get the columns with no rows, use `take 0`
+
+warning[DS2102]: `where` condition is always false
+  --> query:3:16
+  |
+3 | from t | where 1d > 2d
+  |                ^^^^^^^ false for every row, so the result is empty
+  |
+  = help: to get the columns with no rows, use `take 0`

@@ -1,0 +1,13 @@
+# DS2103: a `sort` key without `asc` or `desc` sorts ascending, unlike KQL (D-005).
+mode: check
+schema: t(x: long, y: real, s: string, ts: datetime, b: bool)
+---- query
+from t | sort by x
+---- expected
+warning[DS2103]: `sort` key without `asc` or `desc`
+  --> query:1:18
+  |
+1 | from t | sort by x
+  |                  ^ sorted ascending, while KQL sorts descending by default
+  |
+  = help: write the direction: `x asc`, or `x desc` for largest first

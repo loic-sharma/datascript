@@ -667,6 +667,22 @@ dropped before it shipped:
 the pipe does not show. `DS2101` is retired, never to be reused. If users turn out to make this
 mistake, a new opt-in lint gets a new code. *(2026-11-22.)*
 
+### D-051 — What the M1-14 lints flag
+**Accepted.** Lints run on the bound program, after the binder, from one table
+(`datascript_compiler::lints::LINTS`) holding each code and default severity.
+
+- **`DS2102`** checks only `where`, and folds only what is certain to be the same for every row:
+  literals, casts, `not`, unary `-`, comparisons, `+ - *`, and `and`/`or` with LANGUAGE.md §4's
+  null rules (`x > 0 or true` is true whatever `x` is). Columns never fold, so `x != x` and
+  `x == x` do not warn (nulls). Function calls do not fold (`now()`, `rand()`). A scalar `let`
+  does not fold either: `let includeAll = true; … | where includeAll or …` is a switch the user
+  flips on purpose, and warning on it would make `--deny-warnings` a nuisance. A condition that
+  folds to `null` (no rows) does not warn, because only a literal `null` reaches it and that
+  already reads as "nothing".
+- **`DS2103`** is reported once per `sort`, at its first key without a direction, with the other
+  such keys as secondary labels; the one fix adds `asc` to all of them. `top` keys never warn.
+*(M1-14, 2026-11-22.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

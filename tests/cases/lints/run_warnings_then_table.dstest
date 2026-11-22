@@ -1,0 +1,26 @@
+# Warnings do not stop `run`: they print first, then the table.
+mode: run
+---- query
+from '../../data/orders.csv' | where 1 == 1 | sort by orderId | take 2 | project orderId, amount
+---- expected
+warning[DS2102]: `where` condition is always true
+  --> query:1:38
+  |
+1 | from '../../data/orders.csv' | where 1 == 1 | sort by orderId | take 2 | project orderId, amount
+  |                                      ^^^^^^ true for every row, so `where` keeps them all
+  |
+  = help: if this is on purpose, remove the `where`: it has no effect
+
+warning[DS2103]: `sort` key without `asc` or `desc`
+  --> query:1:55
+  |
+1 | from '../../data/orders.csv' | where 1 == 1 | sort by orderId | take 2 | project orderId, amount
+  |                                                       ^^^^^^^ sorted ascending, while KQL sorts descending by default
+  |
+  = help: write the direction: `orderId asc`, or `orderId desc` for largest first
+
+orderId | amount
+string  | real
+--------+-------
+o-0001  |  183.5
+o-0002  |   88.5

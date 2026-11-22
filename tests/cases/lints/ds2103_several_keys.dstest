@@ -1,0 +1,18 @@
+# DS2103: one warning per `sort`; the fix adds `asc` to every key without a direction,
+# including a key with `nulls last` and a long expression.
+mode: check
+schema: t(x: long, y: real, s: string, ts: datetime, b: bool)
+---- query
+from t | sort by x, y desc, s nulls last, strlen(strcat(s, "-", s, "-", s, "-", s, "-", s))
+---- expected
+warning[DS2103]: `sort` key without `asc` or `desc`
+  --> query:1:18
+  |
+1 | from t | sort by x, y desc, s nulls last, strlen(strcat(s, "-", s, "-", s, "-", s, "-", s))
+  |                  ^          -             ------------------------------------------------- this key has no direction either
+  |                  |          |
+  |                  |          this key has no direction either
+  |                  |
+  |                  sorted ascending, while KQL sorts descending by default
+  |
+  = help: write the direction: `x asc`, or `x desc` for largest first

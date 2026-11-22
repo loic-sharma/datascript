@@ -163,6 +163,8 @@ pub struct SortKey {
     pub descending: bool,
     /// Whether nulls come first; the default depends on the direction (LANGUAGE.md §3.4).
     pub nulls_first: bool,
+    /// Whether `asc` or `desc` was written (`DS2103` warns on a `sort` key without one).
+    pub explicit_direction: bool,
 }
 
 /// A bound `join`.

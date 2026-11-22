@@ -475,7 +475,8 @@ impl Binder<'_> {
         };
         let bound = self.expr(&expr, &cx);
         let bound = self.value_sink(bound);
-        let descending = match key.direction() {
+        let direction = key.direction();
+        let descending = match direction {
             Some(SortDirection::Desc) => true,
             Some(SortDirection::Asc) => false,
             None => default_descending,
@@ -489,6 +490,7 @@ impl Binder<'_> {
             expr: bound,
             descending,
             nulls_first,
+            explicit_direction: direction.is_some(),
         })
     }
 

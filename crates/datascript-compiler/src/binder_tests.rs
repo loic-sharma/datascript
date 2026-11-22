@@ -291,3 +291,34 @@ fn deviations_are_carried_through() {
     assert!(analysis.diagnostics.is_empty());
     assert_eq!(analysis.deviations, [Deviation::IntegerOverflowUnchecked]);
 }
+
+/// DS2103's machine-applicable fix silences it: every key without a direction gets `asc`.
+#[test]
+fn ds2103_fix_silences_the_warning() {
+    let codes_of = |text: &str| {
+        let analysis = check(
+            &SourceFile::new("q.ds", text),
+            FileId(0),
+            &Orders,
+            &Capabilities::full(),
+        );
+        assert!(!analysis.has_errors(), "{:?}", analysis.diagnostics);
+        analysis.diagnostics
+    };
+    let text = "from 'orders.csv' | sort by amount, orderId desc, customerId nulls last\n";
+    let diagnostics = codes_of(text);
+    let [warning] = diagnostics.as_slice() else {
+        panic!("expected one warning: {diagnostics:?}");
+    };
+    assert_eq!(warning.code, codes::DS2103);
+    let suggestion = warning.help[0].suggestion.as_ref().expect("a fix");
+    let mut fixed = text.to_string();
+    for edit in suggestion.edits.iter().rev() {
+        fixed.replace_range(edit.span.range(), &edit.replacement);
+    }
+    assert_eq!(
+        fixed,
+        "from 'orders.csv' | sort by amount asc, orderId desc, customerId asc nulls last\n"
+    );
+    assert_eq!(codes_of(&fixed), Vec::new());
+}
