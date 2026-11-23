@@ -5,9 +5,10 @@
 **Crates:** `datascript-syntax`, `datascript-cli`
 
 ## Goal
-An opinionated formatter over the CST: keep short queries on one line when they fit comfortably,
-expand longer pipelines to one operator per line with leading `|`, normalize spacing with 2-space
-indentation, and preserve all comments.
+An opinionated, whitespace-only formatter over the CST: keep short single-line queries on one line
+when they fit comfortably, preserve already-split pipelines and expand longer ones to one operator
+per line with leading `|`, normalize spacing with 2-space indentation, and preserve all tokens and
+comments verbatim.
 
 ## Acceptance criteria
 - [ ] `ds fmt [--check] <files>`.
@@ -16,32 +17,50 @@ indentation, and preserve all comments.
 
 ## Carried over
 - [ ] (from planning, 2026-11-22) If M3-03 is done, add `textDocument/formatting` to the language server (M3-03 left it for after this task), with an LSP test.
-- [ ] (from M1-24) The formatter keeps `from <source>` on the first line of a pipeline, with operators on the following lines: `from orders⏎| where …`, never `from⏎orders`.
+- [ ] (from M1-24) When a pipeline is multi-line, `from <source>` stays on the first line, with operators on the following lines: `from orders⏎| where …`, never `from⏎orders`.
 
 ## Formatting rules
 
-- **Line width & indentation:** 100-column soft target for keeping statements on one line and
-  wrapping long constructs; **2 spaces** per indentation level (spaces, never tabs); LF (`\n`) line
-  endings; no trailing spaces; a single trailing newline at EOF (whitespace-only files format to
-  empty).
+- **Whitespace-only contract:**
+  - The formatter **only** edits whitespace trivia between tokens — it never adds, removes, or
+    rewrites non-trivia tokens.
+  - Semicolons (including any trailing `;` at EOF), string quote styles (`'...'` vs `"..."`),
+    verbatim strings (`@"..."`, `@'...'`), escape sequences, number spellings (`1_000_000`, `.5`,
+    `1e-3`), single-token literal text (including interior spaces inside `datetime( 2024-01-31 )`
+    or `timespan( 1d )`), quoted identifiers (`['order id']`, `["it's"]`), and operator aliases
+    (`sort` vs `order`, `take` vs `limit`, explicit `kind = inner`) are all preserved verbatim.
+  - DataScript strings are single-line (`DS0002` on unescaped newlines). Multiline `/* ... */`
+    block comments preserve their interior lines verbatim (only leading whitespace before the
+    opening `/*` is adjusted to match surrounding indentation).
+- **Line width, indentation & line endings:**
+  - 100-column soft target; **2 spaces** per indentation level (spaces, never tabs); LF (`\n`) line
+    endings; no trailing spaces; a single trailing newline at EOF (whitespace-only files format to
+    empty).
+  - All `+N` indents below are relative to the enclosing stage's `|` column (or the enclosing
+    statement's start column). Because multi-line tabular `let` stages sit at column 0, wrapped
+    constructs inside them use the exact same indentation as top-level queries.
 - **Pipelines & leading `|`:**
-  - **Single-line when it fits:** If an entire query statement (including its `;` when another
-    statement follows) fits within 100 columns, contains no comments, and contains no multi-line
+  - **Single-line when written on one line and it fits:** If a pipeline (a query statement or a
+    tabular `let`) has no newline between its stages in the input, fits within 100 columns
+    (including any `;` on that line), has no internal comments, and has no multi-line
     sub-expressions (such as a wrapped `case(...)`, `read_csv(...)`, `render ... with (...)`, or
-    wrapped subquery), format it on one line: `from 'orders.csv' | where amount > 10 | take 5`.
-  - **Multi-line otherwise:** Break to one `| <operator>` per line with a leading `| ` (one space
-    after `|`), keeping `from <source>` on the first line — never break between `from` and
-    `<source>` (M1-24). If `<source>` is a long reader call (`read_csv(...)`), `from read_csv(`
-    starts line 1 and its arguments wrap inside `(...)`.
-  - Top-level multi-line pipelines keep `from` and `|` at column 0.
-  - **Tabular `let`:** If the entire `let name = from ...;` statement fits within 100 columns (with
-    no comments or multi-line sub-expressions), keep it on one line. Otherwise keep
-    `let name = from <source>` on the first line and put each `| <operator>` on its own line
-    indented 2 spaces.
-  - **Parenthesized pipelines:** Inside `join`, `union`, or `(from ... | ...)`, keep the
-    parenthesized pipeline inline if its enclosing line fits within 100 columns (and it has no
-    comments or multi-line inner expressions). Otherwise break after `(` and before `)` and format
-    the inner pipeline multi-line (`from` and each `|` stage indented +2 spaces).
+    wrapped subquery), keep it on one line: `from 'orders.csv' | where amount > 10 | take 5`.
+  - **Already-split pipelines stay split:** If the input already has a newline before any `|` stage
+    of a pipeline, keep the pipeline multi-line (one `| <operator>` per line), even if it would
+    fit within 100 columns.
+  - **`from <source>` stays on line 1 (M1-24):** Never break between `from` and `<source>`.
+    `from\n  orders\n  | count` pulls `orders` onto line 1 while keeping `| count` on line 2
+    (because the input already had a newline before `|`). If `<source>` is a long reader call
+    (`read_csv(...)`), `from read_csv(` starts line 1 and its arguments wrap inside `(...)`.
+  - **Multi-line layout:** Put each `| <operator>` on its own line with a leading `| ` (one space
+    after `|`), at **column 0** for both top-level queries and tabular `let`s (`let name = from
+    <source>` on line 1, `| <operator>` at column 0 — never indented).
+  - **Parenthesized pipelines:** Inside `join`, `union`, `from (...)`, or a statement starting with
+    `(from ... | ...)`, keep the parenthesized pipeline inline if it had no newline between its
+    stages, its enclosing line fits within 100 columns, and it has no internal comments or
+    multi-line sub-expressions. Otherwise break after `(` and before `)` and format the inner
+    pipeline multi-line (`from` and each `|` stage indented +2 spaces relative to the enclosing
+    line).
   - Hyphenated operator names (`project-away`, `project-rename`) have no spaces around `-`.
 - **Spacing:**
   - Single space around `|` on single-line pipelines, around binary operators (`+`, `-`, `*`, `/`,
@@ -55,84 +74,114 @@ indentation, and preserve all comments.
   - Prefix `not`: single space before a non-parenthesized operand (`not active`, `not a == b`); no
     space before `(` in the call-like form (`not(active)`), which binds like a call (D-029).
   - No space before `,` or `;`; single space after `,` on single-line lists.
-  - No space inside `(...)` or `[...]`, between a function name and `(`, around `.` in member
-    access (`$left.a`, `record.field`), or before `[` in indexing (`items[0]`).
+  - No space inside `(...)` (except inside single-token literals like `datetime( 2024-01-31 )`,
+    where verbatim token text wins), between a function name and `(`, around `.` in member access
+    (`$left.a`, `record.field`), or before `[` in indexing (`items[0]`).
+  - **Bracket indexing vs quoted identifiers:** Non-string index expressions have no spaces inside
+    `[...]` (`items[0]`, `items[i + 1]`). When `[` is followed by a string literal (`INDEX_EXPR`),
+    normalize to a single space inside `[` and `]` (`payload[ 'key' ]`, `payload[ "key" ]`) —
+    **never** remove the space between `[` and a quote, which would re-lex as a `QUOTED_IDENT`
+    token (`['key']`, `LANGUAGE.md` §1 / D-034).
   - Single space before `(` in `in (...)` / `!in (...)` / `in~ (...)` / `!in~ (...)` and
     `between (...)` / `!between (...)`.
-- **Wrapping lists & clauses (no trailing commas):**
-  - DataScript rejects trailing commas (`DS0127`), so wrapped lists **never** emit a trailing comma.
-  - List-taking operators (`project`, `extend`, `project-away`, `project-rename`, `distinct`,
-    `sort by`, `union`, `join ... on`) stay on one line when the full line fits within 100 columns
+- **Wrapping order, lists & clauses (no trailing commas):**
+  - **Wrapping order:** Wrap the **outermost** wrappable construct first (e.g. pipeline stages
+    before operator lists, operator lists before call arguments), then re-measure each inner
+    construct at its new indentation and wrap it only if it still exceeds 100 columns (or contains
+    comments or multi-line children).
+  - **No trailing commas:** DataScript rejects trailing commas (`DS0127`), so wrapped lists
+    **never** emit a trailing comma.
+  - **Single-item hugging:** When a list-taking operator (`project`, `extend`, `union`, etc.) has
+    **exactly one item** whose trailing construct wraps (e.g. `| extend tier = case(`, `| union (`),
+    that single item stays on the operator line rather than breaking onto a new line.
+  - **List-taking operators** (`project`, `extend`, `project-away`, `project-rename`, `distinct`,
+    `sort by`, `union`, `join ... on`): stay on one line when the full line fits within 100 columns
     and contains no comments or multi-line children; otherwise break after the operator keyword
     (`| project`, `| sort by`, `| union`, `) on`, etc.) with one item per line indented +2 spaces.
-    When `union` has a single parenthesized pipeline that wraps, `(` stays on the `| union (` line.
-  - `summarize`: stays on one line if it fits; when wrapped, aggregates sit at +2 indent, `by` sits
-    on its own line at +2 indent (aligned with `summarize`), and `by` keys stay on the `by` line if
-    `  by ...` fits within 100 columns (with no comments or multi-line expressions) or wrap to +4
-    indent (+2 under `by`) otherwise.
-  - `render <kind> with (...)`: stays on one line if it fits; when wrapped, each property sits on
-    its own line at +2 indent with `)` aligned with `|`. Multi-value properties such as
+  - **`summarize`:** Stays on one line if it fits; when wrapped:
+    - Aggregates indent **+4 spaces** (+2 under `summarize`),
+    - `by` aligns under `summarize` at **+2 spaces**,
+    - `by` keys stay on the `  by ...` line if it fits within 100 columns (with no comments or
+      multi-line expressions), or wrap to **+4 spaces** (+2 under `by`) otherwise.
+  - **`top N by`:** Stays on one line if it fits; if the sort key exceeds 100 columns, break after
+    `by` and indent the sort key +2 spaces (wrapping inside the key expression if it still exceeds
+    100 columns).
+  - **`render <kind> with (...)`:** Stays on one line if it fits; when wrapped, each property sits
+    on its own line at +2 indent with `)` aligned with `|`. Multi-value properties such as
     `ycolumns = a, b` stay on the property's line unless they exceed 100 columns.
-  - Function calls and `in (...)` lists wrap after `(` with one item per line at +2 indent and `)`
-    at the outer indent when they exceed 100 columns or contain comments/multi-line arguments.
-  - `case(...)`: stays on one line if it has at most 2 condition/value pairs, contains no comments,
-    and fits within 100 columns; otherwise wraps after `(` with each `condition, value,` pair on
-    its own line at +2 indent and the final `else` value on its own line.
-  - Long `where` boolean chains (`and` / `or`) exceeding 100 columns wrap before `and` / `or` at
-    +2 indent.
+  - **Function calls & `in (...)`:** Wrap after `(` with one item per line at +2 indent and `)` at
+    the outer indent when they exceed 100 columns or contain comments/multi-line arguments.
+  - **`case(...)`:** Stays on one line if it has at most 2 condition/value pairs, contains no
+    comments, and fits within 100 columns; otherwise wraps after `(` with each `condition, value,`
+    pair on its own line at +2 indent and the final `else` value on its own line.
+  - **Boolean chains (`and` / `or`):** In `where` and other boolean expressions (`extend`, `case`,
+    `join ... on`), when a chain exceeds 100 columns, break at the **lowest-precedence** operator
+    first: wrap before `or` at +2 indent, keeping each `and` group together unless that `and` group
+    itself still exceeds 100 columns — in which case wrap before `and` at +2 under its `or` branch
+    (+4 from `|`). Pure `and` or pure `or` chains wrap before each operator at +2 indent.
 - **Semicolons & blank lines:**
-  - Separate statements with `;` attached to the end of the preceding statement (no space before `;`).
-  - Every `let` statement ends with `;` (including in a `let`-only script). Omit a redundant
-    trailing `;` on the final query statement of a file.
-  - Consecutive single-line `let` statements stay adjacent (or preserve a single intentional blank
-    line if the author grouped them). Separate multi-line tabular `let`s and query statements from
-    adjacent statements with one blank line.
-  - Collapse 2+ consecutive blank lines anywhere to a single blank line. Remove blank lines inside
-    a pipeline unless a blank line precedes a standalone comment introducing a new section of the
-    pipeline.
-- **Literals, identifiers & keywords preserved verbatim:**
-  - Never rewrite string quote style (`'...'` vs `"..."`), verbatim strings (`@"..."`, `@'...'`),
-    escape sequences, number spellings (`1_000_000`, `.5`, `1e-3`), timespan/datetime literal text,
-    quoted identifier quoting (`['order id']`, `["it's"]`), or operator aliases (`sort` vs `order`,
-    `take` vs `limit`, explicit `kind = inner`).
-  - DataScript strings are single-line (`DS0002` on unescaped newlines); multiline `/* ... */`
-    block comments preserve their interior text and indentation verbatim.
+  - Semicolons are preserved verbatim (never added or removed). A statement following `;` starts on
+    a new line.
+  - **Never insert a blank line after `;` automatically:** consecutive statements with no blank line
+    between them in the input stay on consecutive lines; an intentional single blank line between
+    statements is preserved.
+  - **Collapse 2+ consecutive blank lines to 1** anywhere in the file.
+  - Remove stray blank lines without comments inside a pipeline; preserve at most one blank line
+    before a standalone comment introducing a new section of a pipeline.
 - **Comments:**
   - Preserve every `//` line comment and `/* ... */` block comment in place relative to its
     surrounding tokens.
-  - Any comment inside a pipeline forces the pipeline to format multi-line.
+  - A **trailing end-of-line comment** after a statement's last token (`from orders | count // note`,
+    `let cutoff = ago(30d); // rolling window`) stays on that line separated by a single space and
+    does **not** force a single-line statement to become multi-line.
+  - Any comment *inside* a pipeline (between stages or on an intermediate stage) forces the pipeline
+    to format multi-line; comments inside a list, `case(...)`, `summarize`, or `with (...)` force
+    the enclosing construct to wrap and stay attached to their item or branch.
   - Standalone comments before a pipeline stage stay directly above the following `| <operator>` at
     the same indentation level.
-  - Trailing end-of-line comments stay on their line separated by a single space (` // ...`).
-  - Comments inside a list, `case(...)`, `summarize`, or `with (...)` force the enclosing construct
-    to wrap and remain attached to their item or branch.
-- **Syntax errors:** If parsing produces any lexical or syntax error (`DS0xxx`), refuse to format,
-  report the diagnostics, and leave the file untouched.
+  - Inline `/* ... */` comments mid-expression stay in place separated by a single space from
+    adjacent tokens (`where a /* note */ > 1`) without forcing a line break unless the comment is
+    multi-line.
+- **Syntax errors:** If the lexer or parser produces any **error-severity** diagnostic, refuse to
+  format, report the diagnostics, and leave the file untouched. Non-error diagnostics (such as
+  warning `DS0004` on a `let`-only script) do not block formatting.
 
 ## Examples (before and after)
 
-### 1. Short single-line queries vs multi-line pipelines
+### 1. Short single-line queries, already-split pipelines, and long pipelines
 
-Short queries that fit within 100 columns stay on one line — including queries that were pointlessly
-split across lines:
+A short query written on one line (≤ 100 columns) stays on one line with normalized spacing:
 
 Before:
 ```ds
-from   'orders.csv'|where   amount>10  |  take   5;
-from
-  orders
-  | count
+from   'orders.csv'|where   amount>10  |  take   5
 ```
 
 After:
 ```ds
-from 'orders.csv' | where amount > 10 | take 5;
-
-from orders | count
+from 'orders.csv' | where amount > 10 | take 5
 ```
 
-Once a pipeline exceeds 100 columns, it expands to one operator per line with leading `|`, keeping
-`from <source>` on line 1 even if the input broke after `from` (M1-24):
+A short query that is **already split across lines** stays split — while `from <source>` is pulled
+onto line 1 (M1-24):
+
+Before:
+```ds
+from
+    orders
+  |  where   amount > 10
+  |  count
+```
+
+After:
+```ds
+from orders
+| where amount > 10
+| count
+```
+
+A single-line pipeline exceeding 100 columns expands to one operator per line with leading `|`,
+keeping `from <source>` on line 1:
 
 Before:
 ```ds
@@ -152,7 +201,8 @@ from orders
 
 ### 2. File sources, globs, and reader function calls
 
-Short file-source queries stay on one line; longer glob pipelines expand:
+Short single-line file queries stay on one line; longer glob pipelines expand. Consecutive
+statements with no blank line between them stay consecutive (no blank line added after `;`):
 
 Before:
 ```ds
@@ -163,26 +213,26 @@ from 'events/*.ndjson' | where level == "error" and service == "checkout" | proj
 After:
 ```ds
 from 'orders.csv' | where amount > 0 | count;
-
 from 'events/*.ndjson'
 | where level == "error" and service == "checkout"
 | project timestamp, message, traceId
 | take 20
 ```
 
-Reader calls (short queries stay on one line; long options wrap inside `read_csv(...)`):
+Reader calls (short single-line queries stay on one line; long options wrap inside `read_csv(...)`;
+intentional blank lines are preserved while consecutive statements stay adjacent):
 
 Before:
 ```ds
 from read_csv('orders.csv',delimiter=';',header=true)|take 5;
 from   read_parquet( 'a.parquet' )  |  getschema;
+
 from read_csv('data/2024/quarterly_orders.tsv', delimiter='\t', header=true, null_value='NULL', infer_rows=5000, compression='gzip') | where amount > 0
 ```
 
 After:
 ```ds
 from read_csv('orders.csv', delimiter = ';', header = true) | take 5;
-
 from read_parquet('a.parquet') | getschema;
 
 from read_csv(
@@ -198,15 +248,17 @@ from read_csv(
 
 ### 3. Scalar and tabular `let` bindings
 
-Short tabular `let`s stay on one line; longer tabular `let`s put `|` stages on indented lines
-(2 spaces):
+Short single-line tabular `let`s stay on one line; multi-line tabular `let`s put every `|` stage at
+**column 0** (aligned with `let`, not indented):
 
 Before:
 ```ds
 let  minAmount=100;
 let   cutoff = ago(30d) ;
 let recent=from 'orders.parquet'|where timestamp>=cutoff;
+
 let topCustomers=from recent|where amount>minAmount|summarize revenue=sum(amount) by customerId|top 10 by revenue desc;
+
 from recent|join kind=inner topCustomers on customerId|summarize monthlyRevenue=sum(amount) by customerId, month=startofmonth(timestamp)
 ```
 
@@ -217,9 +269,9 @@ let cutoff = ago(30d);
 let recent = from 'orders.parquet' | where timestamp >= cutoff;
 
 let topCustomers = from recent
-  | where amount > minAmount
-  | summarize revenue = sum(amount) by customerId
-  | top 10 by revenue desc;
+| where amount > minAmount
+| summarize revenue = sum(amount) by customerId
+| top 10 by revenue desc;
 
 from recent
 | join kind = inner topCustomers on customerId
@@ -228,8 +280,8 @@ from recent
 
 ### 4. Multiple queries in a script
 
-Separates queries with a blank line, preserves `;` between statements, keeps short queries on one
-line, and drops a redundant trailing `;` after the final query:
+Statements after `;` start on the next line without inserting a blank line. Because the formatter
+only edits whitespace, a trailing `;` is preserved verbatim if present (and never added if absent):
 
 Before:
 ```ds
@@ -239,19 +291,20 @@ from 'orders.csv' | summarize total = sum(amount) by region; from 'orders.csv' |
 After:
 ```ds
 from 'orders.csv' | summarize total = sum(amount) by region;
-
 from 'orders.csv'
 | where status == "refunded" and amount > 50
 | project orderId, customerId, amount
-| sort by amount desc
+| sort by amount desc;
 ```
 
-In a `let`-only script, every `let` statement keeps a trailing `;`:
+A `let`-only script (warning `DS0004` does not block formatting; missing trailing `;` is kept as
+written, and intentional blank lines are preserved):
 
 Before:
 ```ds
 let taxRate=0.08;
 let recent = from 'orders.csv' | where timestamp >= ago(7d);
+
 let highValue = from recent | where amount * (1.0 + taxRate) > 500 | project orderId, customerId, amount
 ```
 
@@ -261,14 +314,15 @@ let taxRate = 0.08;
 let recent = from 'orders.csv' | where timestamp >= ago(7d);
 
 let highValue = from recent
-  | where amount * (1.0 + taxRate) > 500
-  | project orderId, customerId, amount;
+| where amount * (1.0 + taxRate) > 500
+| project orderId, customerId, amount
 ```
 
-### 5. Expression spacing & tricky operators
+### 5. Expression spacing, tricky operators, bracket indexing & mixed `and`/`or`
 
 Unary vs binary minus, `not` vs `not(...)`, string operators, `in` / `between`, nested calls,
-member access, and indexing:
+member access, numeric indexing (`items[0]`), and string-literal indexing (`payload[ 'key' ]`,
+keeping spaces inside `[ ... ]` so it cannot fuse into quoted identifier `['key']`):
 
 Before:
 ```ds
@@ -276,7 +330,7 @@ from events
 | where not   archived and not ( status== "deleted" ) and delta == - 1 and diff == a--b and total == -(x+y)
 | where msg contains 'timeout' and path !startswith_cs '/health' and log has 'error' and tag =~ 'prod' and env !~ 'dev' and uri matches   regex '^/api/v[0-9]+'
 | where code in(200,201,204) and region !in~ ( 'test' , 'staging' ) and latency between(10ms..500ms) and score !between ( -10 .. 10 )
-| extend label = strcat( toupper( meta.env ) , ':' , items[ 0 ] )
+| extend label = strcat( toupper( meta.env ) , ':' , items[ 0 ] , ':' , payload[  'key'  ] )
 ```
 
 After:
@@ -297,16 +351,36 @@ from events
   and region !in~ ('test', 'staging')
   and latency between (10ms .. 500ms)
   and score !between (-10 .. 10)
-| extend label = strcat(toupper(meta.env), ':', items[0])
+| extend label = strcat(toupper(meta.env), ':', items[0], ':', payload[ 'key' ])
 ```
 
-### 6. Long `project`, `extend`, `project-rename`, and `project-away` lists
-
-In a multi-line pipeline, short lists stay on their operator's line:
+Mixed `and`/`or` chains wrap at the lowest-precedence operator (`or`) first; an `and` group only
+wraps (at +2 under its `or` branch, i.e. +4 from `|`) if that branch itself exceeds 100 columns:
 
 Before:
 ```ds
-from orders | project orderId , customerId , amount | extend net=amount-discount | project-rename id=orderId | project-away tmp* , debug_flag
+from orders
+| where status == "paid" and amount >= 500 or status == "pending" and amount >= 1000 and customerTier == "enterprise" and timestamp >= ago(7d) or isPriorityAccount and region == "US"
+```
+
+After:
+```ds
+from orders
+| where status == "paid" and amount >= 500
+  or status == "pending"
+    and amount >= 1000
+    and customerTier == "enterprise"
+    and timestamp >= ago(7d)
+  or isPriorityAccount and region == "US"
+```
+
+### 6. Long `project`, `extend`, `project-rename`, `project-away`, and `distinct` lists
+
+In a multi-line pipeline, short lists and `distinct *` stay on their operator's line:
+
+Before:
+```ds
+from orders | project orderId , customerId , amount | extend net=amount-discount | project-rename id=orderId | project-away tmp* , debug_flag | distinct *
 ```
 
 After:
@@ -316,6 +390,7 @@ from orders
 | extend net = amount - discount
 | project-rename id = orderId
 | project-away tmp*, debug_flag
+| distinct *
 ```
 
 Lists exceeding 100 columns wrap with one item per line, 2-space indent, and no trailing comma:
@@ -327,6 +402,7 @@ from orders
 | project orderId, customerId, orderMonth = startofmonth(timestamp), grossAmount, discountAmount, netAmount
 | project-rename order_id = orderId, customer_id = customerId, order_month = orderMonth, net_amount = netAmount
 | project-away internal_*, debug_*, raw_payload, temp_notes, migration_flag, audit_trace_id, legacy_code
+| distinct order_id, customer_id, order_month, net_amount, shipping_region, sales_channel, payment_method
 ```
 
 After:
@@ -356,11 +432,20 @@ from orders
   migration_flag,
   audit_trace_id,
   legacy_code
+| distinct
+  order_id,
+  customer_id,
+  order_month,
+  net_amount,
+  shipping_region,
+  sales_channel,
+  payment_method
 ```
 
 ### 7. `summarize` with aggregates and `by` keys
 
-Short single-line queries (aggregates + `by`, aggregates only, and `by` only) stay on one line:
+Short single-line queries (aggregates + `by`, aggregates only, and `by` only) stay on one line,
+with no blank line inserted between consecutive statements:
 
 Before:
 ```ds
@@ -372,20 +457,19 @@ from orders | summarize   by   customerId , region
 After:
 ```ds
 from orders | summarize orders = count(), revenue = sum(amount) by customerId;
-
 from orders | summarize totalOrders = count(), totalRevenue = sum(amount);
-
 from orders | summarize by customerId, region
 ```
 
-Long `summarize` wraps aggregates at +2 indent, aligns `by` under `summarize` at +2 indent, and
-wraps `by` keys at +4 indent when `  by ...` exceeds 100 columns (or keeps short `by` keys on the
-`by` line):
+Long `summarize` indents aggregates at **+4** (+2 under `summarize`), aligns `by` under `summarize`
+at **+2**, and indents wrapped `by` keys at **+4** (+2 under `by`) when `  by ...` exceeds 100
+columns (keeping short `by` keys on the `  by ...` line):
 
 Before:
 ```ds
 from orders
 | summarize orderCount = count(), paidCount = countif(status == "paid"), totalRevenue = sum(amount), avgOrder = avg(amount), p95Order = percentile(amount, 95) by region, country, customerSegment, salesChannel, paymentMethod, fulfillmentCenter, day = bin(timestamp, 1d);
+
 from orders
 | summarize orderCount = count(), totalRevenue = sum(amount), avgOrder = avg(amount), maxOrder = max(amount) by region, bin(timestamp, 1d)
 ```
@@ -394,11 +478,11 @@ After:
 ```ds
 from orders
 | summarize
-  orderCount = count(),
-  paidCount = countif(status == "paid"),
-  totalRevenue = sum(amount),
-  avgOrder = avg(amount),
-  p95Order = percentile(amount, 95)
+    orderCount = count(),
+    paidCount = countif(status == "paid"),
+    totalRevenue = sum(amount),
+    avgOrder = avg(amount),
+    p95Order = percentile(amount, 95)
   by
     region,
     country,
@@ -410,36 +494,38 @@ from orders
 
 from orders
 | summarize
-  orderCount = count(),
-  totalRevenue = sum(amount),
-  avgOrder = avg(amount),
-  maxOrder = max(amount)
+    orderCount = count(),
+    totalRevenue = sum(amount),
+    avgOrder = avg(amount),
+    maxOrder = max(amount)
   by region, bin(timestamp, 1d)
 ```
 
-### 8. `sort by` / `order by` and `top N by`
+### 8. `sort by` / `order by`, `top N by`, and `take` / `limit`
 
-Short multi-key `sort by`, `order by` (preserved verbatim), and `top N by` stay on one line:
+Short single-line queries stay on one line; `order by` and `limit` are preserved verbatim:
 
 Before:
 ```ds
-from orders | sort  by  region  asc , amount  desc  nulls  last;
+from orders | sort  by  region  asc , amount  desc  nulls  last | limit   25;
 from orders | order by timestamp desc nulls first | top  10  by  amount  desc  nulls  last
 ```
 
 After:
 ```ds
-from orders | sort by region asc, amount desc nulls last;
-
+from orders | sort by region asc, amount desc nulls last | limit 25;
 from orders | order by timestamp desc nulls first | top 10 by amount desc nulls last
 ```
 
-Long `sort by` list wraps one key per line at +2 indent:
+Long `sort by` lists and long `top N by` keys break after `by` at +2 indent:
 
 Before:
 ```ds
 from orders
-| sort by region asc nulls last, customerSegment asc, orderMonth desc, totalRevenue desc nulls last, customerId asc
+| sort by region asc nulls last, customerSegment asc, orderMonth desc, totalRevenue desc nulls last, customerId asc;
+
+from orders
+| top 10 by coalesce(discountedAmount, grossAmount) + shippingCost + handlingFee - credit desc nulls last
 ```
 
 After:
@@ -450,7 +536,11 @@ from orders
   customerSegment asc,
   orderMonth desc,
   totalRevenue desc nulls last,
-  customerId asc
+  customerId asc;
+
+from orders
+| top 10 by
+  coalesce(discountedAmount, grossAmount) + shippingCost + handlingFee - credit desc nulls last
 ```
 
 ### 9. `case(...)` expressions
@@ -468,7 +558,8 @@ from orders | extend size = case(amount >= 500, "large", "small")
 ```
 
 Multi-branch `case(...)` (3+ branches or > 100 columns) wraps one `condition, value` pair per line
-at +2 indent, followed by the final `else` value:
+at +2 indent, followed by the final `else` value. Because `extend` has only one item, `tier = case(`
+hugs the `| extend` line (single-item hugging rule):
 
 Before:
 ```ds
@@ -488,7 +579,7 @@ from orders
 ```
 
 When a multi-line `case(...)` appears alongside other items in `extend` or `project`, the enclosing
-operator also wraps:
+operator wraps first (outermost first) at +2 indent and the `case` branches indent to +4:
 
 Before:
 ```ds
@@ -511,12 +602,13 @@ from orders
 
 ### 10. `join` with parenthesized subqueries and complex `on` clauses
 
-Short `join` with an inline subquery fits on one line; a longer `join` with `kind = leftouter` and
-multi-key `$left` / `$right` conditions expands the subquery with 2-space indent:
+Short single-line `join` with an inline subquery stays on one line; a longer `join` with
+`kind = leftouter` and multi-key `$left` / `$right` conditions expands the subquery at +2 indent:
 
 Before:
 ```ds
 from orders | join (from customers | where active) on customerId;
+
 from orders | join kind=leftouter (from customers | where active | project id, name, region) on $left.customerId==$right.id, $left.region==$right.region
 ```
 
@@ -553,7 +645,7 @@ from orders
   $left.orderDate == $right.effectiveDate
 ```
 
-### 11. `union`
+### 11. `union` and parenthesized head pipelines
 
 Short inline table `union` stays on one line:
 
@@ -567,12 +659,13 @@ After:
 from 'orders_2023.parquet' | union 'orders_2024.parquet', 'orders_2025.parquet'
 ```
 
-When a `union` stage exceeds 100 columns, a single parenthesized pipeline hugs `| union (` and
-multiple targets wrap one per line with 2-space indent:
+When a `union` stage exceeds 100 columns, a single parenthesized pipeline hugs `| union (`
+(single-item hugging) and multiple targets wrap one per line at +2 indent:
 
 Before:
 ```ds
 from 'orders_2024.parquet' | where amount > 0 | union (from 'orders_2025.parquet' | where amount > 0 and status == "paid" | project-away legacy_notes);
+
 from 'orders_2023.parquet' | where amount > 0 | union 'orders_2024.parquet', (from 'orders_2025.parquet' | where amount > 0 and status == "paid" | project-away notes)
 ```
 
@@ -597,9 +690,41 @@ from 'orders_2023.parquet'
   )
 ```
 
+Parenthesized pipelines at the head of a query follow the same outermost-first rule (short stays
+inline; when the outer query wraps, each parenthesized pipeline stays inline if its own line fits,
+or wraps inside `(...)` if its line still exceeds 100 columns):
+
+Before:
+```ds
+(from 'a.csv' | take 5) | union (from 'b.csv' | take 5);
+
+(from 'orders_2024.parquet' | where status == "paid" | top 10 by amount desc) | union (from 'orders_2025.parquet' | where status == "paid" | top 10 by amount desc);
+
+(from 'orders_2024.parquet' | where status == "paid" and amount > 100 | project orderId, customerId, amount) | union (from 'orders_2025.parquet' | where status == "paid" and amount > 100 | project orderId, customerId, amount)
+```
+
+After:
+```ds
+(from 'a.csv' | take 5) | union (from 'b.csv' | take 5);
+
+(from 'orders_2024.parquet' | where status == "paid" | top 10 by amount desc)
+| union (from 'orders_2025.parquet' | where status == "paid" | top 10 by amount desc);
+
+(
+  from 'orders_2024.parquet'
+  | where status == "paid" and amount > 100
+  | project orderId, customerId, amount
+)
+| union (
+  from 'orders_2025.parquet'
+  | where status == "paid" and amount > 100
+  | project orderId, customerId, amount
+)
+```
+
 ### 12. `render` operator
 
-Short `render` queries stay on one line; once the query exceeds 100 columns it breaks per operator,
+Short `render` queries stay on one line; once a query exceeds 100 columns it breaks per operator,
 while a short `render ... with (...)` stage stays on its line:
 
 Before:
@@ -611,7 +736,6 @@ from orders | summarize revenue = sum(amount) by region | render barchart with(t
 After:
 ```ds
 from orders | summarize revenue = sum(amount) by region | render barchart;
-
 from orders
 | summarize revenue = sum(amount) by region
 | render barchart with (title = "Revenue by Region")
@@ -646,9 +770,11 @@ from orders
 ### 13. Literals, quoted identifiers & block comments preserved verbatim
 
 Quote styles (`'...'`, `"..."`), verbatim strings (`@"..."`, `@'...'`), escape sequences, number
-spellings, timespans, datetimes, typed nulls, quoted identifiers (`['...']`, `["..."]`), and
-multiline `/* ... */` block comment interiors are kept verbatim. (DataScript strings are always
-single-line; an unescaped newline inside a string is `DS0002`.)
+spellings, single-token `datetime(...)` / `timespan(...)` text (including any interior spaces such
+as `datetime( 2024-01-31 )` and `timespan( 1d )`), quoted identifiers (`['...']`, `["..."]`), and
+multiline `/* ... */` block comment interiors are kept verbatim. By contrast, `long( null )` is four
+separate tokens (`long`, `(`, `null`, `)`) and normalizes to `long(null)`. (DataScript strings are
+always single-line; an unescaped newline inside a string is `DS0002`.)
 
 Before:
 ```ds
@@ -657,9 +783,10 @@ Before:
     internal indentation  */
 let winPath = @"C:\data\orders.csv";
 let rawTag = @'a\b\c';
+
 from   'orders.csv'
 | where ['order id'] != "" and amount > 1_000_000 and rate >= .5 and eps == 1e-3
-| where timestamp >= datetime(2024-01-31T12:00:00Z) and wait < 1.5h and jitter <= 5µs and window == timespan(1.02:03:04) and offset == timespan(-90m)
+| where timestamp >= datetime( 2024-01-31 ) and wait < timespan( 1d ) and jitter <= 5µs and window == timespan(1.02:03:04) and offset == timespan(-90m)
 | extend note = "line1\nline2", ["it's"] = long( null ), ['let'] = string(null)
 | project ['order id'], ["it's"], ['let'], note
 ```
@@ -674,8 +801,8 @@ let rawTag = @'a\b\c';
 
 from 'orders.csv'
 | where ['order id'] != "" and amount > 1_000_000 and rate >= .5 and eps == 1e-3
-| where timestamp >= datetime(2024-01-31T12:00:00Z)
-  and wait < 1.5h
+| where timestamp >= datetime( 2024-01-31 )
+  and wait < timespan( 1d )
   and jitter <= 5µs
   and window == timespan(1.02:03:04)
   and offset == timespan(-90m)
@@ -687,7 +814,8 @@ from 'orders.csv'
 
 #### File-leading comments and section comments
 
-A section comment above a short query does not force that query onto multiple lines:
+A section comment above a short single-line query does not force that query onto multiple lines,
+and blank lines are preserved only where present:
 
 Before:
 ```ds
@@ -697,6 +825,7 @@ Before:
 // Shared inputs
 let orders='orders.parquet';
 let   cutoff = ago(90d);
+
 // Main query
 from orders | where timestamp >= cutoff | summarize revenue = sum(amount) by region
 ```
@@ -745,9 +874,15 @@ from orders
 
 #### Trailing end-of-line comments
 
+A trailing end-of-line comment after a statement's last token does **not** force a single-line
+statement onto multiple lines; trailing comments on intermediate pipeline stages keep the pipeline
+multi-line:
+
 Before:
 ```ds
 let cutoff=ago(30d);    // rolling window
+from 'orders.csv'|count;   // quick sanity check
+
 from 'orders.csv'   // raw export
 | where amount > 0     // drop refunds
 | summarize revenue = sum(amount) by customerId   // per customer
@@ -757,6 +892,7 @@ from 'orders.csv'   // raw export
 After:
 ```ds
 let cutoff = ago(30d); // rolling window
+from 'orders.csv' | count; // quick sanity check
 
 from 'orders.csv' // raw export
 | where amount > 0 // drop refunds
@@ -764,14 +900,16 @@ from 'orders.csv' // raw export
 | top 10 by revenue desc // leaderboard
 ```
 
-#### Comments inside multi-line `project`, `summarize`, `join (...)`, and `case(...)`
+#### Inline block comments and comments inside multi-line constructs
 
-Any comment inside a list, subquery, or `case(...)` forces multi-line layout (2-space indent) and
-stays with its item:
+Inline `/* ... */` comments stay in place with a single space on each side without forcing line
+breaks. Any comment inside a list, subquery, `summarize`, or `case(...)` forces multi-line layout
+and stays attached to its item (with `summarize` using +4/+2/+4 indentation):
 
 Before:
 ```ds
 from orders
+| where amount /* exclude zero */ > 0
 | project
   orderId, // primary key
   // Net amount after discount
@@ -787,8 +925,8 @@ from orders
   "standard" // fallback
 )
 | summarize
-  // Total revenue
-  revenue = sum(net)
+    // Total revenue
+    revenue = sum(net)
   by
     tier // grouping key
 ```
@@ -796,6 +934,7 @@ from orders
 After:
 ```ds
 from orders
+| where amount /* exclude zero */ > 0
 | project
   orderId, // primary key
   // Net amount after discount
@@ -811,21 +950,20 @@ from orders
   "standard" // fallback
 )
 | summarize
-  // Total revenue
-  revenue = sum(net)
+    // Total revenue
+    revenue = sum(net)
   by
     tier // grouping key
 ```
 
 #### Collapsing excessive blank lines vs removing stray blank lines
 
-3+ blank lines collapse to 1; stray blank lines without comments inside a multi-line pipeline are
+2+ consecutive blank lines collapse to 1; stray blank lines without comments inside a pipeline are
 removed, while intentional single blank lines between statements are preserved:
 
 Before:
 ```ds
 let minAmount = 100;
-
 
 
 let maxAmount = 5000;
@@ -867,9 +1005,9 @@ let orders = 'orders.parquet';
 let recent = from orders | where timestamp >= ago(90d);
 
 let topCustomers = from recent
-  | where status == "paid"
-  | summarize revenue = sum(amount) by customerId
-  | top 10 by revenue desc;
+| where status == "paid"
+| summarize revenue = sum(amount) by customerId
+| top 10 by revenue desc;
 
 from recent
 | join kind = inner topCustomers on customerId
@@ -879,13 +1017,14 @@ from recent
 
 #### Syntax error — formatter refuses to modify invalid input
 
-Input with syntax errors (here: `=` instead of `==` (`DS0110`) and a trailing comma (`DS0127`)):
+Input with error-severity syntax diagnostics (here: `=` instead of `==` (`DS0110`) and a trailing
+comma (`DS0127`)):
 
 ```ds
 from 'orders.csv' | where amount = 100 | project orderId,
 ```
 
-`ds fmt` reports the syntax diagnostics, exits non-zero, and leaves the file untouched. Running
+`ds fmt` reports the diagnostics, exits non-zero, and leaves the file untouched. Running
 `ds fmt --check` on the same file also reports the syntax diagnostics rather than a formatting diff.
 
 ## Follow-ups
