@@ -1,0 +1,13 @@
+# A computed regular expression in `trim` that does not compile is DS4004 when the query runs.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| project t = trim(strcat('[', 'a'), orderId)
+---- expected
+error[DS4004]: `[a` is not a valid regular expression
+  --> query:2:15
+  |
+2 | | project t = trim(strcat('[', 'a'), orderId)
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ in this call of `trim`
+  |
+  = note: unclosed character class (regexes use Rust `regex` syntax)

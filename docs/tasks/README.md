@@ -92,8 +92,10 @@ Two shared files are touched by many tasks:
 | [M2-12](M2-12-runtime-source-errors.md) | Name the file in runtime read errors | M1-13, M2-13 | todo |
 | [M2-13](M2-13-task-contract-fixes.md) | Fix task contracts and diagnostic code blocks | M1-13 | done |
 | [M2-14](M2-14-spec-code-mismatches.md) | Spec/code mismatches from the docs review | M1-13 | done |
-| [M2-15](M2-15-golden-run-gaps.md) | Golden `run` coverage gaps | M1-13 | todo |
+| [M2-15](M2-15-golden-run-gaps.md) | Golden `run` coverage gaps | M1-13 | done |
 | [M2-16](M2-16-cli-repl-test-gaps.md) | CLI and REPL integration test gaps | M2-11 | done |
+| [M2-17](M2-17-sumif-overflow-message.md) | `sumif` overflow names `sum` instead of `sumif` | M2-15 | todo |
+| [M2-18](M2-18-calendar-year-range-min.md) | `calendar::year_range` panics on `i64::MIN` year | M2-15 | todo |
 
 ## M3 — Editor experience
 

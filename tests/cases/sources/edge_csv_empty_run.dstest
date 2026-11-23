@@ -1,0 +1,12 @@
+# Running queries over a 0-byte CSV file (no columns, no rows).
+mode: run
+---- query
+from '../../data/edge/empty.csv';
+from '../../data/edge/empty.csv' | count
+---- expected
+(no columns)
+
+Count
+long
+-----
+    0

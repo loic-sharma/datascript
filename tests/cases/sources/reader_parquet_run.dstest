@@ -1,0 +1,29 @@
+# `read_parquet` called as a function: direct path, `let`-bound path, and widened Parquet types.
+mode: run
+---- query
+let p = '../../data/orders.parquet';
+from read_parquet('../../data/orders.parquet')
+| where orderId == 'o-0001';
+from read_parquet(p)
+| count;
+from read_parquet('../../data/types.parquet')
+| project id, i16, u32, dict
+| sort by id asc
+---- expected
+orderId | customerId | amount | timestamp
+string  | string     | real   | datetime
+--------+------------+--------+---------------------
+o-0001  | c-042      |  183.5 | 2023-12-02T08:26:08Z
+
+Count
+long
+-----
+   50
+
+id   | i16    | u32        | dict
+long | long   | long       | string
+-----+--------+------------+-------
+   1 | -32768 |          0 | red
+   2 |      0 |          1 | green
+   3 |  32767 | 4294967295 | red
+   4 |   null |       null | null

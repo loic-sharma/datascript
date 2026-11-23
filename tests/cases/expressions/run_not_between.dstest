@@ -1,0 +1,36 @@
+# `!between` is the negation of the inclusive `between`, so values equal to either endpoint are `false`, and nulls propagate (LANGUAGE.md §4).
+mode: run
+---- query
+from '../../data/edge/nulls.csv'
+| project id,
+    val_nb = value !between (2.0 .. 4.5),
+    bound_nb = id !between (2 .. 4),
+    dt_nb = when !between (datetime(2024-01-02) .. datetime(2024-01-03))
+| sort by id asc;
+from '../../data/edge/nulls.csv'
+| where value !between (2.5 .. 4.5)
+| project id, value
+| sort by id asc;
+from '../../data/edge/nulls.csv'
+| where value !between (1.5 .. 2.5)
+| project id, value
+| sort by id asc
+---- expected
+id   | val_nb | bound_nb | dt_nb
+long | bool   | bool     | bool
+-----+--------+----------+------
+   1 | true   | true     | true
+   2 | false  | false    | false
+   3 | null   | false    | false
+   4 | false  | false    | null
+   5 | null   | true     | null
+
+id   | value
+long | real
+-----+------
+   1 |   1.5
+
+id   | value
+long | real
+-----+------
+   4 |   4.5
