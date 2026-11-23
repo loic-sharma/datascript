@@ -11,7 +11,7 @@ use datascript_compiler::capabilities::Capabilities;
 use datascript_compiler::ir::QueryPlan;
 use datascript_compiler::{SourceError, SourceRef};
 use datascript_datafusion::DataFusionEngine;
-use datascript_diagnostics::Diagnostic;
+use datascript_diagnostics::{Diagnostic, FileId, codes};
 use datascript_engine::{Engine, ExecContext, FixedClock, ResultStream, Session};
 use datascript_lsp::Config;
 use serde_json::{Value, json};
@@ -1579,5 +1579,547 @@ async fn syntax_only_completion_reads_no_files() {
         help["signatures"][0]["label"],
         "strlen(source: string) -> long"
     );
+    client.shutdown().await;
+}
+
+// ── Diagnostics, document sync, run and CodeLens gaps (M3-08) ────────────────────────────────
+
+fn format_range(range: &Value) -> String {
+    format!(
+        "{}:{}-{}:{}",
+        range["start"]["line"],
+        range["start"]["character"],
+        range["end"]["line"],
+        range["end"]["character"]
+    )
+}
+
+fn lens_summary(lenses: &Value) -> Vec<String> {
+    lenses
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|lens| {
+            format!(
+                "{} {} {} {}",
+                format_range(&lens["range"]),
+                lens["command"]["title"].as_str().unwrap(),
+                lens["command"]["command"].as_str().unwrap(),
+                lens["command"]["arguments"]
+            )
+        })
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn diagnostics_publish_related_information_for_secondary_spans() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("query.ds");
+
+    // DS1003: redefined `let`, with secondary span pointing at the earlier definition on line 0.
+    client
+        .open(&uri, "let x = 1;\nlet x = 2;\nfrom 'orders.csv' | take x\n")
+        .await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(1));
+    assert_eq!(published.codes(), ["DS1003"]);
+    assert_eq!(published.ranges(), ["1:4-1:5"]);
+    let related = published.diagnostics[0]["relatedInformation"]
+        .as_array()
+        .expect("DS1003 relatedInformation");
+    assert_eq!(related.len(), 2, "{related:?}");
+    assert_eq!(related[0]["location"]["uri"], uri);
+    assert_eq!(format_range(&related[0]["location"]["range"]), "1:4-1:5");
+    assert_eq!(related[0]["message"], "defined again here");
+    assert_eq!(related[1]["location"]["uri"], uri);
+    assert_eq!(format_range(&related[1]["location"]["range"]), "0:4-0:5");
+    assert_eq!(related[1]["message"], "first defined here");
+
+    // DS2003: binary operator type mismatch, with primary and secondary operand spans.
+    client
+        .replace_all(
+            &uri,
+            2,
+            "from 'orders.csv'\n| extend bad = customerId + 1\n",
+        )
+        .await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(2));
+    assert_eq!(published.codes(), ["DS2003"]);
+    assert_eq!(published.ranges(), ["1:15-1:25"]);
+    let related = published.diagnostics[0]["relatedInformation"]
+        .as_array()
+        .expect("DS2003 relatedInformation");
+    assert_eq!(related.len(), 2, "{related:?}");
+    assert_eq!(related[0]["location"]["uri"], uri);
+    assert_eq!(format_range(&related[0]["location"]["range"]), "1:15-1:25");
+    assert!(
+        related[0]["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("this is `string`"),
+        "{related:?}"
+    );
+    assert_eq!(related[1]["location"]["uri"], uri);
+    assert_eq!(format_range(&related[1]["location"]["range"]), "1:28-1:29");
+    assert_eq!(related[1]["message"], "this is `long`");
+
+    client.shutdown().await;
+}
+
+/// An engine whose `schema_of` panics on a chosen path and whose `execute` returns a
+/// location-less `DS4002` error, exercising location-less diagnostics over JSON-RPC.
+#[derive(Debug)]
+struct LocationlessFailures(DataFusionEngine);
+
+#[async_trait::async_trait]
+impl Engine for LocationlessFailures {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn capabilities(&self) -> &Capabilities {
+        self.0.capabilities()
+    }
+
+    async fn schema_of(
+        &self,
+        source: &SourceRef,
+        ctx: &ExecContext,
+    ) -> Result<SchemaRef, SourceError> {
+        if source.path() == Some("boom.csv") {
+            panic!("synthetic schema failure");
+        }
+        self.0.schema_of(source, ctx).await
+    }
+
+    async fn execute(&self, _: &QueryPlan, _: &ExecContext) -> Result<ResultStream, Diagnostic> {
+        Err(Diagnostic::error(codes::DS4002, "untraceable engine failure").in_file(FileId(0)))
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn location_less_diagnostics_and_empty_program() {
+    let mut client = Client::start(
+        Arc::new(LocationlessFailures(DataFusionEngine::default())),
+        one_publish(20),
+        false,
+    )
+    .await;
+    client.write("orders.csv", ORDERS);
+
+    // An empty or let-only program is valid for `check` (LANGUAGE.md §2: no DS0004 published),
+    // while `datascript/run` reports DS0004 in its output without failing.
+    for (name, text) in [("empty.ds", ""), ("lets_only.ds", "let a = 1;\n")] {
+        let uri = client.uri(name);
+        client.open(&uri, text).await;
+        let published = client.diagnostics(&uri).await;
+        assert_eq!(published.version, Some(1));
+        assert_eq!(published.codes(), Vec::<&str>::new());
+        let ran = client
+            .request("datascript/run", json!({ "textDocument": { "uri": uri } }))
+            .await;
+        assert_eq!(ran["failed"], false);
+        assert!(
+            ran["output"]
+                .as_str()
+                .unwrap()
+                .contains("warning[DS0004]: program has no query to run"),
+            "{name}: {ran}"
+        );
+    }
+
+    // A location-less diagnostic from `check` (caught panic -> DS9001 with `primary: None`)
+    // is published at 0:0-0:0.
+    let crash = client.uri("crash.ds");
+    client.open(&crash, "from 'boom.csv' | count\n").await;
+    let published = client.diagnostics(&crash).await;
+    assert_eq!(published.version, Some(1));
+    assert_eq!(published.codes(), ["DS9001"]);
+    assert_eq!(published.ranges(), ["0:0-0:0"]);
+    assert_eq!(published.diagnostics[0]["relatedInformation"], Value::Null);
+
+    // A location-less runtime diagnostic (`DS4002` with `primary: None`) from `datascript/run`
+    // is likewise published at 0:0-0:0.
+    let query = client.uri("query.ds");
+    client.open(&query, "from 'orders.csv' | count\n").await;
+    assert_eq!(client.diagnostics(&query).await.codes(), Vec::<&str>::new());
+    let ran = client
+        .request(
+            "datascript/run",
+            json!({ "textDocument": { "uri": query } }),
+        )
+        .await;
+    assert_eq!(ran["failed"], true);
+    assert!(
+        ran["output"]
+            .as_str()
+            .unwrap()
+            .contains("error[DS4002]: untraceable engine failure"),
+        "{ran}"
+    );
+    let published = client.diagnostics(&query).await;
+    assert_eq!(published.version, Some(1));
+    assert_eq!(published.codes(), ["DS4002"]);
+    assert_eq!(published.ranges(), ["0:0-0:0"]);
+    assert_eq!(published.diagnostics[0]["relatedInformation"], Value::Null);
+
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn did_change_applies_multiple_content_changes_in_order() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("query.ds");
+
+    client
+        .open(&uri, "from 'orders.csv'\n| project amout\n")
+        .await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.codes(), ["DS1001"]);
+    assert_eq!(published.ranges(), ["1:10-1:15"]);
+
+    // One `didChange` with three incremental edits where each range depends on the text
+    // produced by the previous edit.
+    client
+        .notify(
+            "textDocument/didChange",
+            json!({
+                "textDocument": { "uri": uri, "version": 2 },
+                "contentChanges": [
+                    {
+                        "range": {
+                            "start": { "line": 1, "character": 0 },
+                            "end": { "line": 1, "character": 0 }
+                        },
+                        "text": "| where amount > 15\n"
+                    },
+                    {
+                        "range": {
+                            "start": { "line": 2, "character": 10 },
+                            "end": { "line": 2, "character": 15 }
+                        },
+                        "text": "amount"
+                    },
+                    {
+                        "range": {
+                            "start": { "line": 2, "character": 16 },
+                            "end": { "line": 2, "character": 16 }
+                        },
+                        "text": " | take 1"
+                    }
+                ]
+            }),
+        )
+        .await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(2));
+    assert_eq!(published.codes(), Vec::<&str>::new());
+    assert_eq!(
+        client.run(&uri, None).await.unwrap(),
+        "amount\nreal\n------\n  20.0\n"
+    );
+
+    // Full replacement followed by an incremental edit in one `didChange`.
+    client
+        .notify(
+            "textDocument/didChange",
+            json!({
+                "textDocument": { "uri": uri, "version": 3 },
+                "contentChanges": [
+                    { "text": "from 'orders.csv'\n| project x\n" },
+                    {
+                        "range": {
+                            "start": { "line": 1, "character": 10 },
+                            "end": { "line": 1, "character": 11 }
+                        },
+                        "text": "badcol"
+                    }
+                ]
+            }),
+        )
+        .await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(3));
+    assert_eq!(published.codes(), ["DS1001"]);
+    assert_eq!(published.ranges(), ["1:10-1:16"]);
+
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn crlf_document_diagnostics_and_code_lenses() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("crlf.ds");
+    let text = "let big = from 'orders.csv' | where amount > 15;\r\n\
+                from 'orders.csv'\r\n\
+                | where amount > 0\r\n\
+                | project amout;\r\n\
+                from big\r\n\
+                | count\r\n";
+    client.open(&uri, text).await;
+
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(1));
+    assert_eq!(published.codes(), ["DS1001"]);
+    assert_eq!(published.ranges(), ["3:10-3:15"]);
+
+    let lenses = client
+        .request(
+            "textDocument/codeLens",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    assert_eq!(
+        lens_summary(&lenses),
+        [
+            format!("1:0-3:15 ▶ Run datascript.runStatement [\"{uri}\",1]"),
+            format!("1:0-3:15 ▶ Run file datascript.runFile [\"{uri}\"]"),
+            format!("4:0-5:7 ▶ Run datascript.runStatement [\"{uri}\",2]"),
+        ]
+    );
+
+    // An incremental edit on a CRLF document updates the right line and clears the diagnostic.
+    client.edit(&uri, 2, (3, 10), (3, 15), "amount").await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(2));
+    assert_eq!(published.codes(), Vec::<&str>::new());
+    let output = client.run(&uri, None).await.unwrap();
+    assert!(output.contains("== query 1 (line 2) ==\n"), "{output}");
+    assert!(output.contains("== query 2 (line 5) ==\n"), "{output}");
+
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn runtime_error_keeps_check_warnings_in_published_diagnostics() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("big.csv", "x\n1\n10000\n");
+    let uri = client.uri("warn_and_overflow.ds");
+    // `sort by x` without `asc`/`desc` triggers DS2103 (warning); the multiplication overflows
+    // at run time (DS4003).
+    let text = "from 'big.csv' | sort by x | extend y = x * 1000000000000000\n";
+    client.open(&uri, text).await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(1));
+    assert_eq!(published.codes(), ["DS2103"]);
+    assert_eq!(published.diagnostics[0]["severity"], 2);
+
+    let ran = client
+        .request("datascript/run", json!({ "textDocument": { "uri": uri } }))
+        .await;
+    assert_eq!(ran["failed"], true);
+    let output = ran["output"].as_str().unwrap();
+    assert!(output.contains("warning[DS2103]"), "{output}");
+    assert!(output.contains("error[DS4003]"), "{output}");
+
+    // Both the check warning and the runtime error are published together.
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(1));
+    assert_eq!(published.codes(), ["DS2103", "DS4003"]);
+    assert_eq!(published.diagnostics[0]["severity"], 2);
+    assert_eq!(published.diagnostics[1]["severity"], 1);
+
+    // Editing to fix the overflow clears only the runtime error; the warning stays.
+    client.edit(&uri, 2, (0, 44), (0, 60), "2").await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(2));
+    assert_eq!(published.codes(), ["DS2103"]);
+
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn run_rejects_statement_zero_and_allows_unlimited_max_rows() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    let mut csv = String::from("n\n");
+    for i in 1..=105 {
+        csv.push_str(&format!("{i}\n"));
+    }
+    client.write("many.csv", &csv);
+    let uri = client.uri("many.ds");
+    client.open(&uri, "from 'many.csv' | sort by n asc\n").await;
+    assert_eq!(client.diagnostics(&uri).await.codes(), Vec::<&str>::new());
+
+    // `statement: 0` is 1-based out of range and refused with REQUEST_FAILED (-32803).
+    let response = client
+        .request_response(
+            "datascript/run",
+            json!({ "textDocument": { "uri": uri }, "statement": 0 }),
+        )
+        .await;
+    assert_eq!(response["error"]["code"], -32803, "{response}");
+    assert_eq!(
+        response["error"]["message"],
+        "statement 0 is out of range: the document has 1 query statement"
+    );
+
+    // Default `maxRows` caps output at 100 rows.
+    let default_run = client
+        .request("datascript/run", json!({ "textDocument": { "uri": uri } }))
+        .await;
+    assert_eq!(default_run["failed"], false);
+    let default_out = default_run["output"].as_str().unwrap();
+    assert!(
+        default_out.contains("… 5 more rows (show them with --max-rows 105)"),
+        "{default_out}"
+    );
+    assert!(!default_out.contains("105\n"), "{default_out}");
+
+    // `maxRows: 0` lifts the limit and returns every row.
+    let unlimited = client
+        .request(
+            "datascript/run",
+            json!({ "textDocument": { "uri": uri }, "maxRows": 0 }),
+        )
+        .await;
+    assert_eq!(unlimited["failed"], false);
+    let unlimited_out = unlimited["output"].as_str().unwrap();
+    assert!(!unlimited_out.contains("more row"), "{unlimited_out}");
+    assert!(unlimited_out.ends_with("105\n"), "{unlimited_out}");
+    assert_eq!(
+        unlimited_out.lines().count(),
+        3 + 105,
+        "header + type + separator + 105 rows"
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn run_with_compile_error_fails_without_adding_runtime_diagnostics() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("bad.ds");
+    client
+        .open(&uri, "from 'orders.csv' | project amout\n")
+        .await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(1));
+    assert_eq!(published.codes(), ["DS1001"]);
+
+    let ran = client
+        .request("datascript/run", json!({ "textDocument": { "uri": uri } }))
+        .await;
+    assert_eq!(ran["failed"], true);
+    assert!(
+        ran["output"].as_str().unwrap().contains("error[DS1001]"),
+        "{ran}"
+    );
+
+    // No extra `publishDiagnostics` notification was emitted for version 1: the very next
+    // notification for `uri` is version 2's check after fixing the typo.
+    client.edit(&uri, 2, (0, 28), (0, 33), "amount").await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(2));
+    assert_eq!(published.codes(), Vec::<&str>::new());
+
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn code_lens_covers_multiline_query_statements() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("multiline.ds");
+    let text = "// header comment\n\
+                from 'orders.csv'\n\
+                | where amount > 10\n\
+                | summarize total = sum(amount) by customerId\n\
+                | sort by total desc;\n\
+                \n\
+                from 'orders.csv'\n\
+                | take 5\n";
+    client.open(&uri, text).await;
+
+    let lenses = client
+        .request(
+            "textDocument/codeLens",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    assert_eq!(
+        lens_summary(&lenses),
+        [
+            format!("1:0-4:20 ▶ Run datascript.runStatement [\"{uri}\",1]"),
+            format!("1:0-4:20 ▶ Run file datascript.runFile [\"{uri}\"]"),
+            format!("6:0-7:8 ▶ Run datascript.runStatement [\"{uri}\",2]"),
+        ]
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn code_lens_on_syntax_errors_and_closed_or_unknown_uri() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+
+    // Unknown URI (never opened): null.
+    let unknown = client.uri("never_opened.ds");
+    let lenses = client
+        .request(
+            "textDocument/codeLens",
+            json!({ "textDocument": { "uri": unknown } }),
+        )
+        .await;
+    assert_eq!(lenses, Value::Null);
+
+    // Recoverable syntax errors inside a query still produce lenses over the parsed queries.
+    let uri = client.uri("broken.ds");
+    client
+        .open(
+            &uri,
+            "from 'orders.csv' | where amount = 10;\nfrom 'orders.csv' | count\n",
+        )
+        .await;
+    assert_eq!(client.diagnostics(&uri).await.codes(), ["DS0110"]);
+    let lenses = client
+        .request(
+            "textDocument/codeLens",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    assert_eq!(
+        lens_summary(&lenses),
+        [
+            format!("0:0-0:37 ▶ Run datascript.runStatement [\"{uri}\",1]"),
+            format!("0:0-0:37 ▶ Run file datascript.runFile [\"{uri}\"]"),
+            format!("1:0-1:25 ▶ Run datascript.runStatement [\"{uri}\",2]"),
+        ]
+    );
+
+    // Unparseable tokens that form no query statement yield an empty list, not an error.
+    client.replace_all(&uri, 2, "=== ;;;\n").await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(2));
+    assert!(!published.codes().is_empty());
+    let lenses = client
+        .request(
+            "textDocument/codeLens",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    assert_eq!(lenses, json!([]));
+
+    // After closing the document, `codeLens` returns null.
+    client
+        .notify(
+            "textDocument/didClose",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    assert_eq!(client.diagnostics(&uri).await.codes(), Vec::<&str>::new());
+    let lenses = client
+        .request(
+            "textDocument/codeLens",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    assert_eq!(lenses, Value::Null);
+
     client.shutdown().await;
 }
