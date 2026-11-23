@@ -3,10 +3,12 @@
 **Status:** todo
 **Depends on:** M1-13, M2-13
 **Crates:** `datascript-syntax`, `datascript-compiler`
+**Diagnostic codes:** DS0250–DS0269 (syntax), DS1060–DS1079 (names), DS2260–DS2279 (types) (D-018)
 
 ## Goal
 `let f = (x: long, y: real = 1.0) { x * y };` for scalar functions, and tabular functions
-`let recent = (T: (timestamp: datetime)) { T | where timestamp > ago(1d) };`.
+`let recent = (T: (timestamp: datetime)) { from T | where timestamp > ago(1d) };` (a pipeline
+starts with `from`, D-036, including one over a tabular parameter).
 
 ## Acceptance criteria
 - [ ] Inlined during planning (no engine support needed).

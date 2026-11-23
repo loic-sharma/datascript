@@ -90,7 +90,7 @@ Two shared files are touched by many tasks:
 | [M2-10](M2-10-decimal-guid.md) | `decimal` and `guid` types | M1-13, M2-13 | todo |
 | [M2-11](M2-11-streaming-run.md) | Stream results in `ds run` | M1-13 | done |
 | [M2-12](M2-12-runtime-source-errors.md) | Name the file in runtime read errors | M1-13, M2-13 | todo |
-| [M2-13](M2-13-task-contract-fixes.md) | Fix task contracts and diagnostic code blocks | M1-13 | todo |
+| [M2-13](M2-13-task-contract-fixes.md) | Fix task contracts and diagnostic code blocks | M1-13 | done |
 | [M2-14](M2-14-spec-code-mismatches.md) | Spec/code mismatches from the docs review | M1-13 | todo |
 
 ## M3 — Editor experience
@@ -120,7 +120,7 @@ Two shared files are touched by many tasks:
 |---|---|---|---|
 | [M5-01](M5-01-wasm-build.md) | Build the engine for wasm32 | M1-13, M2-13 | todo |
 | [M5-02](M5-02-wasm-js-api.md) | JS/TS API (`@datascript/wasm`) | M5-01, M3-02, M2-13 | todo |
-| [M5-03](M5-03-wasm-playground.md) | WASM runtime adapter and playground | M5-02, M4-02, M2-13 | todo |
+| [M5-03](M5-03-wasm-playground.md) | WASM runtime adapter and playground | M5-02, M4-02, M4-03, M4-04, M2-13 | todo |
 | [M5-04](M5-04-parity-tests.md) | CLI ↔ WASM parity tests | M5-02 | todo |
 
 ## M6 — Release readiness
@@ -128,7 +128,7 @@ Two shared files are touched by many tasks:
 | ID | Task | Depends on | Status |
 |---|---|---|---|
 | [M6-01](M6-01-reference-docs.md) | Language reference and docs site | M2-08, M5-03, M2-13 | todo |
-| [M6-02](M6-02-packaging.md) | Packaging and releases | M1-13, M2-13 | todo |
+| [M6-02](M6-02-packaging.md) | Packaging and releases | M1-13, M2-13, M3-04, M4-02, M5-02 | todo |
 | [M6-03](M6-03-sql-backend.md) | Second backend: SQL emitter | M1-13 | todo |
 | [M6-04](M6-04-core-docs-refresh.md) | Bring the core docs in line with the code | M2-13, M2-14 | todo |
 

@@ -2,11 +2,21 @@
 
 **Status:** todo
 **Depends on:** M3-01, M2-13
-**Crates:** `datascript-lsp`
+**Crates:** `datascript-lsp`, `datascript-compiler` (`ide`)
 
 ## Goal
-Code actions from machine-applicable suggestions, go to definition and find references for `let`s
-and UDFs, rename, document symbols, semantic tokens, and formatting (after M2-07).
+Code actions from machine-applicable suggestions, go to definition and find references for `let`s,
+rename, document symbols, and semantic tokens. For UDFs (after M2-05) and formatting (after M2-07)
+the later task carries the work over; this task does not wait for them.
+
+## Scope
+- Resolve `let` names from the syntax tree, in `datascript_compiler::ide` next to `complete`, so
+  the web UI and WASM can share it. The bound program does not link a use to its definition: a
+  scalar `let` use is `ExprKind::Let { name, value }` with the folded value, and there is no HIR
+  at all in syntax-only mode.
+- In syntax-only mode (D-053) every feature here must work from the parse alone or be skipped:
+  navigation and rename over `let`s, document symbols and semantic tokens work; code actions come
+  only from syntax diagnostics.
 
 ## Acceptance criteria
 - [ ] Each feature has an LSP test.

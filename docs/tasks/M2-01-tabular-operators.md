@@ -3,6 +3,7 @@
 **Status:** todo
 **Depends on:** M1-13, M2-13
 **Crates:** `datascript-syntax`, `datascript-compiler`, `datascript-datafusion`
+**Diagnostic codes:** DS0200–DS0219 (syntax), DS1050–DS1059 (names), DS2200–DS2219 (types) (D-018)
 
 ## Goal
 Add the simpler ○ operators and sources from LANGUAGE.md: `lookup`, `as`, `sample`,
@@ -19,5 +20,6 @@ Add the simpler ○ operators and sources from LANGUAGE.md: `lookup`, `as`, `sam
 - [ ] (from M1-25) `range x⏎from 1 to 10` must stay one statement (D-037): after `range x` the generator is not complete, so `from` there is not a statement start. Today `grammar::generator` recovers with `Parser::at_new_statement`, which stops at a `from` first on its line; the real grammar must not. Add a golden case once `range` parses.
 - [ ] (from M1-25) `lookup from t on k` should get DS0152 with the fix removing `from`, as `join` and `union` do: call `grammar::right_table` for the table after `lookup`.
 - [ ] (from M3-02) Teach completion the new operators in `datascript_compiler::ide::complete` (`classify`): the right side of `lookup` is a table position like `join`'s, and each operator's clauses need their keywords and column contexts. Add a case per operator to `crates/datascript-compiler/src/ide/tests.rs`, and an `operator_doc` line each (`ide/mod.rs`).
+- [ ] (from M2-13) Add the new operators (`lookup`, `as`, `sample`, `project-reorder`) and generators (`datatable`, `range`, `print`) to the TextMate grammar in `editors/vscode/syntaxes/datascript.tmLanguage.json`; the Rust test that checks the grammar against the lexer (D-053) should cover them.
 
 ## Follow-ups

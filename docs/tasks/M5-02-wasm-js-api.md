@@ -12,6 +12,19 @@ loads; the engine module loads lazily on the first `run` or schema lookup. Cance
 the worker (a CPU-bound query cannot observe a dropped stream on one thread). Diagnostic positions
 are UTF-16 (D-025).
 
+## Scope
+The sketch above (and the one in ARCHITECTURE.md § WASM constraints) is the minimum. The API must
+also cover what `web/` (M4-02's `Runtime` interface, M5-03) and the parity tests (M5-04) need:
+- programs with several statements: `run` yields one result per query, with its statement index,
+  and can run one statement by index (Ctrl/Cmd+Enter in the web UI);
+- the row limit decided in Q-007, and the `truncated` flag;
+- `schema(source)`, `hover(text, offset)`, `signatureHelp(text, offset)`, `explain(text)`;
+- `registerTable` for host tables, and listing and removing registered files;
+- an injected `now` (core crates read no clock, ARCHITECTURE.md) so `now()`/`ago()` work and
+  parity tests are stable;
+- an `AbortSignal` on `run`.
+Write the final API into ARCHITECTURE.md § WASM constraints and the API contract doc M4-01 writes.
+
 ## Acceptance criteria
 - [ ] Generated `.d.ts` plus hand-written docs. Vitest tests in Node and in a browser.
 

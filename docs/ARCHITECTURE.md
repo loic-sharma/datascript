@@ -345,6 +345,9 @@ The `web/` front end talks to a `Runtime` interface (TypeScript) with two implem
   schema lookup. Diagnostics and completion for syntax and names then work before the engine has
   downloaded. Both run in a Web Worker; cancelling a run terminates or interrupts that worker,
   because a CPU-bound query on a single thread cannot see a dropped stream.
-- `@datascript/wasm` exposes: `registerFile(name, bytes)`, `check(text) -> Diagnostic[]`,
-  `run(text) -> { arrowIpc, render, diagnostics }`, `complete(text, offset)`.
+- `@datascript/wasm` exposes at least `registerFile(name, bytes)`, `check(text) -> Diagnostic[]`,
+  `run(text)` and `complete(text, offset)`. `run` returns one result (Arrow IPC, `RenderSpec`,
+  diagnostics) per query, not one per program. M5-02 owns the full API, including what `web/` and
+  the parity tests need (statement index, row limit, `schema`, `hover`, `explain`, host tables,
+  an injected `now`, cancellation), and writes it here.
 - Binary size matters. Track it in CI once M5 starts.

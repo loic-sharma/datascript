@@ -115,10 +115,9 @@ gets a long-form explanation (`ds explain-error DS1001`, M2) in `docs/errors/DSx
 **Allocation (D-018).** Parallel tasks must not pick the same "next free" code. Each task owns a
 block, listed below and in its task file. Allocate only inside your block. If you run out, reserve
 a new block in this table in a separate small commit to `main` before using it.
-
 | Block | Owner |
 |---|---|
-| DS0001–DS0019 | M1-01 lexer |
+| DS0001–DS0019 except DS0004 | M1-01 lexer (M1-20 added DS0007 from this block) |
 | DS0100–DS0101 | M1-02 parser (generic errors) |
 | DS0102–DS0149 | M1-03 syntax diagnostics |
 | DS0150–DS0151 | M1-24 `from` keyword |
@@ -132,12 +131,22 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS4001–DS4049 | M1-07 / M1-09 engine |
 | DS5001–DS5049 | M1-10 render |
 | DS0004, DS9001 | M0-02 diagnostics core |
+| DS0200–DS0219, DS1050–DS1059, DS2200–DS2219 | M2-01 remaining tabular operators |
+| DS0220–DS0229, DS2220–DS2229, DS4050–DS4054 | M2-02 `parse` operator |
+| DS0230–DS0239, DS2230–DS2249 | M2-03 `dynamic` type, JSON, `mv-expand` (also rewords the registered DS2012) |
+| DS0240–DS0249, DS2250–DS2259, DS5050–DS5054 | M2-04 `make-series` |
+| DS0250–DS0269, DS1060–DS1079, DS2260–DS2279 | M2-05 user-defined functions |
+| DS0270–DS0279, DS2280–DS2299, DS4055–DS4059 | M2-06 function library |
+| DS0280–DS0289, DS1080–DS1084, DS2300–DS2309, DS3050–DS3059 | M2-09 reader schema overrides |
+| DS2310–DS2319 | M2-10 `decimal` and `guid` |
+| DS3060–DS3064 | M2-12 runtime read errors (none expected; DS3008 is reused) |
+| DS3065–DS3069, DS4060–DS4064 | M4-01 local web UI server (Q-007's "results truncated" info diagnostic; DS3007 above) |
 
 **Retired codes**: DS2007 (D-020), DS2101 (D-050). List them here when a code is retired.
 
 | Range | Area |
 |---|---|
-| DS0001–DS0099 | Lexical (bad characters, unterminated strings, bad literals) |
+| DS0001–DS0099 | Lexical (bad characters, unterminated strings, bad literals), except `DS0004` (no query to run), which M0-02 registered before the ranges were set and which stays where it is |
 | DS0100–DS0999 | Syntax (parse errors, misplaced operators, foreign-language habits) |
 | DS1000–DS1999 | Names (unknown column/let/function/table, duplicate definitions) |
 | DS2000–DS2999 | Types (mismatches, wrong arity, non-bool predicates, aggregate misuse) |

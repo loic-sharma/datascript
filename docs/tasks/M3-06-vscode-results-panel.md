@@ -2,7 +2,7 @@
 
 **Status:** todo
 **Depends on:** M3-05, M4-02, M4-03, M2-13
-**Crates:** `datascript-lsp`, `editors/vscode`
+**Crates:** `datascript-lsp`, `datascript-engine` (Arrow output per result), `editors/vscode`, `web/`
 
 ## Goal
 Show Run results in a webview panel: a virtualized grid and, for `render`, the chart, reusing the

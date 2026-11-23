@@ -1,7 +1,7 @@
 # M5-03 — WASM runtime adapter and playground
 
 **Status:** todo
-**Depends on:** M5-02, M4-02, M2-13
+**Depends on:** M5-02, M4-02, M4-03, M4-04, M2-13
 **Crates:** `web/`
 
 ## Goal
