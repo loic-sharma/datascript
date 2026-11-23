@@ -1891,6 +1891,68 @@ async fn crlf_document_diagnostics_and_code_lenses() {
     assert!(output.contains("== query 1 (line 2) ==\n"), "{output}");
     assert!(output.contains("== query 2 (line 5) ==\n"), "{output}");
 
+    // Join lines 2 and 3 across the `\r\n` boundary (`(2, 18)..(3, 0)`), then join lines 3 and 4
+    // using a character past the end of line 3 (`(3, 99)..(4, 0)`). Clamping before `\r` rather
+    // than `\n` is required so neither edit leaves a stray `\r` splitting the joined line.
+    client.edit(&uri, 3, (2, 18), (3, 0), " ").await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(3));
+    assert_eq!(published.codes(), Vec::<&str>::new());
+
+    client.edit(&uri, 4, (3, 99), (4, 0), " ").await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(4));
+    assert_eq!(published.codes(), Vec::<&str>::new());
+
+    let lenses = client
+        .request(
+            "textDocument/codeLens",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    assert_eq!(
+        lens_summary(&lenses),
+        [
+            format!("1:0-2:35 ▶ Run datascript.runStatement [\"{uri}\",1]"),
+            format!("1:0-2:35 ▶ Run file datascript.runFile [\"{uri}\"]"),
+            format!("3:0-3:16 ▶ Run datascript.runStatement [\"{uri}\",2]"),
+        ]
+    );
+    let output = client.run(&uri, None).await.unwrap();
+    assert!(output.contains("== query 1 (line 2) ==\n"), "{output}");
+    assert!(output.contains("== query 2 (line 4) ==\n"), "{output}");
+
+    // Insert a multi-line query at the start of line 3 (after three CRLF lines) whose diagnostic
+    // span itself crosses `\r\n` line breaks.
+    client
+        .edit(
+            &uri,
+            5,
+            (3, 0),
+            (3, 0),
+            "from 'orders.csv'\r\n| where (\r\n    amount + 1\r\n);\r\n",
+        )
+        .await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(5));
+    assert_eq!(published.codes(), ["DS2001"]);
+    assert_eq!(published.ranges(), ["4:8-6:1"]);
+    let lenses = client
+        .request(
+            "textDocument/codeLens",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    assert_eq!(
+        lens_summary(&lenses),
+        [
+            format!("1:0-2:35 ▶ Run datascript.runStatement [\"{uri}\",1]"),
+            format!("1:0-2:35 ▶ Run file datascript.runFile [\"{uri}\"]"),
+            format!("3:0-6:1 ▶ Run datascript.runStatement [\"{uri}\",2]"),
+            format!("7:0-7:16 ▶ Run datascript.runStatement [\"{uri}\",3]"),
+        ]
+    );
+
     client.shutdown().await;
 }
 

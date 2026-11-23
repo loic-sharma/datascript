@@ -15,7 +15,9 @@ A review of the integration tests (November 2026) found LSP behaviour that only 
 ### Diagnostics
 - [x] `relatedInformation` for a diagnostic with secondary spans (for example `DS2003` or
   `DS1003`) is published with the right URIs and ranges.
-- [x] A diagnostic with no location (`DS0004`, empty program) is published at a sensible range.
+- [x] A diagnostic with no location (`DS0004`, empty program) is published at a sensible range
+  (see Follow-ups: `check` does not publish `DS0004`; covered via `datascript/run` for `DS0004`
+  and via `DS9001`/`DS4002` for location-less `publishDiagnostics`).
 
 ### Document sync
 - [x] One `textDocument/didChange` with several `contentChanges`, applied in order.
