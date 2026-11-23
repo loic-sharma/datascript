@@ -1,0 +1,12 @@
+# `read_parquet` on a file that is not valid Parquet fails with DS3008.
+mode: run
+---- query
+from read_parquet('../../data/bad/not_parquet.parquet') | take 1
+---- expected
+error[DS3008]: cannot read `../../data/bad/not_parquet.parquet` as Parquet
+  --> query:1:6
+  |
+1 | from read_parquet('../../data/bad/not_parquet.parquet') | take 1
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this file is not valid Parquet
+  |
+  = note: the reader said: Parquet error: Parquet error: Invalid Parquet file. Corrupt footer

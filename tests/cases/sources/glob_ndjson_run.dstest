@@ -1,0 +1,49 @@
+# NDJSON glob: merges schemas by name across files. `country` exists only in February (null
+# in January and March), and March has a null `duration_ms`.
+mode: run
+---- query
+from '../../data/events/*.ndjson'
+| project ts, user, event, duration_ms, country
+| sort by ts asc;
+from '../../data/events/*.ndjson'
+| summarize events = count(), with_country = countif(isnotnull(country)), with_duration = countif(isnotnull(duration_ms));
+from '../../data/**/2024-0?.ndjson'
+| count
+---- expected
+ts                   | user   | event    | duration_ms | country
+string               | string | string   | long        | string
+---------------------+--------+----------+-------------+--------
+2024-01-06T10:15:28Z | u-4    | view     |        1615 | null
+2024-01-07T05:33:39Z | u-3    | purchase |         725 | null
+2024-01-14T18:54:55Z | u-4    | purchase |        2414 | null
+2024-01-16T16:27:12Z | u-5    | purchase |        4797 | null
+2024-01-21T01:59:55Z | u-4    | view     |        3322 | null
+2024-01-22T14:13:34Z | u-3    | purchase |        3201 | null
+2024-01-24T12:15:21Z | u-5    | view     |        3133 | null
+2024-01-28T12:14:59Z | u-4    | view     |        3502 | null
+2024-02-01T08:00:34Z | u-2    | view     |        1335 | US
+2024-02-01T09:02:40Z | u-5    | view     |        3057 | US
+2024-02-02T21:45:09Z | u-1    | view     |        3199 | JP
+2024-02-07T08:21:36Z | u-1    | purchase |        1697 | US
+2024-02-10T07:06:17Z | u-4    | click    |         742 | JP
+2024-02-15T04:45:54Z | u-3    | click    |        4553 | US
+2024-02-18T02:11:39Z | u-3    | purchase |         102 | DE
+2024-02-28T19:30:50Z | u-1    | purchase |        4251 | DE
+2024-03-03T10:52:45Z | u-1    | purchase |        null | null
+2024-03-08T03:04:02Z | u-5    | view     |        2946 | null
+2024-03-11T04:43:49Z | u-4    | purchase |        1853 | null
+2024-03-11T14:35:02Z | u-1    | view     |        3367 | null
+2024-03-12T08:27:28Z | u-5    | view     |         814 | null
+2024-03-12T13:13:25Z | u-5    | view     |        4722 | null
+2024-03-22T16:36:54Z | u-4    | click    |        4215 | null
+2024-03-23T07:38:54Z | u-1    | view     |        4708 | null
+
+events | with_country | with_duration
+long   | long         | long
+-------+--------------+--------------
+    24 |            8 |            23
+
+Count
+long
+-----
+   24

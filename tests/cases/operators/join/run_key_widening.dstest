@@ -1,0 +1,41 @@
+# Key widening in `join`: joining an `int` key against a `long` key widens the merged `on k`
+# column to `long` (run version of `key_widening.dstest`, LANGUAGE.md §4.2).
+mode: run
+---- query
+let left_t = from '../../../data/edge/nulls.csv'
+    | where id <= 3
+    | project k = toint(id), a = name;
+let right_t = from '../../../data/edge/nulls.csv'
+    | where id >= 2 and id <= 4
+    | project k = id, b = value;
+let right_renamed = from right_t
+    | project k2 = k, b;
+from left_t
+| join right_t on k
+| sort by k asc;
+from left_t
+| join kind = fullouter right_t on k
+| sort by k asc;
+from left_t
+| join right_renamed on $left.k == $right.k2
+| sort by k asc
+---- expected
+k    | a      | b
+long | string | real
+-----+--------+-------
+   2 | null   |    2.5
+   3 | gamma  | null
+
+k    | a      | b
+long | string | real
+-----+--------+-------
+   1 | alpha  | null
+   2 | null   |    2.5
+   3 | gamma  | null
+   4 | null   |    4.5
+
+k   | a      | k2   | b
+int | string | long | real
+----+--------+------+-------
+  2 | null   |    2 |    2.5
+  3 | gamma  |    3 | null

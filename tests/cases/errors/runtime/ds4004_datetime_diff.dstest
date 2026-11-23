@@ -1,0 +1,13 @@
+# An unknown computed datetime part in `datetime_diff` is DS4004 when the query runs.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| project d = datetime_diff(strcat('fort', 'night'), timestamp, timestamp)
+---- expected
+error[DS4004]: `fortnight` is not a datetime part
+  --> query:2:15
+  |
+2 | | project d = datetime_diff(strcat('fort', 'night'), timestamp, timestamp)
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ in this call of `datetime_diff`
+  |
+  = note: the parts are "year", "quarter", "month", "week_of_year", "week", "day", "dayofyear", "hour", "minute", "second", "millisecond", "microsecond", "nanosecond"

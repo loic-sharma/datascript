@@ -1,0 +1,14 @@
+# `startofday` overflowing the 64-bit microsecond datetime range is DS4003.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| take 1
+| project d = startofday(timestamp, 200000000)
+---- expected
+error[DS4003]: the result of `startofday` does not fit in a `datetime`
+  --> query:3:15
+  |
+3 | | project d = startofday(timestamp, 200000000)
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this overflowed
+  |
+  = note: datetimes and timespans are counted in microseconds and hold about ±292,000 years

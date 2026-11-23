@@ -1,0 +1,14 @@
+# Running queries over a header-only CSV file (columns, no rows).
+mode: run
+---- query
+from '../../data/edge/header_only.csv';
+from '../../data/edge/header_only.csv' | count
+---- expected
+id     | name   | value
+string | string | string
+-------+--------+-------
+
+Count
+long
+-----
+    0
