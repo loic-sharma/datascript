@@ -93,7 +93,7 @@ Two shared files are touched by many tasks:
 | [M2-13](M2-13-task-contract-fixes.md) | Fix task contracts and diagnostic code blocks | M1-13 | done |
 | [M2-14](M2-14-spec-code-mismatches.md) | Spec/code mismatches from the docs review | M1-13 | done |
 | [M2-15](M2-15-golden-run-gaps.md) | Golden `run` coverage gaps | M1-13 | todo |
-| [M2-16](M2-16-cli-repl-test-gaps.md) | CLI and REPL integration test gaps | M2-11 | todo |
+| [M2-16](M2-16-cli-repl-test-gaps.md) | CLI and REPL integration test gaps | M2-11 | done |
 
 ## M3 — Editor experience
 
