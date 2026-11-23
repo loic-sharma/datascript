@@ -266,6 +266,62 @@ fn run_output_writes_a_file() {
 }
 
 #[test]
+fn run_output_writes_table_json_and_ndjson() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let table_path = dir.path().join("out.txt");
+    ds().args(["run", "-e", TWO_ROWS, "--format", "table", "--output"])
+        .arg(&table_path)
+        .assert()
+        .success()
+        .stdout("");
+    assert_eq!(
+        std::fs::read_to_string(&table_path).unwrap(),
+        "orderId | amount\n\
+         string  | real\n\
+         --------+-------\n\
+         o-0001  |  183.5\n\
+         o-0002  |   88.5\n"
+    );
+
+    let json_path = dir.path().join("out.json");
+    ds().args(["run", "-e", TWO_ROWS, "--format", "json", "--output"])
+        .arg(&json_path)
+        .assert()
+        .success()
+        .stdout("");
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&json_path).unwrap()).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!([
+            {
+                "statement": 1,
+                "columns": [
+                    {"name": "orderId", "type": "string"},
+                    {"name": "amount", "type": "real"},
+                ],
+                "rows": [
+                    {"orderId": "o-0001", "amount": 183.5},
+                    {"orderId": "o-0002", "amount": 88.5},
+                ],
+            }
+        ])
+    );
+
+    let ndjson_path = dir.path().join("out.ndjson");
+    ds().args(["run", "-e", TWO_ROWS, "--format", "ndjson", "--output"])
+        .arg(&ndjson_path)
+        .assert()
+        .success()
+        .stdout("");
+    assert_eq!(
+        std::fs::read_to_string(&ndjson_path).unwrap(),
+        "{\"orderId\":\"o-0001\",\"amount\":183.5}\n{\"orderId\":\"o-0002\",\"amount\":88.5}\n"
+    );
+}
+
+#[test]
 fn run_output_to_a_missing_directory_is_a_usage_error() {
     ds().args(["run", "-e", TWO_ROWS, "-o", "no/such/dir/out.csv"])
         .assert()
@@ -355,6 +411,18 @@ fn statement_out_of_range() {
         .stderr(contains("invalid value '0'"));
 }
 
+#[test]
+fn statement_on_a_program_with_no_query() {
+    ds().args(["run", "-e", "let x = 1;", "--statement", "1"])
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(
+            contains("`--statement 1` is out of range: the program has 0 query statements")
+                .and(contains("the program has no query to pick")),
+        );
+}
+
 // ---- run: row limits ----
 
 #[test]
@@ -430,6 +498,189 @@ fn big_csv(dir: &Path, rows: usize) -> String {
     text.push_str("10000\n");
     std::fs::write(dir.join("big.csv"), text).unwrap();
     "from 'big.csv' | extend y = x * 1000000000000000".to_string()
+}
+
+/// Like [`big_csv`], without the overflowing last row, for multi-batch success tests.
+fn valid_big_csv(dir: &Path, rows: usize) -> String {
+    let mut text = String::from("x\n");
+    text.push_str(&"1\n".repeat(rows));
+    std::fs::write(dir.join("big.csv"), text).unwrap();
+    "from 'big.csv' | extend y = x * 1000000000000000".to_string()
+}
+
+#[test]
+fn closed_stdout_pipe_exits_0_and_stops_reading() {
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+
+    // 60,000 rows of `1,1000000000000000\n` (~1.14 MB) exceeds any OS pipe buffer, so `ds`
+    // hits BrokenPipe long before reaching the overflowing last row.
+    let dir = tempfile::tempdir().unwrap();
+    let program = big_csv(dir.path(), 60_000);
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_ds"))
+        .current_dir(dir.path())
+        .env_remove("NO_COLOR")
+        .args(["run", "-e", &program, "--format", "csv"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut header = String::new();
+    stdout.read_line(&mut header).unwrap();
+    assert_eq!(header, "x,y\n");
+    // Close the read end, as `| head -1` does.
+    drop(stdout);
+    let output = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(output.status.code(), Some(0), "{stderr}");
+    assert!(stderr.is_empty(), "{stderr}");
+}
+
+#[test]
+fn ndjson_streams_batch_by_batch_and_stops_on_mid_stream_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let ok_program = valid_big_csv(dir.path(), 10_000);
+    let ok = ds()
+        .current_dir(dir.path())
+        .args(["run", "-e", &ok_program, "--format", "ndjson"])
+        .output()
+        .unwrap();
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+    let stdout = String::from_utf8(ok.stdout).unwrap();
+    assert_eq!(stdout.lines().count(), 10_000);
+    assert_eq!(
+        stdout.lines().next().unwrap(),
+        r#"{"x":1,"y":1000000000000000}"#
+    );
+
+    let program = big_csv(dir.path(), 20_000);
+    let output = ds()
+        .current_dir(dir.path())
+        .args(["run", "-e", &program, "--format", "ndjson"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("DS4003"), "{stderr}");
+    assert!(
+        stdout.starts_with("{\"x\":1,\"y\":1000000000000000}\n"),
+        "{stdout:.100}"
+    );
+    let lines = stdout.lines().count();
+    assert!((8_192..20_000).contains(&lines), "{lines} lines");
+    let last: serde_json::Value = serde_json::from_str(stdout.lines().last().unwrap()).unwrap();
+    assert_eq!(
+        last,
+        serde_json::json!({"x": 1, "y": 1_000_000_000_000_000_i64})
+    );
+}
+
+#[test]
+fn json_streams_batch_by_batch_and_leaves_array_unclosed_on_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let ok_program = valid_big_csv(dir.path(), 10_000);
+    let ok = ds()
+        .current_dir(dir.path())
+        .args(["run", "-e", &ok_program, "--format", "json"])
+        .output()
+        .unwrap();
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+    let value: serde_json::Value = serde_json::from_slice(&ok.stdout).unwrap();
+    assert_eq!(value[0]["rows"].as_array().unwrap().len(), 10_000);
+
+    // Mid-stream failure across batches in a single query: earlier batches are written and the
+    // JSON array is left unclosed so consumers do not mistake a failed run for valid JSON.
+    let program = big_csv(dir.path(), 20_000);
+    let output = ds()
+        .current_dir(dir.path())
+        .args(["run", "-e", &program, "--format", "json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("DS4003"), "{stderr}");
+    assert!(
+        stdout.starts_with(
+            r#"[{"statement":1,"columns":[{"name":"x","type":"long"},{"name":"y","type":"long"}],"rows":[{"x":1,"y":1000000000000000}"#
+        ),
+        "{stdout:.160}"
+    );
+    let rows = stdout.matches(r#"{"x":1,"y":1000000000000000}"#).count();
+    assert!((8_192..20_000).contains(&rows), "{rows} rows");
+    assert!(!stdout.ends_with("]\n"));
+    assert!(serde_json::from_str::<serde_json::Value>(&stdout).is_err());
+
+    // Failure on a later query: the earlier query's object stays written, and the outer array is
+    // still left unclosed (no trailing `]\n`).
+    let failing = big_csv(dir.path(), 10);
+    let two_queries = format!("from 'big.csv' | count;\n{failing}");
+    let output = ds()
+        .current_dir(dir.path())
+        .args(["run", "-e", &two_queries, "--format", "json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("DS4003"), "{stderr}");
+    assert_eq!(
+        stdout,
+        r#"[{"statement":1,"columns":[{"name":"Count","type":"long"}],"rows":[{"Count":10}]}"#
+    );
+    assert!(serde_json::from_str::<serde_json::Value>(&stdout).is_err());
+}
+
+#[test]
+fn arrow_streams_batch_by_batch_and_stops_on_mid_stream_failure() {
+    let dir = tempfile::tempdir().unwrap();
+    let ok_program = valid_big_csv(dir.path(), 10_000);
+    let out_path = dir.path().join("multi.arrow");
+    ds().current_dir(dir.path())
+        .args(["run", "-e", &ok_program, "--format", "arrow", "--output"])
+        .arg(&out_path)
+        .assert()
+        .success()
+        .stdout("");
+    let file = std::fs::File::open(&out_path).unwrap();
+    let reader = arrow_ipc::reader::FileReader::try_new(file, None).unwrap();
+    let batches: Vec<_> = reader.map(|b| b.unwrap()).collect();
+    assert!(batches.len() >= 2, "{} batches", batches.len());
+    let rows: usize = batches.iter().map(|b| b.num_rows()).sum();
+    assert_eq!(rows, 10_000);
+
+    // Mid-stream failure: earlier batches are flushed to the Arrow IPC stream, the footer is not
+    // finished, and the process exits 1 with DS4003.
+    let program = big_csv(dir.path(), 20_000);
+    let output = ds()
+        .current_dir(dir.path())
+        .args(["run", "-e", &program, "--format", "arrow"])
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("DS4003"), "{stderr}");
+    assert!(output.stdout.starts_with(b"ARROW1"));
+    // At least one 8192-row batch of two i64 columns (> 128 KiB) was written before the failure.
+    assert!(
+        output.stdout.len() > 100_000,
+        "only {} bytes written",
+        output.stdout.len()
+    );
+    assert!(
+        arrow_ipc::reader::FileReader::try_new(std::io::Cursor::new(&output.stdout), None).is_err(),
+        "an unfinished Arrow IPC file should not have a valid footer"
+    );
 }
 
 #[test]
@@ -644,6 +895,36 @@ fn table_works_for_check_and_explain() {
     .stdout(contains("Limit: 1"));
 }
 
+#[test]
+fn several_table_flags_and_a_glob_table() {
+    ds().args([
+        "run",
+        "-e",
+        "from o | join c on customerId | sort by orderId asc | take 2 | project orderId, name",
+        "--table",
+        "o=orders.csv",
+        "--table",
+        "c=customers.csv",
+        "--format",
+        "csv",
+    ])
+    .assert()
+    .success()
+    .stdout(contains("orderId,name\no-0001,").and(contains("\no-0002,")));
+
+    // A `--table` whose path is a glob reads every matching file, resolved against the current
+    // directory even when the script sits elsewhere.
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("q.ds");
+    std::fs::write(&script, "from ev | count").unwrap();
+    ds().arg("run")
+        .arg(&script)
+        .args(["--table", "ev=events/*.ndjson", "--format", "csv"])
+        .assert()
+        .success()
+        .stdout("Count\n24\n");
+}
+
 // ---- check ----
 
 #[test]
@@ -719,6 +1000,131 @@ fn check_an_empty_program_is_clean() {
         .stderr("");
 }
 
+#[test]
+fn check_deny_warnings_fails_on_warnings_but_not_info() {
+    let warning_query = "from 'orders.csv' | sort by amount";
+    ds().args(["check", "-"])
+        .write_stdin(warning_query)
+        .assert()
+        .success()
+        .stderr(contains("warning[DS2103]"));
+    ds().args(["check", "-", "--deny-warnings"])
+        .write_stdin(warning_query)
+        .assert()
+        .code(1)
+        .stderr(contains("warning[DS2103]"));
+
+    // Only an info diagnostic (`DS1007`, renamed join column): `--deny-warnings` still exits 0.
+    let info_query =
+        "from 'orders.csv' | join (from 'orders.csv' | project customerId, amount) on customerId";
+    ds().args(["check", "-", "--deny-warnings"])
+        .write_stdin(info_query)
+        .assert()
+        .success()
+        .stderr(contains("info[DS1007]"));
+}
+
+#[test]
+fn check_json_with_several_files_and_warnings() {
+    let dir = tempfile::tempdir().unwrap();
+    let orders = orders_path();
+    let good = dir.path().join("good.ds");
+    let warn = dir.path().join("warn.ds");
+    let bad = dir.path().join("bad.ds");
+    std::fs::write(&good, format!("from '{orders}' | take 1")).unwrap();
+    std::fs::write(&warn, format!("from '{orders}' | sort by amount")).unwrap();
+    std::fs::write(&bad, format!("from '{orders}' | project nope")).unwrap();
+
+    // Warnings only: exit 0 without `--deny-warnings`, exit 1 with it.
+    let output = ds()
+        .args(["check", "--format", "json"])
+        .arg(&good)
+        .arg(&warn)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output.stderr.is_empty());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["version"], 1);
+    let diagnostics = report["diagnostics"].as_array().unwrap();
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0]["code"], "DS2103");
+    assert_eq!(diagnostics[0]["severity"], "warning");
+    assert!(
+        diagnostics[0]["file"]
+            .as_str()
+            .unwrap()
+            .ends_with("warn.ds")
+    );
+
+    let denied = ds()
+        .args(["check", "--format", "json", "--deny-warnings"])
+        .arg(&good)
+        .arg(&warn)
+        .output()
+        .unwrap();
+    assert_eq!(denied.status.code(), Some(1));
+    assert!(denied.stderr.is_empty());
+    let denied_report: serde_json::Value = serde_json::from_slice(&denied.stdout).unwrap();
+    assert_eq!(denied_report["diagnostics"][0]["code"], "DS2103");
+
+    // Several files with both warnings and errors.
+    let output = ds()
+        .args(["check", "--format", "json"])
+        .arg(&good)
+        .arg(&warn)
+        .arg(&bad)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let diagnostics = report["diagnostics"].as_array().unwrap();
+    assert_eq!(diagnostics.len(), 2);
+    assert_eq!(diagnostics[0]["code"], "DS2103");
+    assert_eq!(diagnostics[0]["severity"], "warning");
+    assert!(
+        diagnostics[0]["file"]
+            .as_str()
+            .unwrap()
+            .ends_with("warn.ds")
+    );
+    assert_eq!(diagnostics[1]["code"], "DS1001");
+    assert_eq!(diagnostics[1]["severity"], "error");
+    assert!(diagnostics[1]["file"].as_str().unwrap().ends_with("bad.ds"));
+}
+
+#[test]
+fn check_json_with_a_missing_file_exits_2() {
+    let dir = tempfile::tempdir().unwrap();
+    let bad = dir.path().join("bad.ds");
+    std::fs::write(&bad, format!("from '{}' | project nope", orders_path())).unwrap();
+
+    let output = ds()
+        .args(["check", "missing.ds", "--format", "json"])
+        .arg(&bad)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stderr.is_empty());
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["version"], 1);
+    let diagnostics = report["diagnostics"].as_array().unwrap();
+    assert_eq!(diagnostics.len(), 2);
+    assert_eq!(diagnostics[0]["code"], "DS3001");
+    assert_eq!(diagnostics[0]["severity"], "error");
+    assert!(diagnostics[0]["file"].is_null());
+    assert!(diagnostics[0]["primary"].is_null());
+    assert!(
+        diagnostics[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("missing.ds")
+    );
+    assert_eq!(diagnostics[1]["code"], "DS1001");
+    assert!(diagnostics[1]["file"].as_str().unwrap().ends_with("bad.ds"));
+}
+
 // ---- explain ----
 
 #[test]
@@ -731,6 +1137,59 @@ fn explain_prints_the_plan() {
     .assert()
     .success()
     .stdout(contains("Project").and(contains("Limit: 1")));
+}
+
+#[test]
+fn explain_a_script_file_and_stdin() {
+    Command::new(env!("CARGO_BIN_EXE_ds"))
+        .current_dir(std::env::temp_dir())
+        .env_remove("NO_COLOR")
+        .arg("explain")
+        .arg(repo_dir().join("examples/orders.ds"))
+        .assert()
+        .success()
+        .stdout(
+            contains("Scan:")
+                .and(contains("Filter:"))
+                .and(contains("Project:")),
+        )
+        .stderr("");
+
+    ds().args(["explain", "-"])
+        .write_stdin("from 'orders.csv' | where amount > 100 | take 5")
+        .assert()
+        .success()
+        .stdout(
+            contains("Limit: 5")
+                .and(contains("Filter:"))
+                .and(contains("Scan: 'orders.csv'")),
+        )
+        .stderr("");
+}
+
+#[test]
+fn explain_several_queries_and_render() {
+    let output = ds().args(["explain", "-e", TWO_QUERIES]).output().unwrap();
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let sections: Vec<&str> = stdout.trim().split("\n\n").collect();
+    assert_eq!(sections.len(), 2, "{stdout}");
+    assert!(sections[0].contains("Limit: 2"), "{}", sections[0]);
+    assert!(sections[1].contains("Aggregate:"), "{}", sections[1]);
+
+    ds().args([
+        "explain",
+        "-e",
+        "from 'orders.csv' | summarize revenue = sum(amount) by customerId | render barchart with (title = 'Rev')",
+    ])
+    .assert()
+    .success()
+    .stdout(
+        contains("Aggregate:")
+            .and(contains("render: barchart x=customerId y=[revenue] title=\"Rev\"\n")),
+    )
+    .stderr("");
 }
 
 #[test]

@@ -28,7 +28,7 @@ Design-review additions — several query statements in machine formats:
 
 ## Acceptance criteria
 - [x] Integration tests with `assert_cmd` for exit codes, formats, and stdin.
-- [ ] `ds run examples/top_customers.ds` works. *Blocked on `render` (M1-10): the CLI side is done and the test is written but ignored; see Follow-ups.*
+- [x] `ds run examples/top_customers.ds` works. *Un-ignored in M1-10 (`run_the_readme_example` in `tests/cli.rs`).*
 - [x] `ds --help` and each subcommand's help have examples.
 
 ## Carried over
