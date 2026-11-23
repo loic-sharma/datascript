@@ -21,5 +21,6 @@ starts with `from`, D-036, including one over a tabular parameter).
 ## Carried over
 - [ ] (from planning, 2026-11-22) If M3-02 or M3-03 is done, extend the language server to UDFs: completion and signature help for UDF calls, and go to definition, find references and rename for UDFs and their parameters, each with an LSP test.
 - [ ] (from M3-02) Offer user-defined functions in completion (expression contexts in `datascript_compiler::ide::complete`), with hover and signature help from their definitions.
+- [ ] (from M2-19) Accept optional trailing commas in UDF parameter lists (`(x: long, y: real = 1.0,)`) and tabular parameter schema lists (`(timestamp: datetime,)`) by parsing them with `list()` (or matching terminator logic).
 
 ## Follow-ups

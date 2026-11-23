@@ -145,3 +145,6 @@ task adds something the editor or web UI must show, its "Carried over" section s
 After M1, milestones M2–M6 are largely independent tracks (language, editor, web, wasm) that can
 proceed in parallel. Keep wasm32 compatibility (checked in CI) intact on every track so M5 doesn't
 turn into a big-bang port.
+
+Within M2, M2-19 edits `list()` in `datascript-syntax` (`grammar.rs`) and should not run in parallel
+with M2-01, M2-03, M2-04 or M2-05 (prefer landing M2-19 first).
