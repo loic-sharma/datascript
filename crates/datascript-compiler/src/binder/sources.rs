@@ -343,12 +343,16 @@ impl Binder<'_> {
                 },
                 None,
             ),
-            (OptionKind::Char, Value::String(s)) if s.chars().count() == 1 => {
+            // ASCII only: the engines split CSV on single bytes (M2-14).
+            (OptionKind::Char, Value::String(s)) if s.len() == 1 => {
                 return Some(OptionValue::String(s.clone()));
             }
             (OptionKind::Char, Value::String(s)) => (
                 format!("`{name}` must be a single character"),
-                format!("this has {} characters", s.chars().count()),
+                match s.chars().count() {
+                    1 => format!("`{s}` is not ASCII, and the CSV reader splits on single bytes"),
+                    n => format!("this has {n} characters"),
+                },
                 None,
             ),
             (OptionKind::String, Value::String(s)) => return Some(OptionValue::String(s.clone())),
@@ -462,7 +466,15 @@ impl Binder<'_> {
         let rewrite = format!("read_csv({text})");
         self.diagnostics.push(
             Diagnostic::error(DS3002, format!("cannot tell the format of `{path}`"))
-                .primary(span, "the file name has no known extension")
+                .primary(
+                    span,
+                    if crate::source::is_glob(path) {
+                        // The compiler lists no files, so the matches cannot decide (M2-14).
+                        "the pattern has no known extension"
+                    } else {
+                        "the file name has no known extension"
+                    },
+                )
                 .help_with(
                     format!("to read it as CSV, use a reader function: `{rewrite}`"),
                     Suggestion::new(

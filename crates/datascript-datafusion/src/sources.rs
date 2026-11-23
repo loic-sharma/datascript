@@ -371,9 +371,11 @@ enum Merged {
 
 impl Merged {
     fn of(field: &Field) -> Merged {
+        if field.data_type() == &DataType::Null {
+            return Merged::Null;
+        }
         match from_arrow_source(field) {
             Ok(ty) => Merged::Typed(ty),
-            Err(_) if field.data_type() == &DataType::Null => Merged::Null,
             Err(_) => Merged::Arrow(field.data_type().clone()),
         }
     }

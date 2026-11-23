@@ -1,0 +1,15 @@
+# A glob's format comes from the pattern, not its matches (D-058): `'logs/*'` is DS3002 even if
+# every match is a CSV file, with a reader function as the fix.
+mode: check
+schema: 'logs/*'(a: long)
+---- query
+from 'logs/*' | take 1
+---- expected
+error[DS3002]: cannot tell the format of `logs/*`
+  --> query:1:6
+  |
+1 | from 'logs/*' | take 1
+  |      ^^^^^^^^ the pattern has no known extension
+  |
+  = help: to read it as CSV, use a reader function: `read_csv('logs/*')`
+  = note: formats come from the extension: .csv, .tsv, .parquet, .json, .ndjson and .jsonl, and CSV, TSV and JSON may end in .gz, .bz2, .xz or .zst; `read_parquet` and `read_json` read other names too

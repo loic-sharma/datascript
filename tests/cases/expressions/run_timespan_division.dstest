@@ -1,0 +1,19 @@
+# A timespan divided by a number truncates toward zero whether the divisor is a `long` or a
+# `real` (LANGUAGE.md §4.1, M2-14); scaling by a `real` rounds. Short-form fractions use every
+# digit, then truncate to µs.
+mode: run
+---- query
+from '../../data/orders.csv'
+| where orderId == 'o-0001'
+| project div_long = 5us / 2,
+    div_real = 5us / 2.0,
+    div_real_neg = -5us / 2.0,
+    div_real_small = 7us / 2.5,
+    times_real = 5us * 0.5,
+    tiny_day = 0.0000000005d,
+    tiny_second = 0.0000001s
+---- expected
+div_long        | div_real        | div_real_neg     | div_real_small  | times_real      | tiny_day        | tiny_second
+timespan        | timespan        | timespan         | timespan        | timespan        | timespan        | timespan
+----------------+-----------------+------------------+-----------------+-----------------+-----------------+------------
+00:00:00.000002 | 00:00:00.000002 | -00:00:00.000002 | 00:00:00.000002 | 00:00:00.000003 | 00:00:00.000043 | 00:00:00

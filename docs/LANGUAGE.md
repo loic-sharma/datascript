@@ -67,8 +67,9 @@ expressions (`datetime(2024-01-31)` is not a subtraction). The type names stay u
 
 - `_` in a number must sit between two digits (`1_000`, not `1_` or `1__0`).
 - A timespan is a number directly followed by a unit; the number cannot have an exponent (`1e3s`
-  is `DS0003`). An unknown unit (`1x`, `10min`) is `DS0003` listing the valid units. Fraction
-  digits past nanosecond precision are ignored, so `0.0000000001s` is zero.
+  is `DS0003`). An unknown unit (`1x`, `10min`) is `DS0003` listing the valid units. The value
+  is computed exactly from every digit, then truncated to whole microseconds: `0.0000001s` is
+  zero, and `0.0000000005d` is `43us` (43.2 µs).
 - There are no hexadecimal literals: `0x1F` is `DS0003` with help giving the decimal value.
 - Strings, including verbatim ones, end at the end of their line. An unterminated string
   (`DS0002`) covers the opening quote to the end of the line, and the next line lexes normally.
@@ -185,7 +186,7 @@ A pipeline without `from` (`orders | take 5`) is `DS0150`, with a fix that inser
 | Source | Example | Notes |
 |---|---|---|
 | File path | `from 'data/orders.csv'`, or a scalar `let` bound to one | Format from extension (see below) |
-| Glob | `from 'logs/2024-*/*.parquet'` | `*`, `?`, `[abc]`, and `**` (any depth). Matches are sorted by path. All matches must share a format. Schemas are merged by name |
+| Glob | `from 'logs/2024-*/*.parquet'` | `*`, `?`, `[abc]`, and `**` (any depth). Matches are sorted by path. The format comes from the pattern's extension, so every match shares it; `'logs/*'` is `DS3002` (use `read_csv('logs/*')`, D-058). Schemas are merged by name |
 | Reader function | `from read_csv('x.txt', delimiter = ';', header = false)` | Explicit format and options. Also `read_parquet`, `read_json` |
 | Name | `from orders` | A tabular `let`, or a table registered by the host (web UI drag-drop, `--table orders=path` on the CLI) |
 | Parenthesized pipeline | `from (from orders \| take 5)` | |
@@ -232,7 +233,7 @@ Reader options (M1 set):
 | `read_parquet` | none in M1 |
 | `read_json` | `format = "ndjson" \| "array"`, `compression` |
 
-`delimiter`, `quote` and `escape` are one character; `infer_rows` is at least 1; `compression` is
+`delimiter`, `quote` and `escape` are one ASCII character; `infer_rows` is at least 1; `compression` is
 `"gzip"`, `"bzip2"`, `"xz"` or `"zstd"`. Empty CSV fields are null; `null_value` names one more
 text that reads as null. Reader options must be constant expressions (literals or
 scalar `let`s bound to literals), because schemas are fetched before the program can be fully
@@ -345,7 +346,8 @@ with a letter or digit, the character before (after) the match must not be one, 
 `"Error-42 found" has "error"` is true and `"Errors" has "error"` is false. Case-insensitive
 operators compare Unicode lowercase forms. `matches regex` is case-sensitive. Regexes use Rust
 `regex` syntax (RE2-like: no backreferences or lookaround, D-014); a pattern that does not compile
-is `DS4004` when the query runs.
+is `DS4004`, reported by `ds check` when the pattern is a constant and when the query runs when it
+is computed (D-049).
 
 - `=` is **never** comparison. Using it where a predicate is expected gives `DS0110` with a
   machine-applicable fix to `==`.
@@ -385,7 +387,8 @@ zero are runtime errors (`DS4003`, D-014). This is part of the contract: a backe
 match it lists a deviation in its `Capabilities` (ARCHITECTURE.md); the DataFusion engine lists
 none. Temporal arithmetic is checked the same way: a `datetime` or `timespan` outside the 64-bit
 microsecond range is `DS4003`. A `timespan` scaled by a `real` is rounded to whole microseconds,
-and divided by a number it truncates toward zero. Whether KQL behaves the same way is not yet
+and divided by a number (`long` or `real`) it truncates toward zero, so `5us / 2.0` is `2us`; a
+`timespan` divided by zero (`0` or `0.0`) is `DS4003`. Whether KQL behaves the same way is not yet
 verified (Q-008); if it does not, these rules get a ≠ KQL mark. Real division by
 zero follows IEEE 754 (`inf`, `nan`).
 
@@ -397,7 +400,8 @@ zero follows IEEE 754 (`inf`, `nan`).
 - `null` takes the type its context needs (`iff(p, null, 1)` is `long`). Next to a number class
   it is `long`: in `wait * null` it scales the `timespan` by a `long`. Where there is no
   context (`extend x = null`), `DS2009` asks for a typed null: `long(null)`, `string(null)`, ….
-- No other implicit conversions. `"1" + 1` is a type error suggesting `tolong()` or `tostring()`.
+- No other implicit conversions. `"1" + 1` is a type error suggesting `toreal()` (`tolong()` for
+  `%`, which takes integers) or `tostring()`.
 
 ## 5. Types
 

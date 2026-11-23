@@ -865,6 +865,30 @@ incremental sync. It does not pick an engine; `ds lsp` passes a `Session` over D
   items and `$left.`/`$right.` (M3-03).
 *(M3-02, 2026-11-22.)*
 
+### D-058 — Spec/code mismatches from the docs review (M2-14)
+**Accepted.**
+
+- **A glob's format comes from the pattern's extension.** LANGUAGE.md said all matches must
+  share a format, as if the matches decided it. The compiler reads no files (ARCHITECTURE.md), and
+  it needs the format before asking the provider (to report `DS4001` for a format the engine
+  cannot read), so it cannot look at the matches. `'logs/*'` stays `DS3002`, now labelled "the
+  pattern has no known extension", and its help already offers `read_csv('logs/*')`. A pattern
+  with an extension (`'logs/*.csv'`) only matches files of that format, so the old rule holds.
+- **CSV `delimiter`, `quote` and `escape` are one ASCII character.** The engine splits on single
+  bytes, so a non-ASCII character such as `§` read with half a UTF-8 sequence. The binder now
+  rejects it with the existing `DS2041` "must be a single character", labelled with why.
+- **`timespan / real` truncates toward zero**, as the spec said and like `timespan / long`; it used
+  to round (`5us / 2.0` was `3us`, now `2us`). `timespan * real` still rounds. A timespan divided by
+  zero, `0` or `0.0`, is `DS4003` "timespan division by zero" (it used to be an overflow for `0.0`
+  and suggested converting to `real` for `0`, which a timespan cannot do).
+- **Short-form timespan fractions use every digit**, then truncate to µs. The lexer kept nine
+  fraction digits whatever the unit, so `0.0000000005d` (43.2 µs) read as zero.
+- **Arrow `Null` columns are `string`** in `from_arrow_source` too, as §5.1 says; the DataFusion
+  glob merge still checks for `Null` first so it takes the other files' type (D-044).
+- **Doc-only fixes:** a constant `matches regex` pattern is reported by `ds check` (D-049), and the
+  `"1" + 1` help suggests `toreal()` (`tolong()` for `%`), since a string column may hold `"1.5"`.
+*(M2-14, 2026-11-22.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

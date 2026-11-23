@@ -857,20 +857,14 @@ fn every_example_resolves() {
                 FunctionKind::Scalar => format!("from 't.csv' | extend x = {example}"),
                 FunctionKind::Aggregate => format!("from 't.csv' | summarize x = {example}"),
             };
-            // `extend` and `summarize` check their expressions, then report DS9001 "not
-            // implemented yet" until M1-16; that one is not about the example.
             let run = |columns: &[(std::string::String, DataType)]| {
-                let mut diagnostics = check(
+                check(
                     &SourceFile::new("example.ds", &program),
                     FileId(0),
                     &Table(columns.to_vec()),
                     &Capabilities::full(),
                 )
-                .diagnostics;
-                diagnostics.retain(|d| {
-                    !(d.code == codes::DS9001 && d.message.ends_with("is not implemented yet"))
-                });
-                diagnostics
+                .diagnostics
             };
             // The names the example uses as columns.
             let names: Vec<std::string::String> = run(&[])

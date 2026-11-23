@@ -144,6 +144,9 @@ pub fn from_arrow_source(field: &Field) -> Result<Type, UnsupportedArrowType> {
         }
         DataType::Timestamp(_, _) | DataType::Date32 | DataType::Date64 => Type::DateTime,
         DataType::Duration(_) => Type::TimeSpan,
+        // A column with no values, such as a CSV column empty in every row. Engines merging a
+        // glob let it take the other files' type first (D-044).
+        DataType::Null => Type::String,
         // `guid` (M2-10) and `dynamic` (M2-03) are not in M1; nested columns and
         // `FixedSizeBinary(16)` with `arrow.uuid` fall through to unsupported.
         _ => return Err(unsupported(field)),
@@ -387,6 +390,11 @@ mod tests {
     }
 
     #[test]
+    fn read_null_is_string() {
+        assert_eq!(source(DataType::Null), Ok(Type::String));
+    }
+
+    #[test]
     fn read_anything_else_is_unsupported() {
         for dt in [
             DataType::Binary,
@@ -394,7 +402,6 @@ mod tests {
             DataType::Time32(TimeUnit::Second),
             DataType::Time64(TimeUnit::Microsecond),
             DataType::Interval(IntervalUnit::MonthDayNano),
-            DataType::Null,
         ] {
             let err = source(dt.clone()).unwrap_err();
             assert_eq!(err.data_type, dt);
