@@ -5,8 +5,9 @@
 **Crates:** `datascript-syntax`, `datascript-cli`
 
 ## Goal
-An opinionated formatter over the CST: one operator per line with leading `|`, normalized spacing,
-and comments preserved.
+An opinionated formatter over the CST: keep short queries on one line when they fit comfortably,
+expand longer pipelines to one operator per line with leading `|`, normalize spacing with 2-space
+indentation, and preserve all comments.
 
 ## Acceptance criteria
 - [ ] `ds fmt [--check] <files>`.
@@ -19,28 +20,36 @@ and comments preserved.
 
 ## Formatting rules
 
-- **Line width & indentation:** 100-column soft target for wrapping; 4 spaces per indentation level
-  (spaces, never tabs); LF (`\n`) line endings; no trailing spaces; a single trailing newline at
-  EOF (whitespace-only files format to empty).
+- **Line width & indentation:** 100-column soft target for keeping statements on one line and
+  wrapping long constructs; **2 spaces** per indentation level (spaces, never tabs); LF (`\n`) line
+  endings; no trailing spaces; a single trailing newline at EOF (whitespace-only files format to
+  empty).
 - **Pipelines & leading `|`:**
-  - Keep `from <source>` on the first line of a pipeline — never break between `from` and
+  - **Single-line when it fits:** If an entire query statement (including its `;` when another
+    statement follows) fits within 100 columns, contains no comments, and contains no multi-line
+    sub-expressions (such as a wrapped `case(...)`, `read_csv(...)`, `render ... with (...)`, or
+    wrapped subquery), format it on one line: `from 'orders.csv' | where amount > 10 | take 5`.
+  - **Multi-line otherwise:** Break to one `| <operator>` per line with a leading `| ` (one space
+    after `|`), keeping `from <source>` on the first line — never break between `from` and
     `<source>` (M1-24). If `<source>` is a long reader call (`read_csv(...)`), `from read_csv(`
-    starts line 1 and the call arguments wrap inside `(...)`.
-  - Every `| <operator>` starts on a new line with a leading `| ` (one space after `|`).
-  - Top-level pipelines keep `from` and `|` at column 0.
-  - Inside a tabular `let` (`let name = from ...`), `from <source>` stays on the `let` line and
-    each `| <operator>` is indented 4 spaces. A source-only tabular `let` (`let raw = from 'a.csv';`)
-    stays on one line.
-  - Inside a parenthesized pipeline `(from ... | ...)` that has one or more operators, break after
-    `(` and before `)`, indenting `from` and all `|` stages by +4 spaces. A bare parenthesized
-    source `(from orders)` stays on one line.
+    starts line 1 and its arguments wrap inside `(...)`.
+  - Top-level multi-line pipelines keep `from` and `|` at column 0.
+  - **Tabular `let`:** If the entire `let name = from ...;` statement fits within 100 columns (with
+    no comments or multi-line sub-expressions), keep it on one line. Otherwise keep
+    `let name = from <source>` on the first line and put each `| <operator>` on its own line
+    indented 2 spaces.
+  - **Parenthesized pipelines:** Inside `join`, `union`, or `(from ... | ...)`, keep the
+    parenthesized pipeline inline if its enclosing line fits within 100 columns (and it has no
+    comments or multi-line inner expressions). Otherwise break after `(` and before `)` and format
+    the inner pipeline multi-line (`from` and each `|` stage indented +2 spaces).
   - Hyphenated operator names (`project-away`, `project-rename`) have no spaces around `-`.
 - **Spacing:**
-  - Single space around binary operators (`+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `<=`, `>`,
-    `>=`, `=~`, `!~`, `and`, `or`, `in`, `!in`, `in~`, `!in~`, `between`, `!between`, `has`,
-    `!has`, `contains`, `startswith`, `endswith`, `_cs` variants, `matches regex`), around `..` in
-    `between (lo .. hi)`, and around `=` everywhere (`let`, column aliases, `project-rename`,
-    `join kind = ...`, named function arguments, `render ... with (...)` properties).
+  - Single space around `|` on single-line pipelines, around binary operators (`+`, `-`, `*`, `/`,
+    `%`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `=~`, `!~`, `and`, `or`, `in`, `!in`, `in~`, `!in~`,
+    `between`, `!between`, `has`, `!has`, `contains`, `startswith`, `endswith`, `_cs` variants,
+    `matches regex`), around `..` in `between (lo .. hi)`, and around `=` everywhere (`let`, column
+    aliases, `project-rename`, `join kind = ...`, named function arguments, `render ... with (...)`
+    properties).
   - No space after unary `-` (`-x`, `-(a + b)`). Keep a space between binary `-` and unary `-`
     (`a - -b`).
   - Prefix `not`: single space before a non-parenthesized operand (`not active`, `not a == b`); no
@@ -55,21 +64,22 @@ and comments preserved.
   - List-taking operators (`project`, `extend`, `project-away`, `project-rename`, `distinct`,
     `sort by`, `union`, `join ... on`) stay on one line when the full line fits within 100 columns
     and contains no comments or multi-line children; otherwise break after the operator keyword
-    (`| project`, `| sort by`, `| union`, `) on`, etc.) with one item per line indented +4 spaces.
-    When `union` has a single parenthesized pipeline, `(` stays on the `| union (` line.
-  - `summarize`: stays on one line if it fits; when wrapped, aggregates sit at +4 indent, `by` sits
+    (`| project`, `| sort by`, `| union`, `) on`, etc.) with one item per line indented +2 spaces.
+    When `union` has a single parenthesized pipeline that wraps, `(` stays on the `| union (` line.
+  - `summarize`: stays on one line if it fits; when wrapped, aggregates sit at +2 indent, `by` sits
     on its own line at +2 indent (aligned with `summarize`), and `by` keys stay on the `by` line if
-    short or wrap to +4 indent if long (or if they contain comments or multi-line expressions).
+    `  by ...` fits within 100 columns (with no comments or multi-line expressions) or wrap to +4
+    indent (+2 under `by`) otherwise.
   - `render <kind> with (...)`: stays on one line if it fits; when wrapped, each property sits on
-    its own line at +4 indent with `)` aligned with `|`. Multi-value properties such as
+    its own line at +2 indent with `)` aligned with `|`. Multi-value properties such as
     `ycolumns = a, b` stay on the property's line unless they exceed 100 columns.
-  - Function calls and `in (...)` lists wrap after `(` with one item per line at +4 indent and `)`
+  - Function calls and `in (...)` lists wrap after `(` with one item per line at +2 indent and `)`
     at the outer indent when they exceed 100 columns or contain comments/multi-line arguments.
   - `case(...)`: stays on one line if it has at most 2 condition/value pairs, contains no comments,
     and fits within 100 columns; otherwise wraps after `(` with each `condition, value,` pair on
-    its own line at +4 indent and the final `else` value on its own line.
+    its own line at +2 indent and the final `else` value on its own line.
   - Long `where` boolean chains (`and` / `or`) exceeding 100 columns wrap before `and` / `or` at
-    +4 indent.
+    +2 indent.
 - **Semicolons & blank lines:**
   - Separate statements with `;` attached to the end of the preceding statement (no space before `;`).
   - Every `let` statement ends with `;` (including in a `let`-only script). Omit a redundant
@@ -90,6 +100,7 @@ and comments preserved.
 - **Comments:**
   - Preserve every `//` line comment and `/* ... */` block comment in place relative to its
     surrounding tokens.
+  - Any comment inside a pipeline forces the pipeline to format multi-line.
   - Standalone comments before a pipeline stage stay directly above the following `| <operator>` at
     the same indentation level.
   - Trailing end-of-line comments stay on their line separated by a single space (` // ...`).
@@ -100,58 +111,66 @@ and comments preserved.
 
 ## Examples (before and after)
 
-### 1. Compact single-line pipeline & messy whitespace
+### 1. Short single-line queries vs multi-line pipelines
+
+Short queries that fit within 100 columns stay on one line — including queries that were pointlessly
+split across lines:
 
 Before:
 ```ds
-from   orders|where   amount>100   and  status=='paid'|project orderId ,customerId,amount|take   10
+from   'orders.csv'|where   amount>10  |  take   5;
+from
+  orders
+  | count
+```
+
+After:
+```ds
+from 'orders.csv' | where amount > 10 | take 5;
+
+from orders | count
+```
+
+Once a pipeline exceeds 100 columns, it expands to one operator per line with leading `|`, keeping
+`from <source>` on line 1 even if the input broke after `from` (M1-24):
+
+Before:
+```ds
+from
+  orders
+  | where   amount>100   and  status=='paid'|project orderId ,customerId,amount,timestamp|sort by timestamp desc|take   10
 ```
 
 After:
 ```ds
 from orders
 | where amount > 100 and status == 'paid'
-| project orderId, customerId, amount
-| take 10
-```
-
-Keeping `from <source>` on line 1 even when the input split it across lines (M1-24):
-
-Before:
-```ds
-from
-    orders
-  |  where   amount > 100
-    |  take  10
-```
-
-After:
-```ds
-from orders
-| where amount > 100
+| project orderId, customerId, amount, timestamp
+| sort by timestamp desc
 | take 10
 ```
 
 ### 2. File sources, globs, and reader function calls
 
+Short file-source queries stay on one line; longer glob pipelines expand:
+
 Before:
 ```ds
 from   'orders.csv'|where amount>0|count;
-from 'events/*.ndjson' | where level == "error" | take 20
+from 'events/*.ndjson' | where level == "error" and service == "checkout" | project timestamp, message, traceId | take 20
 ```
 
 After:
 ```ds
-from 'orders.csv'
-| where amount > 0
-| count;
+from 'orders.csv' | where amount > 0 | count;
 
 from 'events/*.ndjson'
-| where level == "error"
+| where level == "error" and service == "checkout"
+| project timestamp, message, traceId
 | take 20
 ```
 
-Reader calls (short stays on line 1; long options list wraps inside `read_csv(...)`):
+Reader calls (short queries stay on one line; long options wrap inside `read_csv(...)`):
 
 Before:
 ```ds
@@ -162,68 +181,69 @@ from read_csv('data/2024/quarterly_orders.tsv', delimiter='\t', header=true, nul
 
 After:
 ```ds
-from read_csv('orders.csv', delimiter = ';', header = true)
-| take 5;
+from read_csv('orders.csv', delimiter = ';', header = true) | take 5;
 
-from read_parquet('a.parquet')
-| getschema;
+from read_parquet('a.parquet') | getschema;
 
 from read_csv(
-    'data/2024/quarterly_orders.tsv',
-    delimiter = '\t',
-    header = true,
-    null_value = 'NULL',
-    infer_rows = 5000,
-    compression = 'gzip'
+  'data/2024/quarterly_orders.tsv',
+  delimiter = '\t',
+  header = true,
+  null_value = 'NULL',
+  infer_rows = 5000,
+  compression = 'gzip'
 )
 | where amount > 0
 ```
 
 ### 3. Scalar and tabular `let` bindings
 
+Short tabular `let`s stay on one line; longer tabular `let`s put `|` stages on indented lines
+(2 spaces):
+
 Before:
 ```ds
 let  minAmount=100;
 let   cutoff = ago(30d) ;
-let raw=from 'orders.parquet';
-let topCustomers=from raw|where timestamp>=cutoff and amount>minAmount|summarize revenue=sum(amount) by customerId|top 10 by revenue desc;
-from raw|join kind=inner topCustomers on customerId|take 50
+let recent=from 'orders.parquet'|where timestamp>=cutoff;
+let topCustomers=from recent|where amount>minAmount|summarize revenue=sum(amount) by customerId|top 10 by revenue desc;
+from recent|join kind=inner topCustomers on customerId|summarize monthlyRevenue=sum(amount) by customerId, month=startofmonth(timestamp)
 ```
 
 After:
 ```ds
 let minAmount = 100;
 let cutoff = ago(30d);
-let raw = from 'orders.parquet';
+let recent = from 'orders.parquet' | where timestamp >= cutoff;
 
-let topCustomers = from raw
-    | where timestamp >= cutoff and amount > minAmount
-    | summarize revenue = sum(amount) by customerId
-    | top 10 by revenue desc;
+let topCustomers = from recent
+  | where amount > minAmount
+  | summarize revenue = sum(amount) by customerId
+  | top 10 by revenue desc;
 
-from raw
+from recent
 | join kind = inner topCustomers on customerId
-| take 50
+| summarize monthlyRevenue = sum(amount) by customerId, month = startofmonth(timestamp)
 ```
 
 ### 4. Multiple queries in a script
 
-Separates queries with a blank line, preserves `;` between statements, and drops a redundant
-trailing `;` after the final query:
+Separates queries with a blank line, preserves `;` between statements, keeps short queries on one
+line, and drops a redundant trailing `;` after the final query:
 
 Before:
 ```ds
-from 'orders.csv' | summarize total = sum(amount) by region; from 'orders.csv' | where status == "refunded" | count;
+from 'orders.csv' | summarize total = sum(amount) by region; from 'orders.csv' | where status == "refunded" and amount > 50 | project orderId, customerId, amount | sort by amount desc;
 ```
 
 After:
 ```ds
-from 'orders.csv'
-| summarize total = sum(amount) by region;
+from 'orders.csv' | summarize total = sum(amount) by region;
 
 from 'orders.csv'
-| where status == "refunded"
-| count
+| where status == "refunded" and amount > 50
+| project orderId, customerId, amount
+| sort by amount desc
 ```
 
 In a `let`-only script, every `let` statement keeps a trailing `;`:
@@ -231,15 +251,18 @@ In a `let`-only script, every `let` statement keeps a trailing `;`:
 Before:
 ```ds
 let taxRate=0.08;
-let   recent = from 'orders.csv' | where timestamp >= ago(7d)
+let recent = from 'orders.csv' | where timestamp >= ago(7d);
+let highValue = from recent | where amount * (1.0 + taxRate) > 500 | project orderId, customerId, amount
 ```
 
 After:
 ```ds
 let taxRate = 0.08;
+let recent = from 'orders.csv' | where timestamp >= ago(7d);
 
-let recent = from 'orders.csv'
-    | where timestamp >= ago(7d);
+let highValue = from recent
+  | where amount * (1.0 + taxRate) > 500
+  | project orderId, customerId, amount;
 ```
 
 ### 5. Expression spacing & tricky operators
@@ -260,26 +283,26 @@ After:
 ```ds
 from events
 | where not archived
-    and not(status == "deleted")
-    and delta == -1
-    and diff == a - -b
-    and total == -(x + y)
+  and not(status == "deleted")
+  and delta == -1
+  and diff == a - -b
+  and total == -(x + y)
 | where msg contains 'timeout'
-    and path !startswith_cs '/health'
-    and log has 'error'
-    and tag =~ 'prod'
-    and env !~ 'dev'
-    and uri matches regex '^/api/v[0-9]+'
+  and path !startswith_cs '/health'
+  and log has 'error'
+  and tag =~ 'prod'
+  and env !~ 'dev'
+  and uri matches regex '^/api/v[0-9]+'
 | where code in (200, 201, 204)
-    and region !in~ ('test', 'staging')
-    and latency between (10ms .. 500ms)
-    and score !between (-10 .. 10)
+  and region !in~ ('test', 'staging')
+  and latency between (10ms .. 500ms)
+  and score !between (-10 .. 10)
 | extend label = strcat(toupper(meta.env), ':', items[0])
 ```
 
 ### 6. Long `project`, `extend`, `project-rename`, and `project-away` lists
 
-Short lists stay on one line:
+In a multi-line pipeline, short lists stay on their operator's line:
 
 Before:
 ```ds
@@ -295,7 +318,7 @@ from orders
 | project-away tmp*, debug_flag
 ```
 
-Lists exceeding 100 columns wrap with one item per line, 4-space indent, and no trailing comma:
+Lists exceeding 100 columns wrap with one item per line, 2-space indent, and no trailing comma:
 
 Before:
 ```ds
@@ -310,34 +333,34 @@ After:
 ```ds
 from orders
 | extend
-    grossAmount = unitPrice * qty,
-    discountAmount = round(unitPrice * qty * discountRate, 2),
-    netAmount = unitPrice * qty * (1.0 - discountRate)
+  grossAmount = unitPrice * qty,
+  discountAmount = round(unitPrice * qty * discountRate, 2),
+  netAmount = unitPrice * qty * (1.0 - discountRate)
 | project
-    orderId,
-    customerId,
-    orderMonth = startofmonth(timestamp),
-    grossAmount,
-    discountAmount,
-    netAmount
+  orderId,
+  customerId,
+  orderMonth = startofmonth(timestamp),
+  grossAmount,
+  discountAmount,
+  netAmount
 | project-rename
-    order_id = orderId,
-    customer_id = customerId,
-    order_month = orderMonth,
-    net_amount = netAmount
+  order_id = orderId,
+  customer_id = customerId,
+  order_month = orderMonth,
+  net_amount = netAmount
 | project-away
-    internal_*,
-    debug_*,
-    raw_payload,
-    temp_notes,
-    migration_flag,
-    audit_trace_id,
-    legacy_code
+  internal_*,
+  debug_*,
+  raw_payload,
+  temp_notes,
+  migration_flag,
+  audit_trace_id,
+  legacy_code
 ```
 
 ### 7. `summarize` with aggregates and `by` keys
 
-Short single-line forms (aggregates + `by`, aggregates only, and `by` only):
+Short single-line queries (aggregates + `by`, aggregates only, and `by` only) stay on one line:
 
 Before:
 ```ds
@@ -348,24 +371,21 @@ from orders | summarize   by   customerId , region
 
 After:
 ```ds
-from orders
-| summarize orders = count(), revenue = sum(amount) by customerId;
+from orders | summarize orders = count(), revenue = sum(amount) by customerId;
 
-from orders
-| summarize totalOrders = count(), totalRevenue = sum(amount);
+from orders | summarize totalOrders = count(), totalRevenue = sum(amount);
 
-from orders
-| summarize by customerId, region
+from orders | summarize by customerId, region
 ```
 
-Long `summarize` wraps aggregates at +4 indent, puts `by` at +2 indent (aligned with `summarize`),
-and wraps `by` keys at +4 indent when they exceed 100 columns (or keeps short `by` keys on the `by`
-line):
+Long `summarize` wraps aggregates at +2 indent, aligns `by` under `summarize` at +2 indent, and
+wraps `by` keys at +4 indent when `  by ...` exceeds 100 columns (or keeps short `by` keys on the
+`by` line):
 
 Before:
 ```ds
 from orders
-| summarize orderCount = count(), paidCount = countif(status == "paid"), totalRevenue = sum(amount), avgOrder = avg(amount), p95Order = percentile(amount, 95) by region, country, customerSegment, salesChannel, paymentMethod, day = bin(timestamp, 1d);
+| summarize orderCount = count(), paidCount = countif(status == "paid"), totalRevenue = sum(amount), avgOrder = avg(amount), p95Order = percentile(amount, 95) by region, country, customerSegment, salesChannel, paymentMethod, fulfillmentCenter, day = bin(timestamp, 1d);
 from orders
 | summarize orderCount = count(), totalRevenue = sum(amount), avgOrder = avg(amount), maxOrder = max(amount) by region, bin(timestamp, 1d)
 ```
@@ -374,31 +394,32 @@ After:
 ```ds
 from orders
 | summarize
-    orderCount = count(),
-    paidCount = countif(status == "paid"),
-    totalRevenue = sum(amount),
-    avgOrder = avg(amount),
-    p95Order = percentile(amount, 95)
+  orderCount = count(),
+  paidCount = countif(status == "paid"),
+  totalRevenue = sum(amount),
+  avgOrder = avg(amount),
+  p95Order = percentile(amount, 95)
   by
     region,
     country,
     customerSegment,
     salesChannel,
     paymentMethod,
+    fulfillmentCenter,
     day = bin(timestamp, 1d);
 
 from orders
 | summarize
-    orderCount = count(),
-    totalRevenue = sum(amount),
-    avgOrder = avg(amount),
-    maxOrder = max(amount)
+  orderCount = count(),
+  totalRevenue = sum(amount),
+  avgOrder = avg(amount),
+  maxOrder = max(amount)
   by region, bin(timestamp, 1d)
 ```
 
 ### 8. `sort by` / `order by` and `top N by`
 
-Short multi-key `sort by`, `order by` (preserved verbatim), and `top N by`:
+Short multi-key `sort by`, `order by` (preserved verbatim), and `top N by` stay on one line:
 
 Before:
 ```ds
@@ -408,15 +429,12 @@ from orders | order by timestamp desc nulls first | top  10  by  amount  desc  n
 
 After:
 ```ds
-from orders
-| sort by region asc, amount desc nulls last;
+from orders | sort by region asc, amount desc nulls last;
 
-from orders
-| order by timestamp desc nulls first
-| top 10 by amount desc nulls last
+from orders | order by timestamp desc nulls first | top 10 by amount desc nulls last
 ```
 
-Long `sort by` list wraps one key per line:
+Long `sort by` list wraps one key per line at +2 indent:
 
 Before:
 ```ds
@@ -428,16 +446,16 @@ After:
 ```ds
 from orders
 | sort by
-    region asc nulls last,
-    customerSegment asc,
-    orderMonth desc,
-    totalRevenue desc nulls last,
-    customerId asc
+  region asc nulls last,
+  customerSegment asc,
+  orderMonth desc,
+  totalRevenue desc nulls last,
+  customerId asc
 ```
 
 ### 9. `case(...)` expressions
 
-Short inline `case(...)` (≤ 2 branches, fits within 100 columns):
+Short inline `case(...)` (≤ 2 branches, query fits within 100 columns):
 
 Before:
 ```ds
@@ -446,12 +464,11 @@ from orders | extend size=case( amount>=500 , "large" , "small" )
 
 After:
 ```ds
-from orders
-| extend size = case(amount >= 500, "large", "small")
+from orders | extend size = case(amount >= 500, "large", "small")
 ```
 
 Multi-branch `case(...)` (3+ branches or > 100 columns) wraps one `condition, value` pair per line
-followed by the final `else` value:
+at +2 indent, followed by the final `else` value:
 
 Before:
 ```ds
@@ -463,10 +480,10 @@ After:
 ```ds
 from orders
 | extend tier = case(
-    amount >= 10000, "enterprise",
-    amount >= 1000, "mid-market",
-    amount >= 100, "standard",
-    "starter"
+  amount >= 10000, "enterprise",
+  amount >= 1000, "mid-market",
+  amount >= 100, "standard",
+  "starter"
 )
 ```
 
@@ -483,35 +500,39 @@ After:
 ```ds
 from orders
 | extend
-    netAmount = amount - discount,
-    tier = case(
-        amount >= 10000, "enterprise",
-        amount >= 1000, "mid-market",
-        amount >= 100, "standard",
-        "starter"
-    )
+  netAmount = amount - discount,
+  tier = case(
+    amount >= 10000, "enterprise",
+    amount >= 1000, "mid-market",
+    amount >= 100, "standard",
+    "starter"
+  )
 ```
 
 ### 10. `join` with parenthesized subqueries and complex `on` clauses
 
-Subquery inside `(...)` with `kind = leftouter` and multi-key `$left` / `$right` conditions:
+Short `join` with an inline subquery fits on one line; a longer `join` with `kind = leftouter` and
+multi-key `$left` / `$right` conditions expands the subquery with 2-space indent:
 
 Before:
 ```ds
+from orders | join (from customers | where active) on customerId;
 from orders | join kind=leftouter (from customers | where active | project id, name, region) on $left.customerId==$right.id, $left.region==$right.region
 ```
 
 After:
 ```ds
+from orders | join (from customers | where active) on customerId;
+
 from orders
 | join kind = leftouter (
-    from customers
-    | where active
-    | project id, name, region
+  from customers
+  | where active
+  | project id, name, region
 ) on $left.customerId == $right.id, $left.region == $right.region
 ```
 
-When the `on` clause exceeds 100 columns, its conditions wrap at +4 indent:
+When the `on` clause exceeds 100 columns, its conditions wrap at +2 indent:
 
 Before:
 ```ds
@@ -523,18 +544,18 @@ After:
 ```ds
 from orders
 | join kind = leftouter (
-    from customers
-    | where active
-    | project customerId, region, effectiveDate, tier
+  from customers
+  | where active
+  | project customerId, region, effectiveDate, tier
 ) on
-    $left.customerId == $right.customerId,
-    $left.region == $right.region,
-    $left.orderDate == $right.effectiveDate
+  $left.customerId == $right.customerId,
+  $left.region == $right.region,
+  $left.orderDate == $right.effectiveDate
 ```
 
 ### 11. `union`
 
-Inline table sources stay on one line:
+Short inline table `union` stays on one line:
 
 Before:
 ```ds
@@ -543,17 +564,16 @@ from 'orders_2023.parquet'|union  'orders_2024.parquet' , 'orders_2025.parquet'
 
 After:
 ```ds
-from 'orders_2023.parquet'
-| union 'orders_2024.parquet', 'orders_2025.parquet'
+from 'orders_2023.parquet' | union 'orders_2024.parquet', 'orders_2025.parquet'
 ```
 
-A single parenthesized pipeline hugs `| union (`; multiple targets with any multi-line pipeline wrap
-one target per line:
+When a `union` stage exceeds 100 columns, a single parenthesized pipeline hugs `| union (` and
+multiple targets wrap one per line with 2-space indent:
 
 Before:
 ```ds
-from 'orders_2024.parquet' | where amount > 0 | union (from 'orders_2025.parquet' | where amount > 0);
-from 'orders_2023.parquet' | where amount > 0 | union 'orders_2024.parquet', (from 'orders_2025.parquet' | where amount > 0 | project-away notes)
+from 'orders_2024.parquet' | where amount > 0 | union (from 'orders_2025.parquet' | where amount > 0 and status == "paid" | project-away legacy_notes);
+from 'orders_2023.parquet' | where amount > 0 | union 'orders_2024.parquet', (from 'orders_2025.parquet' | where amount > 0 and status == "paid" | project-away notes)
 ```
 
 After:
@@ -561,24 +581,26 @@ After:
 from 'orders_2024.parquet'
 | where amount > 0
 | union (
-    from 'orders_2025.parquet'
-    | where amount > 0
+  from 'orders_2025.parquet'
+  | where amount > 0 and status == "paid"
+  | project-away legacy_notes
 );
 
 from 'orders_2023.parquet'
 | where amount > 0
 | union
-    'orders_2024.parquet',
-    (
-        from 'orders_2025.parquet'
-        | where amount > 0
-        | project-away notes
-    )
+  'orders_2024.parquet',
+  (
+    from 'orders_2025.parquet'
+    | where amount > 0 and status == "paid"
+    | project-away notes
+  )
 ```
 
 ### 12. `render` operator
 
-Short `render` and short `render ... with (...)`:
+Short `render` queries stay on one line; once the query exceeds 100 columns it breaks per operator,
+while a short `render ... with (...)` stage stays on its line:
 
 Before:
 ```ds
@@ -588,17 +610,15 @@ from orders | summarize revenue = sum(amount) by region | render barchart with(t
 
 After:
 ```ds
-from orders
-| summarize revenue = sum(amount) by region
-| render barchart;
+from orders | summarize revenue = sum(amount) by region | render barchart;
 
 from orders
 | summarize revenue = sum(amount) by region
 | render barchart with (title = "Revenue by Region")
 ```
 
-Long `render ... with (...)` wraps one property per line, keeping multi-column values together on
-their property line:
+Long `render ... with (...)` wraps one property per line at +2 indent, keeping multi-column values
+together on their property line:
 
 Before:
 ```ds
@@ -612,14 +632,14 @@ After:
 from orders
 | summarize revenue = sum(amount), margin = sum(profit) by region, month = startofmonth(ts)
 | render linechart with (
-    title = "Monthly Revenue and Margin",
-    xcolumn = month,
-    ycolumns = revenue, margin,
-    series = region,
-    xtitle = "Month",
-    ytitle = "USD",
-    ymin = 0,
-    legend = visible
+  title = "Monthly Revenue and Margin",
+  xcolumn = month,
+  ycolumns = revenue, margin,
+  series = region,
+  xtitle = "Month",
+  ytitle = "USD",
+  ymin = 0,
+  legend = visible
 )
 ```
 
@@ -655,10 +675,10 @@ let rawTag = @'a\b\c';
 from 'orders.csv'
 | where ['order id'] != "" and amount > 1_000_000 and rate >= .5 and eps == 1e-3
 | where timestamp >= datetime(2024-01-31T12:00:00Z)
-    and wait < 1.5h
-    and jitter <= 5µs
-    and window == timespan(1.02:03:04)
-    and offset == timespan(-90m)
+  and wait < 1.5h
+  and jitter <= 5µs
+  and window == timespan(1.02:03:04)
+  and offset == timespan(-90m)
 | extend note = "line1\nline2", ["it's"] = long(null), ['let'] = string(null)
 | project ['order id'], ["it's"], ['let'], note
 ```
@@ -666,6 +686,8 @@ from 'orders.csv'
 ### 14. Comments & blank lines
 
 #### File-leading comments and section comments
+
+A section comment above a short query does not force that query onto multiple lines:
 
 Before:
 ```ds
@@ -689,15 +711,13 @@ let orders = 'orders.parquet';
 let cutoff = ago(90d);
 
 // Main query
-from orders
-| where timestamp >= cutoff
-| summarize revenue = sum(amount) by region
+from orders | where timestamp >= cutoff | summarize revenue = sum(amount) by region
 ```
 
 #### Comments between pipeline stages
 
-Standalone comments attach above the following `| operator`. An intentional blank line before a
-section comment inside a pipeline is preserved:
+Comments inside a pipeline always keep it multi-line and attach above the following `| operator`.
+An intentional blank line before a section comment inside a pipeline is preserved:
 
 Before:
 ```ds
@@ -746,28 +766,29 @@ from 'orders.csv' // raw export
 
 #### Comments inside multi-line `project`, `summarize`, `join (...)`, and `case(...)`
 
-Any comment inside a list or `case(...)` forces multi-line layout and stays with its item:
+Any comment inside a list, subquery, or `case(...)` forces multi-line layout (2-space indent) and
+stays with its item:
 
 Before:
 ```ds
 from orders
 | project
-    orderId, // primary key
-    // Net amount after discount
-    net = amount - discount
+  orderId, // primary key
+  // Net amount after discount
+  net = amount - discount
 | join kind=leftouter (
-    // Only active accounts
-    from customers
-    | where active
+  // Only active accounts
+  from customers
+  | where active
 ) on customerId
 | extend tier = case(
-    // Enterprise threshold
-    net >= 1000, "enterprise",
-    "standard" // fallback
+  // Enterprise threshold
+  net >= 1000, "enterprise",
+  "standard" // fallback
 )
 | summarize
-    // Total revenue
-    revenue = sum(net)
+  // Total revenue
+  revenue = sum(net)
   by
     tier // grouping key
 ```
@@ -776,60 +797,60 @@ After:
 ```ds
 from orders
 | project
-    orderId, // primary key
-    // Net amount after discount
-    net = amount - discount
+  orderId, // primary key
+  // Net amount after discount
+  net = amount - discount
 | join kind = leftouter (
-    // Only active accounts
-    from customers
-    | where active
+  // Only active accounts
+  from customers
+  | where active
 ) on customerId
 | extend tier = case(
-    // Enterprise threshold
-    net >= 1000, "enterprise",
-    "standard" // fallback
+  // Enterprise threshold
+  net >= 1000, "enterprise",
+  "standard" // fallback
 )
 | summarize
-    // Total revenue
-    revenue = sum(net)
+  // Total revenue
+  revenue = sum(net)
   by
     tier // grouping key
 ```
 
 #### Collapsing excessive blank lines vs removing stray blank lines
 
-3+ blank lines collapse to 1; stray blank lines without comments inside a pipeline are removed,
-while intentional single blank lines between statements are preserved:
+3+ blank lines collapse to 1; stray blank lines without comments inside a multi-line pipeline are
+removed, while intentional single blank lines between statements are preserved:
 
 Before:
 ```ds
-let a = 1;
+let minAmount = 100;
 
 
 
-let b = 2;
+let maxAmount = 5000;
 
 
 
-from orders
+from 'orders.parquet'
 
-| where amount > a
+| where amount > minAmount and amount < maxAmount
 
 
-| where amount > b
+| project orderId, customerId, amount, timestamp
 
 | take 10
 ```
 
 After:
 ```ds
-let a = 1;
+let minAmount = 100;
 
-let b = 2;
+let maxAmount = 5000;
 
-from orders
-| where amount > a
-| where amount > b
+from 'orders.parquet'
+| where amount > minAmount and amount < maxAmount
+| project orderId, customerId, amount, timestamp
 | take 10
 ```
 
@@ -843,12 +864,14 @@ Before (and After — unchanged):
 ```ds
 // Top customers over time
 let orders = 'orders.parquet';
+let recent = from orders | where timestamp >= ago(90d);
 
-let topCustomers = from orders
-    | summarize revenue = sum(amount) by customerId
-    | top 10 by revenue desc;
+let topCustomers = from recent
+  | where status == "paid"
+  | summarize revenue = sum(amount) by customerId
+  | top 10 by revenue desc;
 
-from orders
+from recent
 | join kind = inner topCustomers on customerId
 | summarize revenue = sum(amount) by customerId, month = startofmonth(timestamp)
 | render timechart with (title = "Top Customers")
