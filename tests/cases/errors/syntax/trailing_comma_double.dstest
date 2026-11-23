@@ -9,9 +9,10 @@ from t | summarize count(),, by a;
 from t | summarize count(), by;
 from t | render linechart with (ycolumns = a,, b);
 from t | render table with (title = "x",,);
-from t | render linechart with (ycolumns = a, b,, title = "x")
+from t | render linechart with (ycolumns = a, b,, title = "x");
+from t | render table with (title = "x",
 ---- expected
-PROGRAM@0..329
+PROGRAM@0..371
   PIPELINE@0..28
     IDENT@0..4 "from"
     WHITESPACE@4..5 " "
@@ -270,7 +271,35 @@ PROGRAM@0..329
           LITERAL@324..327
             STRING@324..327 "\"x\""
         R_PAREN@327..328 ")"
-  WHITESPACE@328..329 "\n"
+  SEMICOLON@328..329 ";"
+  WHITESPACE@329..330 "\n"
+  PIPELINE@330..370
+    IDENT@330..334 "from"
+    WHITESPACE@334..335 " "
+    NAME_REF@335..336
+      IDENT@335..336 "t"
+    WHITESPACE@336..337 " "
+    PIPE@337..338 "|"
+    WHITESPACE@338..339 " "
+    RENDER_OP@339..370
+      IDENT@339..345 "render"
+      WHITESPACE@345..346 " "
+      IDENT@346..351 "table"
+      WHITESPACE@351..352 " "
+      RENDER_PROPS@352..370
+        IDENT@352..356 "with"
+        WHITESPACE@356..357 " "
+        L_PAREN@357..358 "("
+        RENDER_PROP@358..369
+          NAME@358..363
+            IDENT@358..363 "title"
+          WHITESPACE@363..364 " "
+          EQ@364..365 "="
+          WHITESPACE@365..366 " "
+          LITERAL@366..369
+            STRING@366..369 "\"x\""
+        COMMA@369..370 ","
+  WHITESPACE@370..371 "\n"
 
 error[DS0101]: expected an expression after `,`, found `,`
   --> query:1:25
@@ -323,5 +352,15 @@ error[DS0101]: expected an expression after `,`, found `,`
 error[DS0101]: expected an expression after `,`, found `,`
   --> query:9:49
   |
-9 | from t | render linechart with (ycolumns = a, b,, title = "x")
+9 | from t | render linechart with (ycolumns = a, b,, title = "x");
   |                                                 ^
+
+error[DS0112]: unclosed `(`
+   --> query:10:28
+   |
+10 | from t | render table with (title = "x",
+   |                            ^            - the input ends before a `)`
+   |                            |
+   |                            this `(` is never closed
+   |
+   = help: add `)` where the bracketed part ends

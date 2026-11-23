@@ -588,9 +588,15 @@ fn completions_after_trailing_commas() {
     // `summarize` trailing commas before `by` and after `by`.
     let c = completions("from 'orders.csv' | summarize sum(amount), ‸ by customerId");
     assert!(labels_of(&c, CompletionKind::Function).contains(&"count"));
+    assert!(labels_of(&c, CompletionKind::Keyword).contains(&"by"));
+    let l = labels("from 'orders.csv' | summarize sum(amount), ‸");
+    assert_has(&l, &["count", "by"]);
+    let l = labels("from 'orders.csv' | summarize round(sum(amount), ‸)");
+    assert_lacks(&l, &["by"]);
     let c = completions("from 'orders.csv' | summarize sum(amount) by customerId, ‸ | take 5");
     assert_eq!(labels_of(&c, CompletionKind::Column), COLUMNS);
     assert!(!labels_of(&c, CompletionKind::Function).contains(&"sum"));
+    assert!(!labels_of(&c, CompletionKind::Keyword).contains(&"by"));
 
     // `render ... with (...)` with a trailing comma before `)`.
     let l = labels("from 'orders.csv' | render piechart with (title = 'x', ‸)");

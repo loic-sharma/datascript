@@ -1,13 +1,15 @@
-# Statement boundaries after a trailing comma recover as DS0106, while `let = 1` stays DS0126.
+# Statement boundaries after a trailing comma recover as DS0106, while reserved-word `let` stays DS0126.
 mode: syntax
 ---- query
 from 'a.csv' | project a,
 from 'b.csv';
 from 'a.csv' | project a,
 let x = 1;
-from 'a.csv' | project a, let = 1
+from 'a.csv' | project a, let = 1;
+from 'a.csv' | project-away a, let | take 5;
+from 'a.csv' | project-away a, let
 ---- expected
-PROGRAM@0..111
+PROGRAM@0..192
   PIPELINE@0..25
     IDENT@0..4 "from"
     WHITESPACE@4..5 " "
@@ -83,7 +85,57 @@ PROGRAM@0..111
         WHITESPACE@108..109 " "
         LITERAL@109..110
           LONG@109..110 "1"
-  WHITESPACE@110..111 "\n"
+  SEMICOLON@110..111 ";"
+  WHITESPACE@111..112 "\n"
+  PIPELINE@112..155
+    IDENT@112..116 "from"
+    WHITESPACE@116..117 " "
+    LITERAL@117..124
+      STRING@117..124 "'a.csv'"
+    WHITESPACE@124..125 " "
+    PIPE@125..126 "|"
+    WHITESPACE@126..127 " "
+    PROJECT_AWAY_OP@127..146
+      IDENT@127..134 "project"
+      MINUS@134..135 "-"
+      IDENT@135..139 "away"
+      WHITESPACE@139..140 " "
+      COLUMN_PATTERN@140..141
+        IDENT@140..141 "a"
+      COMMA@141..142 ","
+      WHITESPACE@142..143 " "
+      COLUMN_PATTERN@143..146
+        LET_KW@143..146 "let"
+    WHITESPACE@146..147 " "
+    PIPE@147..148 "|"
+    WHITESPACE@148..149 " "
+    TAKE_OP@149..155
+      IDENT@149..153 "take"
+      WHITESPACE@153..154 " "
+      LITERAL@154..155
+        LONG@154..155 "5"
+  SEMICOLON@155..156 ";"
+  WHITESPACE@156..157 "\n"
+  PIPELINE@157..191
+    IDENT@157..161 "from"
+    WHITESPACE@161..162 " "
+    LITERAL@162..169
+      STRING@162..169 "'a.csv'"
+    WHITESPACE@169..170 " "
+    PIPE@170..171 "|"
+    WHITESPACE@171..172 " "
+    PROJECT_AWAY_OP@172..191
+      IDENT@172..179 "project"
+      MINUS@179..180 "-"
+      IDENT@180..184 "away"
+      WHITESPACE@184..185 " "
+      COLUMN_PATTERN@185..186
+        IDENT@185..186 "a"
+      COMMA@186..187 ","
+      WHITESPACE@187..188 " "
+      COLUMN_PATTERN@188..191
+        LET_KW@188..191 "let"
+  WHITESPACE@191..192 "\n"
 
 error[DS0106]: missing `;` between statements
   --> query:1:26
@@ -108,8 +160,24 @@ error[DS0106]: missing `;` between statements
 error[DS0126]: `let` is a reserved word
   --> query:5:27
   |
-5 | from 'a.csv' | project a, let = 1
+5 | from 'a.csv' | project a, let = 1;
   |                           ^^^ a reserved word cannot be a name without quotes
+  |
+  = help: to use it as a name, quote it: `['let']`
+
+error[DS0126]: `let` is a reserved word
+  --> query:6:32
+  |
+6 | from 'a.csv' | project-away a, let | take 5;
+  |                                ^^^ a reserved word cannot be a name without quotes
+  |
+  = help: to use it as a name, quote it: `['let']`
+
+error[DS0126]: `let` is a reserved word
+  --> query:7:32
+  |
+7 | from 'a.csv' | project-away a, let
+  |                                ^^^ a reserved word cannot be a name without quotes
   |
   = help: to use it as a name, quote it: `['let']`
 
@@ -118,5 +186,7 @@ with the machine-applicable fixes applied:
     from 'b.csv';
     from 'a.csv' | project a,;
     let x = 1;
-    from 'a.csv' | project a, ['let'] = 1
+    from 'a.csv' | project a, ['let'] = 1;
+    from 'a.csv' | project-away a, ['let'] | take 5;
+    from 'a.csv' | project-away a, ['let']
 which parses without errors

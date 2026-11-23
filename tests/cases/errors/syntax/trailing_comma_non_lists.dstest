@@ -9,9 +9,12 @@ from t | where a between (1 .. 10,);
 from t | extend x = (a,);
 from t | extend x = a[0,];
 from t | distinct *,;
-from t | extend x = long(null,)
+from t | project *, | take 5;
+from t | extend x = long(null,);
+from t | extend x = long(null,,);
+from t | distinct *,
 ---- expected
-PROGRAM@0..234
+PROGRAM@0..320
   PIPELINE@0..19
     IDENT@0..4 "from"
     WHITESPACE@4..5 " "
@@ -189,7 +192,7 @@ PROGRAM@0..234
       COMMA@199..200 ","
   SEMICOLON@200..201 ";"
   WHITESPACE@201..202 "\n"
-  PIPELINE@202..233
+  PIPELINE@202..230
     IDENT@202..206 "from"
     WHITESPACE@206..207 " "
     NAME_REF@207..208
@@ -197,23 +200,89 @@ PROGRAM@0..234
     WHITESPACE@208..209 " "
     PIPE@209..210 "|"
     WHITESPACE@210..211 " "
-    EXTEND_OP@211..233
-      IDENT@211..217 "extend"
-      WHITESPACE@217..218 " "
-      NAMED_EXPR@218..233
-        NAME@218..219
-          IDENT@218..219 "x"
-        WHITESPACE@219..220 " "
-        EQ@220..221 "="
-        WHITESPACE@221..222 " "
-        TYPED_NULL@222..233
-          IDENT@222..226 "long"
-          L_PAREN@226..227 "("
-          NULL_KW@227..231 "null"
-          ERROR@231..232
-            COMMA@231..232 ","
-          R_PAREN@232..233 ")"
-  WHITESPACE@233..234 "\n"
+    PROJECT_OP@211..221
+      IDENT@211..218 "project"
+      WHITESPACE@218..219 " "
+      ERROR@219..221
+        STAR@219..220 "*"
+        COMMA@220..221 ","
+    WHITESPACE@221..222 " "
+    PIPE@222..223 "|"
+    WHITESPACE@223..224 " "
+    TAKE_OP@224..230
+      IDENT@224..228 "take"
+      WHITESPACE@228..229 " "
+      LITERAL@229..230
+        LONG@229..230 "5"
+  SEMICOLON@230..231 ";"
+  WHITESPACE@231..232 "\n"
+  PIPELINE@232..263
+    IDENT@232..236 "from"
+    WHITESPACE@236..237 " "
+    NAME_REF@237..238
+      IDENT@237..238 "t"
+    WHITESPACE@238..239 " "
+    PIPE@239..240 "|"
+    WHITESPACE@240..241 " "
+    EXTEND_OP@241..263
+      IDENT@241..247 "extend"
+      WHITESPACE@247..248 " "
+      NAMED_EXPR@248..263
+        NAME@248..249
+          IDENT@248..249 "x"
+        WHITESPACE@249..250 " "
+        EQ@250..251 "="
+        WHITESPACE@251..252 " "
+        TYPED_NULL@252..263
+          IDENT@252..256 "long"
+          L_PAREN@256..257 "("
+          NULL_KW@257..261 "null"
+          ERROR@261..262
+            COMMA@261..262 ","
+          R_PAREN@262..263 ")"
+  SEMICOLON@263..264 ";"
+  WHITESPACE@264..265 "\n"
+  PIPELINE@265..297
+    IDENT@265..269 "from"
+    WHITESPACE@269..270 " "
+    NAME_REF@270..271
+      IDENT@270..271 "t"
+    WHITESPACE@271..272 " "
+    PIPE@272..273 "|"
+    WHITESPACE@273..274 " "
+    EXTEND_OP@274..297
+      IDENT@274..280 "extend"
+      WHITESPACE@280..281 " "
+      NAMED_EXPR@281..297
+        NAME@281..282
+          IDENT@281..282 "x"
+        WHITESPACE@282..283 " "
+        EQ@283..284 "="
+        WHITESPACE@284..285 " "
+        TYPED_NULL@285..297
+          IDENT@285..289 "long"
+          L_PAREN@289..290 "("
+          NULL_KW@290..294 "null"
+          ERROR@294..296
+            COMMA@294..295 ","
+            COMMA@295..296 ","
+          R_PAREN@296..297 ")"
+  SEMICOLON@297..298 ";"
+  WHITESPACE@298..299 "\n"
+  PIPELINE@299..319
+    IDENT@299..303 "from"
+    WHITESPACE@303..304 " "
+    NAME_REF@304..305
+      IDENT@304..305 "t"
+    WHITESPACE@305..306 " "
+    PIPE@306..307 "|"
+    WHITESPACE@307..308 " "
+    DISTINCT_OP@308..319
+      IDENT@308..316 "distinct"
+      WHITESPACE@316..317 " "
+      STAR@317..318 "*"
+      COMMA@318..319 ","
+  WHITESPACE@319..320 "\n"
 
 error[DS0115]: `where` takes one condition
   --> query:1:17
@@ -265,21 +334,45 @@ error[DS0101]: expected `]`, found `,`
   |                      |
   |                      to close this `[`
 
-error[DS0116]: `distinct *` cannot list other columns
-  --> query:8:19
+error[DS0116]: `distinct *` cannot have a trailing `,`
+  --> query:8:20
   |
 8 | from t | distinct *,;
-  |                   ^ `*` already means every column
+  |                    ^ `*` already means every column
   |
-  = help: remove `*` to keep the distinct values of the listed columns, or remove the columns to keep distinct rows
+  = help: remove the `,`
+
+error[DS0117]: `project *` is SQL's `SELECT *`
+  --> query:9:18
+  |
+9 | from t | project *, | take 5;
+  |                  ^ `project` lists the columns to keep
+  |
+  = help: to keep every column and add computed ones, use `extend`
 
 error[DS0101]: expected `)`, found `,`
-  --> query:9:30
-  |
-9 | from t | extend x = long(null,)
-  |                         -    ^
-  |                         |
-  |                         to close this `(`
+   --> query:10:30
+   |
+10 | from t | extend x = long(null,);
+   |                         -    ^
+   |                         |
+   |                         to close this `(`
+
+error[DS0101]: expected `)`, found `,`
+   --> query:11:30
+   |
+11 | from t | extend x = long(null,,);
+   |                         -    ^
+   |                         |
+   |                         to close this `(`
+
+error[DS0116]: `distinct *` cannot have a trailing `,`
+   --> query:12:20
+   |
+12 | from t | distinct *,
+   |                    ^ `*` already means every column
+   |
+   = help: remove the `,`
 
 with the machine-applicable fixes applied:
     from t | where a and b;
@@ -289,8 +382,11 @@ with the machine-applicable fixes applied:
     from t | where a between (1 .. 10,);
     from t | extend x = (a,);
     from t | extend x = a[0,];
-    from t | distinct *,;
-    from t | extend x = long(null,)
+    from t | distinct *;
+    from t | project *, | take 5;
+    from t | extend x = long(null,);
+    from t | extend x = long(null,,);
+    from t | distinct *
 which still has errors:
 
 error[DS0101]: expected `|` or `;`, found `,`
@@ -335,18 +431,26 @@ error[DS0101]: expected `]`, found `,`
   |                      |
   |                      to close this `[`
 
-error[DS0116]: `distinct *` cannot list other columns
-  --> fixed:8:19
+error[DS0117]: `project *` is SQL's `SELECT *`
+  --> fixed:9:18
   |
-8 | from t | distinct *,;
-  |                   ^ `*` already means every column
+9 | from t | project *, | take 5;
+  |                  ^ `project` lists the columns to keep
   |
-  = help: remove `*` to keep the distinct values of the listed columns, or remove the columns to keep distinct rows
+  = help: to keep every column and add computed ones, use `extend`
 
 error[DS0101]: expected `)`, found `,`
-  --> fixed:9:30
-  |
-9 | from t | extend x = long(null,)
-  |                         -    ^
-  |                         |
-  |                         to close this `(`
+   --> fixed:10:30
+   |
+10 | from t | extend x = long(null,);
+   |                         -    ^
+   |                         |
+   |                         to close this `(`
+
+error[DS0101]: expected `)`, found `,`
+   --> fixed:11:30
+   |
+11 | from t | extend x = long(null,,);
+   |                         -    ^
+   |                         |
+   |                         to close this `(`

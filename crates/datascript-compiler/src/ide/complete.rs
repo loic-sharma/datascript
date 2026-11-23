@@ -521,6 +521,14 @@ fn classify(doc: &Doc<'_>, cursor: &Cursor) -> Context {
                     keywords: if in_by { vec![] } else { vec!["by"] },
                     infix: true,
                 }
+            } else if !in_by
+                && prev.kind() == SyntaxKind::COMMA
+                && parent_kind == Some(SyntaxKind::SUMMARIZE_OP)
+            {
+                Context::Both(vec![
+                    expression(input(), true),
+                    Context::Keywords(vec!["by"]),
+                ])
             } else {
                 expression(input(), !in_by)
             }

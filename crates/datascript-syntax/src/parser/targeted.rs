@@ -1383,7 +1383,17 @@ impl Parser<'_> {
     }
 
     /// DS0116: `distinct *, a`. `star` is the token index of `*`; the current token is the comma.
-    pub(super) fn distinct_star_with_columns(&mut self, star: usize) {
+    /// DS0116: `distinct *` followed by `,` (with or without further columns). The current token
+    /// is `,`; `star` is the token index of `*`.
+    pub(super) fn distinct_star_with_columns(&mut self, star: usize, has_columns: bool) {
+        if !has_columns {
+            let comma = self.current_span();
+            let d = Diagnostic::error(codes::DS0116, "`distinct *` cannot have a trailing `,`")
+                .primary(comma, "`*` already means every column")
+                .help_with("remove the `,`", Suggestion::replace(comma, ""));
+            self.report(d);
+            return;
+        }
         let star_start = self.tokens[star].start;
         let next_start = self
             .tokens
