@@ -18,14 +18,15 @@ comments verbatim.
 ## Carried over
 - [ ] (from planning, 2026-11-22) If M3-03 is done, add `textDocument/formatting` to the language server (M3-03 left it for after this task), with an LSP test.
 - [ ] (from M1-24) When a pipeline is multi-line, `from <source>` stays on the first line, with operators on the following lines: `from orders⏎| where …`, never `from⏎orders`.
-- [ ] (from M2-19) Never add or remove a trailing `,` in comma-separated lists (preserve an existing trailing `,` verbatim, since D-059 makes trailing commas optional and the formatter is whitespace-only); ensure wrapping and single-item-hugging rules handle an existing trailing `,` before `)` or at the end of an operator list by keeping the `,` attached to the last item's line before the closing `)` or the next `|`.
+- [ ] (from M2-19) Never add or remove a trailing `,` in comma-separated lists (preserve an existing trailing `,` verbatim, since D-059 makes trailing commas optional and the formatter is whitespace-only); treat a trailing `,` as a magic trailing comma that formats its list multi-line (never collapsing it onto one line) and keeps the `,` attached to the last item's line before `)`, `;`, `by`, or the next `|`.
 
 ## Formatting rules
 
 - **Whitespace-only contract:**
   - The formatter **only** edits whitespace trivia between tokens — it never adds, removes, or
     rewrites non-trivia tokens.
-  - Semicolons (including any trailing `;` at EOF), string quote styles (`'...'` vs `"..."`),
+  - Semicolons (including any trailing `;` at EOF), optional trailing commas in lists (D-059 —
+    never added or removed), string quote styles (`'...'` vs `"..."`),
     verbatim strings (`@"..."`, `@'...'`), escape sequences, number spellings (`1_000_000`, `.5`,
     `1e-3`), single-token literal text (including interior spaces inside `datetime( 2024-01-31 )`
     or `timespan( 1d )`), quoted identifiers (`['order id']`, `["it's"]`), and operator aliases
@@ -43,9 +44,10 @@ comments verbatim.
 - **Pipelines & leading `|`:**
   - **Single-line when written on one line and it fits:** If a pipeline (a query statement or a
     tabular `let`) has no newline between its stages in the input, fits within 100 columns
-    (including any `;` on that line), has no internal comments, and has no multi-line
-    sub-expressions (such as a wrapped `case(...)`, `read_csv(...)`, `render ... with (...)`, or
-    wrapped subquery), keep it on one line: `from 'orders.csv' | where amount > 10 | take 5`.
+    (including any `;` on that line), has no internal comments, and has no multi-line stages or
+    sub-expressions (such as a list with a trailing `,`, or a wrapped `case(...)`, `read_csv(...)`,
+    `render ... with (...)`, or wrapped subquery), keep it on one line:
+    `from 'orders.csv' | where amount > 10 | take 5`.
   - **Already-split pipelines stay split:** If the input already has a newline before any `|` stage
     of a pipeline, keep the pipeline multi-line (one `| <operator>` per line), even if it would
     fit within 100 columns.
@@ -74,7 +76,9 @@ comments verbatim.
     (`a - -b`).
   - Prefix `not`: single space before a non-parenthesized operand (`not active`, `not a == b`); no
     space before `(` in the call-like form (`not(active)`), which binds like a call (D-029).
-  - No space before `,` or `;`; single space after `,` on single-line lists.
+  - No space before `,` or `;`; single space after `,` on single-line lists. On wrapped lists, a
+    trailing `,` stays attached to the last item's line (with no space before `,`, and immediately
+    before any trailing `;` on an operator list, e.g. `customerId,;`).
   - No space inside `(...)` (except inside single-token literals like `datetime( 2024-01-31 )`,
     where verbatim token text wins), between a function name and `(`, around `.` in member access
     (`$left.a`, `record.field`), or before `[` in indexing (`items[0]`).
@@ -85,45 +89,65 @@ comments verbatim.
     token (`['key']`, `LANGUAGE.md` §1 / D-034).
   - Single space before `(` in `in (...)` / `!in (...)` / `in~ (...)` / `!in~ (...)` and
     `between (...)` / `!between (...)`.
-- **Wrapping order, lists & clauses (no trailing commas):**
+- **Wrapping order, lists & clauses (magic trailing commas):**
   - **Wrapping order & reflow:** Wrap the **outermost** wrappable construct first (e.g. pipeline
     stages before operator lists, operator lists before call arguments), then re-measure each inner
     construct at its new indentation and wrap it only if it still exceeds 100 columns (or contains
-    comments or multi-line children). Unlike pipelines (which preserve user-split `|` lines),
-    non-pipeline constructs — operator lists, `summarize`, `case(...)`, function calls,
+    comments, a trailing `,`, or multi-line children). Unlike pipelines (which preserve user-split
+    `|` lines), non-pipeline constructs — operator lists, `summarize`, `case(...)`, function calls,
     `render ... with (...)`, and binary/boolean expressions — **reflow back to one line** when they
-    fit within 100 columns and contain no comments or multi-line children.
-  - **No trailing commas:** DataScript rejects trailing commas (`DS0127`), so wrapped lists
-    **never** emit a trailing comma.
+    fit within 100 columns and contain no comments, **no trailing comma**, and no multi-line
+    children.
+  - **Trailing commas (magic trailing comma, D-059):** DataScript accepts an optional trailing `,`
+    in every comma-separated list (D-059). Because the formatter is whitespace-only, it **never**
+    adds or removes a trailing `,`. Instead, an existing trailing `,` acts as a **magic trailing
+    comma**: any list ending with a trailing `,` (delimited `(...)` lists, operator lists,
+    `summarize` aggregate or `by` lists, and `render ... with (...)` property lists) **always
+    formats multi-line** and never reflows back onto one line, even when it fits within 100
+    columns. The trailing `,` stays attached to the last item's line before `)`, `;`, `by`, or the
+    next `|`. Lists without a trailing `,` never have one added and reflow when short.
   - **Single-item hugging:** When a list-taking operator (`project`, `extend`, `union`, etc.) has
-    **exactly one item** whose trailing construct wraps (e.g. `| extend tier = case(`, `| union (`),
-    that single item stays on the operator line rather than breaking onto a new line.
+    **exactly one item**, **no trailing comma on the operator list itself**, and its trailing
+    construct wraps (e.g. `| extend tier = case(`, `| union (`), that single item stays on the
+    operator line rather than breaking onto a new line. If the inner construct has a trailing `,`
+    (e.g. `| extend size = case(a, b, c,)`), the single item still hugs `| extend` while the inner
+    construct wraps with `,` attached to its last item before `)`. If the outer operator list itself
+    has a trailing `,` (e.g. `| extend tier = case(...),`), the magic trailing comma breaks the
+    outer operator list so the item indents at +2 with the trailing `,` attached to its end.
   - **List-taking operators** (`project`, `extend`, `project-away`, `project-rename`, `distinct`,
     `sort by`, `union`, `join ... on`): stay on one line when the full line fits within 100 columns
-    and contains no comments or multi-line children; otherwise break after the operator keyword
-    (`| project`, `| sort by`, `| union`, `) on`, etc.) with one item per line indented +2 spaces.
-    For `join` with a parenthesized right-hand subquery, break the subquery `(...)` **before**
-    wrapping the `on` condition list; wrap `on` only if `) on ...` still exceeds 100 columns (or
-    contains comments).
-  - **`summarize`:** Stays on one line if it fits; when wrapped:
+    and contains no comments, no trailing `,`, and no multi-line children; otherwise break after the
+    operator keyword (`| project`, `| sort by`, `| union`, `) on`, etc.) with one item per line
+    indented +2 spaces. For `join` with a parenthesized right-hand subquery, break the subquery
+    `(...)` **before** wrapping the `on` condition list due to width; wrap `on` if `) on ...` still
+    exceeds 100 columns, contains comments, or has a trailing `,`.
+  - **`summarize`:** Stays on one line if it fits and has no comments or trailing `,` in either
+    list; when wrapped:
     - Aggregates indent **+4 spaces** (+2 under `summarize`), whether or not a `by` clause is
       present.
     - When both aggregates and `by` are present, `by` aligns under `summarize` at **+2 spaces**, and
-      `by` keys stay on the `  by ...` line if it fits within 100 columns (with no comments or
-      multi-line expressions), or wrap to **+4 spaces** (+2 under `by`) otherwise.
-    - A `by`-only `summarize` (`| summarize by ...`) exceeding 100 columns breaks after `by` with
-      keys at **+2 spaces** (matching `| sort by`).
+      `by` keys stay on the `  by ...` line if it fits within 100 columns (with no comments, no
+      trailing `,`, and no multi-line expressions), or wrap to **+4 spaces** (+2 under `by`)
+      otherwise. (Per D-059, `by = expr` is a named aggregate rather than a `by` clause, so
+      `summarize sum(amount), by = count()` has no trailing comma and stays single-line when it
+      fits.)
+    - A `by`-only `summarize` (`| summarize by ...`) exceeding 100 columns, containing comments, or
+      ending with a trailing `,` breaks after `by` with keys at **+2 spaces** (matching `| sort by`).
   - **`top N by`:** Stays on one line if it fits; if the sort key exceeds 100 columns, break after
     `by` and indent the sort key +2 spaces (wrapping inside the key expression if it still exceeds
     100 columns).
-  - **`render <kind> with (...)`:** Stays on one line if it fits; when wrapped, each property sits
-    on its own line at +2 indent with `)` aligned with `|`. Multi-value properties such as
-    `ycolumns = a, b` stay on the property's line unless they exceed 100 columns.
+  - **`render <kind> with (...)`:** Stays on one line if it fits and has no comments or trailing
+    `,`; when wrapped, each property sits on its own line at +2 indent with `)` aligned with `|`.
+    Multi-value properties such as `ycolumns = a, b` stay on the property's line unless they exceed
+    100 columns (preserving any trailing `,` at the end of the last property, e.g.
+    `ycolumns = revenue, margin,`).
   - **Function calls & `in (...)`:** Wrap after `(` with one item per line at +2 indent and `)` at
-    the outer indent when they exceed 100 columns or contain comments/multi-line arguments.
+    the outer indent when they exceed 100 columns, have a trailing `,`, or contain
+    comments/multi-line arguments.
   - **`case(...)`:** Stays on one line if it has at most 2 condition/value pairs, contains no
-    comments, and fits within 100 columns; otherwise wraps after `(` with each `condition, value,`
-    pair on its own line at +2 indent and the final `else` value on its own line.
+    comments, has no trailing `,`, and fits within 100 columns; otherwise wraps after `(` with each
+    `condition, value,` pair on its own line at +2 indent and the final `else` value on its own line
+    (keeping any trailing `,` attached to that `else` line before `)`).
   - **Boolean & binary chains (`and` / `or`, arithmetic, comparisons) and parenthesized
     sub-expressions:** In `where` and other expressions (`extend`, `project`, `case`, `iff`,
     `countif`, `sumif`, etc.), when a chain exceeds 100 columns, break at the **lowest-precedence**
@@ -459,7 +483,8 @@ from orders
 | project orderId, customerId, amount
 ```
 
-Lists exceeding 100 columns wrap with one item per line, 2-space indent, and no trailing comma:
+Lists exceeding 100 columns wrap with one item per line and 2-space indent (never adding a trailing
+comma if the input did not have one):
 
 Before:
 ```ds
@@ -1091,7 +1116,155 @@ from 'orders.parquet'
 | take 10
 ```
 
-### 15. Edge cases & non-changes
+### 15. Trailing commas (magic trailing comma)
+
+#### Delimited lists and operator lists with trailing commas
+
+Any comma-separated list ending with a trailing `,` (D-059) is preserved verbatim and formats
+multi-line rather than reflowing onto one line, even when short (and expands its enclosing pipeline
+to multi-line). Lists without a trailing `,` still reflow back to one line when short:
+
+Before:
+```ds
+from read_csv('orders.csv', delimiter = ';',) | where code in (200, 201,) | project orderId , customerId , | take 5;
+
+from orders
+| extend
+  net = amount - discount,
+  tax = amount * 0.08
+| project
+  orderId,
+  customerId,;
+```
+
+After:
+```ds
+from read_csv(
+  'orders.csv',
+  delimiter = ';',
+)
+| where code in (
+  200,
+  201,
+)
+| project
+  orderId,
+  customerId,
+| take 5;
+
+from orders
+| extend net = amount - discount, tax = amount * 0.08
+| project
+  orderId,
+  customerId,;
+```
+
+#### `summarize` with trailing commas (and a column named `by`)
+
+A trailing `,` on aggregates wraps aggregates at +4 while keeping short `by` keys on `  by ...`; a
+trailing `,` on `by` keys wraps the keys at +4 (+2 for `by`-only `summarize`). Remember that
+`by = expr` names an aggregate column rather than starting a `by` clause (D-059), so
+`summarize sum(amount), by = count()` has no trailing comma and stays single-line when it fits:
+
+Before:
+```ds
+from orders | summarize revenue = sum(amount), by region;
+from orders | summarize revenue = sum(amount) by region, country,;
+from orders | summarize by customerId, region,;
+from orders | summarize sum(amount), by = count()
+```
+
+After:
+```ds
+from orders
+| summarize
+    revenue = sum(amount),
+  by region;
+from orders
+| summarize
+    revenue = sum(amount)
+  by
+    region,
+    country,;
+from orders
+| summarize by
+  customerId,
+  region,;
+from orders | summarize sum(amount), by = count()
+```
+
+#### Single-item hugging, `case(...)`, `join ... on`, and `render ... with (...)`
+
+When a single-item operator has no trailing `,` on its own list, a trailing `,` inside `case(...)`
+wraps `case(...)` while still hugging `| extend`. When the outer operator list itself has a
+trailing `,`, the magic trailing comma breaks the outer operator list instead of hugging. In
+`join`, a trailing `,` on `on` wraps `on` without forcing a short inline subquery to expand. In
+`render ... with (...)`, a trailing `,` (including after a multi-value property like
+`ycolumns = revenue, margin,`) wraps `with (...)` with `,` attached to the last property line:
+
+Before:
+```ds
+from orders
+| extend size = case(amount >= 500, "large", "small",)
+| extend tier = case(amount >= 500, "large", "small",),
+| join (from customers | where active) on customerId,
+| render linechart with (title = "Monthly", xcolumn = month, ycolumns = revenue, margin,)
+```
+
+After:
+```ds
+from orders
+| extend size = case(
+  amount >= 500, "large",
+  "small",
+)
+| extend
+  tier = case(
+    amount >= 500, "large",
+    "small",
+  ),
+| join (from customers | where active) on
+  customerId,
+| render linechart with (
+  title = "Monthly",
+  xcolumn = month,
+  ycolumns = revenue, margin,
+)
+```
+
+#### Multi-line lists with trailing commas and comments
+
+Comments inside trailing-comma lists stay attached to their items (at +2 indent inside both
+operator lists and delimited `(...)` lists, including a commented-out final item before `)`), while
+the trailing `,` stays directly attached to the preceding item:
+
+Before:
+```ds
+from orders
+| project
+    orderId , // primary key
+    // amount,
+    customerId , // trailing comma after last item
+| render barchart with (
+    title="Orders",
+    // xtitle = "Customer",
+)
+```
+
+After:
+```ds
+from orders
+| project
+  orderId, // primary key
+  // amount,
+  customerId, // trailing comma after last item
+| render barchart with (
+  title = "Orders",
+  // xtitle = "Customer",
+)
+```
+
+### 16. Edge cases & non-changes
 
 #### Already-formatted query (idempotency)
 
@@ -1117,10 +1290,11 @@ from recent
 #### Syntax error — formatter refuses to modify invalid input
 
 Input with error-severity syntax diagnostics (here: `=` instead of `==` (`DS0110`) and a trailing
-comma (`DS0127`)):
+comma on a non-list operator (`DS0101`); trailing commas are only valid in comma-separated lists
+per D-059):
 
 ```ds
-from 'orders.csv' | where amount = 100 | project orderId,
+from 'orders.csv' | where amount = 100 | take 5,
 ```
 
 `ds fmt` reports the diagnostics, exits non-zero, and leaves the file untouched. Running
