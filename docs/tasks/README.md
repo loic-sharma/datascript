@@ -108,7 +108,7 @@ Two shared files are touched by many tasks:
 | [M3-04](M3-04-vscode-extension.md) | VS Code extension | M3-01 | done |
 | [M3-05](M3-05-vscode-run.md) | VS Code Run CodeLens with CLI-style output | M3-04 | done |
 | [M3-06](M3-06-vscode-results-panel.md) | VS Code results panel (grid and charts) | M3-05, M4-02, M4-03, M2-13 | todo |
-| [M3-07](M3-07-repl-column-completion.md) | REPL column completion | M3-02 | todo |
+| [M3-07](M3-07-repl-column-completion.md) | REPL column completion | M3-02 | done |
 | [M3-08](M3-08-lsp-test-gaps.md) | LSP integration test gaps | M3-05 | done |
 | [M3-09](M3-09-vscode-e2e-gaps.md) | VS Code extension E2E test gaps | M3-05 | done |
 
