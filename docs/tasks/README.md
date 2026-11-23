@@ -84,14 +84,14 @@ Two shared files are touched by many tasks:
 | [M2-04](M2-04-make-series.md) | `make-series` | M2-03, M2-13 | todo |
 | [M2-05](M2-05-user-defined-functions.md) | User-defined functions | M1-13, M2-13 | todo |
 | [M2-06](M2-06-function-library.md) | Complete the function library | M1-13, M2-13 | todo |
-| [M2-07](M2-07-formatter.md) | Formatter (`ds fmt`) | M1-13 | todo |
+| [M2-07](M2-07-formatter.md) | Formatter (`ds fmt`) | M1-13 | done |
 | [M2-08](M2-08-error-explanations.md) | Long-form error explanations | M1-13, M2-13 | todo |
 | [M2-09](M2-09-schema-overrides.md) | Reader schema overrides | M1-13, M2-13 | todo |
 | [M2-10](M2-10-decimal-guid.md) | `decimal` and `guid` types | M1-13, M2-13 | todo |
 | [M2-11](M2-11-streaming-run.md) | Stream results in `ds run` | M1-13 | done |
 | [M2-12](M2-12-runtime-source-errors.md) | Name the file in runtime read errors | M1-13, M2-13 | todo |
 | [M2-13](M2-13-task-contract-fixes.md) | Fix task contracts and diagnostic code blocks | M1-13 | done |
-| [M2-14](M2-14-spec-code-mismatches.md) | Spec/code mismatches from the docs review | M1-13 | todo |
+| [M2-14](M2-14-spec-code-mismatches.md) | Spec/code mismatches from the docs review | M1-13 | done |
 
 ## M3 — Editor experience
 
@@ -129,7 +129,7 @@ Two shared files are touched by many tasks:
 |---|---|---|---|
 | [M6-01](M6-01-reference-docs.md) | Language reference and docs site | M2-08, M5-03, M2-13 | todo |
 | [M6-02](M6-02-packaging.md) | Packaging and releases | M1-13, M2-13, M3-04, M4-02, M5-02 | todo |
-| [M6-03](M6-03-sql-backend.md) | Second backend: SQL emitter | M1-13 | todo |
+| [M6-03](M6-03-sql-backend.md) | Second backend: SQL emitter | M1-13 | done |
 | [M6-04](M6-04-core-docs-refresh.md) | Bring the core docs in line with the code | M2-13, M2-14 | todo |
 
 The editor (M3) and the local web UI (M4) are being done before language breadth (M2). Where an M2

@@ -7,7 +7,8 @@ from read_csv('x.csv', header = 'yes', delimiter = ';;', infer_rows = 0) | take 
 from read_json('x.json', format = 'ndjsn') | take 1;
 from read_csv('x.csv', header = true, header = false) | take 1;
 from read_csv('x.csv', schema = 'a: long') | take 1;
-from read_parquet('x.parquet', compression = 'gzip') | take 1
+from read_parquet('x.parquet', compression = 'gzip') | take 1;
+from read_csv('x.csv', delimiter = '§', quote = '') | take 1
 ---- expected
 error[DS3003]: `read_csv` has no option `delimeter`
   --> query:1:24
@@ -65,7 +66,19 @@ error[DS3003]: reader option `schema` is not available yet
 error[DS3003]: `read_parquet` has no option `compression`
   --> query:6:32
   |
-6 | from read_parquet('x.parquet', compression = 'gzip') | take 1
+6 | from read_parquet('x.parquet', compression = 'gzip') | take 1;
   |                                ^^^^^^^^^^^ unknown option
   |
   = note: `read_parquet` takes no options
+
+error[DS2041]: `delimiter` must be a single character
+  --> query:7:36
+  |
+7 | from read_csv('x.csv', delimiter = '§', quote = '') | take 1
+  |                                    ^^^ `§` is not ASCII, and the CSV reader splits on single bytes
+
+error[DS2041]: `quote` must be a single character
+  --> query:7:49
+  |
+7 | from read_csv('x.csv', delimiter = '§', quote = '') | take 1
+  |                                                 ^^ this has 0 characters

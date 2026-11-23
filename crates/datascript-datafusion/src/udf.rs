@@ -248,9 +248,18 @@ fn out_bool(values: Vec<Option<bool>>) -> ArrayRef {
 
 /// Rounds a real to the nearest `i64`, failing when it does not fit.
 fn real_to_int(x: f64) -> Result<i64> {
-    // 2^63 is exactly representable; every f64 below it in magnitude fits after rounding.
+    to_int(x.round())
+}
+
+/// Truncates a real toward zero to an `i64`, failing when it does not fit.
+fn real_trunc_to_int(x: f64) -> Result<i64> {
+    to_int(x.trunc())
+}
+
+/// A real with no fraction as an `i64`, failing when it does not fit.
+fn to_int(r: f64) -> Result<i64> {
+    // 2^63 is exactly representable; every whole f64 below it in magnitude fits.
     const LIMIT: f64 = 9_223_372_036_854_775_808.0;
-    let r = x.round();
     if !r.is_finite() || r >= LIMIT || r < -LIMIT {
         return Err(fail(Fail::Overflow));
     }
@@ -334,7 +343,15 @@ pub(crate) fn k_div(arrays: &[ArrayRef], ret: &DataType) -> Result<ArrayRef> {
                 x.checked_div(y).ok_or_else(overflow)
             }
         },
-        |x, y| real_to_int(x / y),
+        // LANGUAGE.md §4.1: a timespan divided by a number truncates toward zero, whatever the
+        // divisor's type (`5us / 2.0` is `2us`, like `5us / 2`).
+        |x, y| {
+            if y == 0.0 {
+                Err(fail(Fail::DivisionByZero))
+            } else {
+                real_trunc_to_int(x / y)
+            }
+        },
     )
 }
 

@@ -230,27 +230,35 @@ fn short_timespan(text: &str, offset: usize, span: Span) -> LiteralResult<i64> {
         return Err(vec![d]);
     };
     let (int_part, frac_part) = number.split_once('.').unwrap_or((number, ""));
-    // Digits past nanosecond precision cannot change the value (it is truncated to µs), and
-    // keeping them would overflow `10^scale`.
-    let frac_digits: String = frac_part.chars().filter(|c| *c != '_').take(9).collect();
-    let digits: String = int_part
-        .chars()
-        .filter(|c| *c != '_')
-        .chain(frac_digits.chars())
-        .collect();
-    let scale = frac_digits.len() as u32;
     let too_large = || {
         vec![invalid("timespan is too large").primary(
             sub(span, offset..offset + text.len()),
             "timespans range over about ±292,000 years",
         )]
     };
-    let mantissa: i128 = digits.parse().map_err(|_| too_large())?;
-    let ns = mantissa
+    let whole: String = int_part.chars().filter(|c| *c != '_').collect();
+    let whole: i128 = match whole.as_str() {
+        "" => 0,
+        digits => digits.parse().map_err(|_| too_large())?,
+    };
+    let ns = whole
         .checked_mul(unit_ns)
-        .and_then(|v| v.checked_div(10i128.checked_pow(scale)?))
+        .and_then(|v| v.checked_add(fraction_of(frac_part, unit_ns)))
         .ok_or_else(too_large)?;
     i64::try_from(ns / 1_000).map_err(|_| too_large())
+}
+
+/// `0.<frac>` times `unit`, rounded down, using every digit of `frac` (`_` separators allowed).
+///
+/// A large unit makes digits far past nanosecond precision matter (`0.0000000005d` is 43.2 µs),
+/// and the result is truncated to µs afterwards, so the product must be exact. Multiplying from
+/// the last digit and flooring at each step is exact: `⌊(a + ⌊x⌋) / 10⌋ = ⌊(a + x) / 10⌋` for an
+/// integer `a`. The carry stays below `unit`, so nothing overflows.
+fn fraction_of(frac: &str, unit: i128) -> i128 {
+    frac.bytes()
+        .rev()
+        .filter(u8::is_ascii_digit)
+        .fold(0, |carry, d| (i128::from(d - b'0') * unit + carry) / 10)
 }
 
 /// `0x1F` lexes as the number `0` with the unit `x1F`: say that hexadecimal is not supported.
@@ -1070,6 +1078,13 @@ mod tests {
         assert_eq!(ts(text), Some(0));
         assert_eq!(ts("1.0000019999999999999999999999999s"), Some(1_000_001));
         assert_eq!(ts("0.000_000_5s"), Some(0));
+        // Digits past nanosecond precision still count when the unit is large.
+        assert_eq!(ts("0.0000000005d"), Some(43));
+        assert_eq!(ts("0.000000000011574074074074074074074075d"), Some(1));
+        assert_eq!(ts("0.000000000011574074074074074074074074d"), Some(0));
+        assert_eq!(ts("1.5h"), Some(5_400_000_000));
+        assert_eq!(ts("2.5tick"), Some(0));
+        assert_eq!(ts("12.5tick"), Some(1));
     }
 
     #[test]

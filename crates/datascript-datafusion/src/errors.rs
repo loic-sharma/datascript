@@ -106,12 +106,22 @@ impl RuntimeError {
                 } else {
                     "division"
                 };
-                Diagnostic::error(DS4003, format!("integer {op} by zero"))
-                    .primary(self.span, "the divisor is zero for at least one row")
-                    .help(
+                let subject = if self.ty == "timespan" {
+                    "timespan"
+                } else {
+                    "integer"
+                };
+                let d = Diagnostic::error(DS4003, format!("{subject} {op} by zero"))
+                    .primary(self.span, "the divisor is zero for at least one row");
+                if self.ty == "timespan" {
+                    // A timespan has no `inf`, so converting is no way out.
+                    d.help("filter out the zero divisors with `where`")
+                } else {
+                    d.help(
                         "convert to `real` to get `inf` or `NaN` instead, or filter out the zero \
                          divisors with `where`",
                     )
+                }
             }
             Fail::Invalid { message, note } => {
                 let d = Diagnostic::error(DS4004, message.clone())

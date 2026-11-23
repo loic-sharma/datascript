@@ -1,0 +1,14 @@
+# A timespan divided by a zero `real` is DS4003, like a zero `long`: a timespan has no `inf`.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| take 1
+| project a = 1h / ((strlen(orderId) - 6) * 1.0)
+---- expected
+error[DS4003]: timespan division by zero
+  --> query:3:15
+  |
+3 | | project a = 1h / ((strlen(orderId) - 6) * 1.0)
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the divisor is zero for at least one row
+  |
+  = help: filter out the zero divisors with `where`
