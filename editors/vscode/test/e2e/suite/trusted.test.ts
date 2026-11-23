@@ -91,8 +91,8 @@ describe('in a trusted workspace', () => {
       await waitForCodes(document.uri, ['DS1001']);
     } finally {
       await updateServerSetting(api, 'extraArgs', undefined);
-      assert.ok(api.client());
     }
+    assert.ok(api.client(), 'server restarts after restoring datascript.server.extraArgs');
   });
 
   it('reports start failure for an invalid server path while highlighting still works', async () => {
@@ -114,10 +114,20 @@ describe('in a trusted workspace', () => {
       // Highlighting (TextMate grammar) does not depend on the language server.
       const document = await open('no-server.ds', "from 'orders.csv' | where amount > 10\n");
       assert.equal(document.languageId, 'datascript');
+      const tokens = await vscode.commands.executeCommand<Array<{ c: string; t: string }>>(
+        '_workbench.captureSyntaxTokens',
+        document.uri,
+      );
+      assert.ok(tokens && tokens.length > 0, 'TextMate tokens captured without a running server');
+      const scopeOf = (text: string) => tokens.find((token) => token.c === text)?.t ?? '';
+      assert.match(scopeOf('from'), /\bkeyword\./);
+      assert.match(scopeOf('orders.csv'), /\bstring\.quoted\./);
+      assert.match(scopeOf('where'), /\bkeyword\.control\.operator\./);
+      assert.match(scopeOf('10'), /\bconstant\.numeric\./);
     } finally {
       await updateServerSetting(api, 'path', undefined);
-      assert.ok(api.client(), 'server restarts after restoring datascript.server.path');
     }
+    assert.ok(api.client(), 'server restarts after restoring datascript.server.path');
   });
 
   describe('Run', () => {
@@ -340,7 +350,8 @@ describe('in a trusted workspace', () => {
         const running = vscode.commands.executeCommand('datascript.runFile', document.uri.toString());
         const terminal = await terminalNamed('DataScript');
         await sleep(200);
-        terminal.dispose();
+        terminal.show(false);
+        await vscode.commands.executeCommand('workbench.action.terminal.kill');
         const record = (await running) as RunRecord;
         assert.equal(record.outcome, 'cancelled', record.terminalText);
         assert.match(record.terminalText, /Cancelled after/);

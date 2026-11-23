@@ -142,10 +142,26 @@ export async function updateServerSetting(
   api: DataScriptApi,
   key: string,
   value: unknown,
+  timeoutMs = 10_000,
 ): Promise<void> {
+  const config = vscode.workspace.getConfiguration('datascript.server');
+  if (value === undefined && config.inspect(key)?.workspaceValue === undefined) {
+    await api.ready();
+    return;
+  }
   let resolveChanged!: () => void;
-  const changed = new Promise<void>((resolve) => {
+  let timer: NodeJS.Timeout | undefined;
+  const changed = new Promise<void>((resolve, reject) => {
     resolveChanged = resolve;
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `timed out waiting for datascript.server.${key} configuration change after ${timeoutMs}ms`,
+          ),
+        ),
+      timeoutMs,
+    );
   });
   const subscription = vscode.workspace.onDidChangeConfiguration((event) => {
     if (event.affectsConfiguration('datascript.server')) {
@@ -153,11 +169,10 @@ export async function updateServerSetting(
     }
   });
   try {
-    await vscode.workspace
-      .getConfiguration('datascript.server')
-      .update(key, value, vscode.ConfigurationTarget.Workspace);
+    await config.update(key, value, vscode.ConfigurationTarget.Workspace);
     await changed;
   } finally {
+    clearTimeout(timer);
     subscription.dispose();
   }
   await api.ready();
