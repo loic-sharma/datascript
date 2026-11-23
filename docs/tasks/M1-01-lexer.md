@@ -1,6 +1,6 @@
 # M1-01 — Lexer
 
-**Status:** done — context-free lexer (`lex`, `SyntaxKind`, `Token`) with value parsing in `literal`, DS0001–DS0006 diagnostics, 20 golden cases and a proptest round trip.
+**Status:** done — context-free lexer (`lex`, `SyntaxKind`, `Token`) with value parsing in `literal`, DS0001–DS0003, DS0005 and DS0006 diagnostics, 20 golden cases and a proptest round trip.
 **Depends on:** M0-02, M0-03
 **Crates:** `datascript-syntax`
 **Diagnostic codes:** DS0001–DS0019 (D-018)
@@ -47,4 +47,5 @@ Design-review additions:
 - M1-02 adds the node kinds to `SyntaxKind` and the rowan `Language` impl.
 - M2-03: inside `dynamic(...)`, read a `QUOTED_IDENT` token such as `["a"]` as a one-element array
   (D-028).
-- Only DS0001–DS0006 were needed; DS0007–DS0019 stay free in the M1-01 block.
+- Only DS0001–DS0003, DS0005 and DS0006 were needed. `DS0004` is not this task's: M0-02 registered it
+  (no query to run). M1-20 later used DS0007; DS0008–DS0019 stay free in the M1-01 block.

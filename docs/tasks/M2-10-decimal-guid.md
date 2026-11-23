@@ -2,8 +2,9 @@
 
 **Status:** todo
 **Depends on:** M1-13, M2-13
-**Crates:** `datascript-compiler`, `datascript-datafusion`
-**Diagnostic codes:** none new expected (reuse DS2003, DS2006, DS2008); reserve a block if needed
+**Crates:** `datascript-compiler`, `datascript-datafusion`, `datascript-engine` (table formatting
+for `decimal`/`guid`), `datascript-fixtures` (`types.parquet` has no `arrow.uuid` column yet)
+**Diagnostic codes:** none new expected (reuse DS2003, DS2006, DS2008); DS2310–DS2319 if needed (D-018)
 
 ## Goal
 Make `decimal` and `guid` real types. In M1 they exist only as typed nulls (`decimal(null)`,

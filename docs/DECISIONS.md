@@ -880,8 +880,8 @@ Variant type (faster, more complex). Decide in M2-03.
 Show tabs per result, or stack them? Decide in M4-02.
 
 ### Q-005 — Quoted identifiers vs path strings
-`['order id']` (KQL bracket syntax) is a column name, while `'orders.csv'` at a pipe head is a
-path. This is unambiguous to the parser, but check with users that it is not confusing.
+`['order id']` (KQL bracket syntax) is a column name, while `'orders.csv'` after `from` is a
+path (`from 'orders.csv'`, D-036). This is unambiguous to the parser, but check with users that it is not confusing.
 
 *Deferred (M1-13, 2026-11-22):* nothing to decide without users. M1 keeps both forms; the
 `DS1001` help already says "a column name is written without string quotes" when a string is

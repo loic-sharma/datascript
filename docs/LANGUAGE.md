@@ -335,7 +335,7 @@ form `a contains x` for the string operators (D-033). Expressions may nest at mo
 `a + b + c` or `a.b.c` counts as one level (D-032).
 
 - `x in (1, 2, 3)`: the list is scalar literals or expressions of one type (after widening).
-  `in~` compares strings case-insensitively. Tabular `in (T | project a)` is M2.
+  `in~` compares strings case-insensitively. Tabular `in (from T | project a)` is M2.
 - `x between (lo .. hi)`: inclusive on both ends.
 
 String operators (case-insensitive unless the name ends in `_cs`): `contains`, `!contains`, `has`,

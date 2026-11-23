@@ -1,7 +1,7 @@
 # M6-02 — Packaging and releases
 
 **Status:** todo
-**Depends on:** M1-13, M2-13
+**Depends on:** M1-13, M2-13, M3-04 (VS Code package), M4-02 (`web/` embedded in `ds`), M5-02 (`@datascript/wasm`)
 **Crates:** release tooling
 
 ## Goal
