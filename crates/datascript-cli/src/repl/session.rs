@@ -4,14 +4,15 @@
 use std::collections::HashSet;
 use std::fmt;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use datascript_compiler::Analysis;
 use datascript_compiler::hir::Column;
+use datascript_compiler::ide::{self, Completions};
 use datascript_compiler::ir::RenderSpec;
 use datascript_diagnostics::{Diagnostic, FileId, SourceFile, Span, did_you_mean};
-use datascript_engine::{ExecContext, Session};
+use datascript_engine::{ExecContext, Session, catch_panic};
 use datascript_syntax::ast::{AstNode, Stmt};
 use datascript_syntax::{SyntaxKind, lex, literal, parse};
 
@@ -345,13 +346,31 @@ impl ReplSession {
         &self.saved
     }
 
-    /// Names worth completing besides the language's own: saved lets and host tables.
-    pub fn completion_names(&self) -> Vec<String> {
-        self.saved
+    /// Sets the working directory used to resolve relative paths in queries.
+    #[cfg(test)]
+    pub fn set_base_dir(&mut self, dir: impl Into<PathBuf>) {
+        self.base_dir = dir.into();
+    }
+
+    /// A snapshot of the REPL's state for Tab completion: the shared [`Session`] (so completion
+    /// reuses its schema cache), the saved lets, the host tables, and the working directory.
+    pub fn completion_context(&self) -> CompletionContext {
+        let saved = self
+            .saved
             .iter()
-            .map(|l| l.name.clone())
-            .chain(self.tables.iter().map(|t| t.name.clone()))
-            .collect()
+            .map(|l| SavedLetText {
+                name: l.name.clone(),
+                text: self.source(l.span.file).text()[l.span.range()].to_string(),
+                names: self.names_in(l),
+            })
+            .collect();
+        CompletionContext {
+            session: self.session.clone(),
+            saved,
+            tables: self.tables.clone(),
+            base_dir: self.base_dir.clone(),
+            next_input: self.inputs + 1,
+        }
     }
 
     /// Checks a program input and, if it has no errors, saves its lets (D-048). An input that
@@ -699,21 +718,14 @@ impl ReplSession {
     /// one pass in order finds them all. A use is any name token that matches: this can remove
     /// too much (a column of the same name), never too little.
     fn removed_by(&self, defined: &HashSet<&str>) -> Vec<bool> {
-        let mut gone: HashSet<&str> = HashSet::new();
-        self.saved
-            .iter()
-            .map(|saved| {
-                let removed = defined.contains(saved.name.as_str())
-                    || self
-                        .names_in(saved)
-                        .iter()
-                        .any(|n| gone.contains(n.as_str()));
-                if removed {
-                    gone.insert(&saved.name);
-                }
-                removed
-            })
-            .collect()
+        let names: Vec<Vec<String>> = self.saved.iter().map(|s| self.names_in(s)).collect();
+        removed_lets(
+            self.saved
+                .iter()
+                .zip(&names)
+                .map(|(s, ns)| (s.name.as_str(), ns.as_slice())),
+            defined,
+        )
     }
 
     /// The name tokens in a saved let, its own name included.
@@ -732,6 +744,115 @@ impl ReplSession {
             })
             .collect()
     }
+}
+
+/// A saved `let`'s text and name tokens, detached from [`ReplSession::sources`] so completion
+/// can run from a snapshot without borrowing the session mutably.
+#[derive(Debug, Clone)]
+struct SavedLetText {
+    name: String,
+    text: String,
+    names: Vec<String>,
+}
+
+/// A snapshot of the REPL's state for Tab completion.
+///
+/// Analyses the current buffer as its own `<repl:N>` snippet with the saved lets in front
+/// (D-048), reusing the [`Session`]'s schema cache without invalidating it, then calls the
+/// compiler's [`ide::complete`] and maps the replacement range back to the current buffer.
+#[derive(Debug, Clone)]
+pub struct CompletionContext {
+    session: Arc<Session>,
+    saved: Vec<SavedLetText>,
+    tables: Vec<TableArg>,
+    base_dir: PathBuf,
+    next_input: u32,
+}
+
+impl CompletionContext {
+    /// The host tables registered with `--table`.
+    pub fn tables(&self) -> &[TableArg] {
+        &self.tables
+    }
+
+    /// The directory relative file paths resolve against.
+    pub fn base_dir(&self) -> &Path {
+        &self.base_dir
+    }
+
+    /// Computes compiler completions for `line` at byte offset `pos`.
+    ///
+    /// Schema lookups go through the session's cache without invalidating it, so a file the
+    /// session already read is not read again. A failing source or an internal panic yields no
+    /// columns and produces no error output.
+    pub async fn complete(&self, line: &str, pos: usize) -> Completions {
+        let pos = line.floor_char_boundary(pos.min(line.len()));
+        let parsed = parse(line, FileId(0));
+        let defined: HashSet<String> = parsed
+            .program()
+            .statements()
+            .filter_map(|stmt| match stmt {
+                Stmt::Let(let_stmt) => let_stmt.name().and_then(|n| n.text()),
+                Stmt::Query(_) => None,
+            })
+            .collect();
+        let defined_refs: HashSet<&str> = defined.iter().map(String::as_str).collect();
+        let removed = removed_lets(
+            self.saved
+                .iter()
+                .map(|l| (l.name.as_str(), l.names.as_slice())),
+            &defined_refs,
+        );
+
+        let mut combined = String::new();
+        for (saved, _) in self.saved.iter().zip(removed).filter(|(_, r)| !*r) {
+            combined.push_str(&saved.text);
+            combined.push_str(GLUE);
+        }
+        let prefix_len = combined.len();
+        combined.push_str(line);
+
+        let src = SourceFile::new(format!("<repl:{}>", self.next_input), combined);
+        let ctx = self.session.exec_context(&self.base_dir);
+        let analysis = self.session.check(&src, PROGRAM_FILE, &ctx).await;
+        let offset = prefix_len + pos;
+        match catch_panic(Some(PROGRAM_FILE), "completing", || {
+            ide::complete(&src, &analysis, offset)
+        }) {
+            Ok(mut completions) => {
+                completions.start = completions.start.saturating_sub(prefix_len).min(pos);
+                completions.end = completions
+                    .end
+                    .saturating_sub(prefix_len)
+                    .clamp(pos, line.len());
+                completions
+            }
+            Err(_) => Completions {
+                start: pos,
+                end: pos,
+                ..Completions::default()
+            },
+        }
+    }
+}
+
+/// Which saved lets go when the input defines `defined`: those it redefines, and every one that
+/// uses a removed let, directly or transitively.
+fn removed_lets<'a>(
+    saved: impl IntoIterator<Item = (&'a str, &'a [String])>,
+    defined: &HashSet<&str>,
+) -> Vec<bool> {
+    let mut gone: HashSet<&'a str> = HashSet::new();
+    saved
+        .into_iter()
+        .map(|(name, names)| {
+            let removed = defined.contains(name) || names.iter().any(|n| gone.contains(n.as_str()));
+            if removed {
+                gone.insert(name);
+            }
+            removed
+        })
+        .collect()
 }
 
 /// An unknown meta command, with did-you-mean over the command names.
@@ -810,7 +931,7 @@ Commands:
 Keys:
   Ctrl-C              cancel the running query, or discard the current input
   Ctrl-D              leave the REPL (on an empty prompt)
-  Tab                 complete operator, function, let, table and command names
+  Tab                 complete column, operator, function, let, table, file and command names
 ";
 
 #[cfg(test)]
@@ -1140,5 +1261,139 @@ mod tests {
         assert_eq!(program.map_offset(input_start + 5), (FileId(2), 5));
         let span = program.map_span(Span::new(PROGRAM_FILE, 4, input_start + 2));
         assert_eq!(span, Span::empty(FileId(0), 8));
+    }
+
+    #[test]
+    fn completion_uses_the_session_schema_cache() {
+        use std::pin::Pin;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        use datascript_compiler::ide::CompletionKind;
+
+        struct CountingEngine {
+            inner: DataFusionEngine,
+            schema_calls: Arc<AtomicUsize>,
+        }
+
+        impl datascript_engine::Engine for CountingEngine {
+            fn name(&self) -> &str {
+                self.inner.name()
+            }
+
+            fn capabilities(&self) -> &datascript_compiler::Capabilities {
+                self.inner.capabilities()
+            }
+
+            fn schema_of<'a, 'b, 'c, 'r>(
+                &'a self,
+                source: &'b datascript_compiler::SourceRef,
+                ctx: &'c ExecContext,
+            ) -> Pin<
+                Box<
+                    dyn Future<
+                            Output = Result<
+                                arrow_schema::SchemaRef,
+                                datascript_compiler::SourceError,
+                            >,
+                        > + Send
+                        + 'r,
+                >,
+            >
+            where
+                'a: 'r,
+                'b: 'r,
+                'c: 'r,
+                Self: 'r,
+            {
+                self.schema_calls.fetch_add(1, Ordering::SeqCst);
+                self.inner.schema_of(source, ctx)
+            }
+
+            fn execute<'a, 'b, 'c, 'r>(
+                &'a self,
+                plan: &'b datascript_compiler::ir::QueryPlan,
+                ctx: &'c ExecContext,
+            ) -> Pin<
+                Box<
+                    dyn Future<Output = Result<datascript_engine::ResultStream, Diagnostic>>
+                        + Send
+                        + 'r,
+                >,
+            >
+            where
+                'a: 'r,
+                'b: 'r,
+                'c: 'r,
+                Self: 'r,
+            {
+                self.inner.execute(plan, ctx)
+            }
+        }
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let engine = Arc::new(CountingEngine {
+            inner: DataFusionEngine::default(),
+            schema_calls: calls.clone(),
+        });
+        let mut repl = ReplSession::new(Session::new(engine, Arc::new(FixedClock(0))), Vec::new());
+        repl.set_base_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."));
+
+        let rt = runtime();
+        let checked = rt.block_on(
+            repl.check_input("let big = from 'tests/data/orders.csv' | where amount > 100;"),
+        );
+        assert!(!checked.failed(), "{:?}", checked.diagnostics);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // Completing over the same file or over `big` reuses the cached schema.
+        let ctx = repl.completion_context();
+        let line = "from 'tests/data/orders.csv' | where am";
+        let c = rt.block_on(ctx.complete(line, line.len()));
+        assert_eq!((c.start, c.end), (37, 39));
+        assert!(
+            c.items
+                .iter()
+                .any(|i| i.kind == CompletionKind::Column && i.label == "amount")
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        let line = "from big | project ";
+        let c = rt.block_on(ctx.complete(line, line.len()));
+        assert_eq!((c.start, c.end), (19, 19));
+        let cols: Vec<&str> = c
+            .items
+            .iter()
+            .filter(|i| i.kind == CompletionKind::Column)
+            .map(|i| i.label.as_str())
+            .collect();
+        assert_eq!(cols, ["orderId", "customerId", "amount", "timestamp"]);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // A new file is read once on the first Tab and cached for the next.
+        let line = "from 'tests/data/customers.csv' | where na";
+        let c = rt.block_on(ctx.complete(line, line.len()));
+        assert!(
+            c.items
+                .iter()
+                .any(|i| i.kind == CompletionKind::Column && i.label == "name")
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        let line = "from 'tests/data/customers.csv' | where co";
+        let c = rt.block_on(ctx.complete(line, line.len()));
+        assert!(
+            c.items
+                .iter()
+                .any(|i| i.kind == CompletionKind::Column && i.label == "country")
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        // Empty input after saved lets still maps offsets to 0 and offers statement starters.
+        let c = rt.block_on(ctx.complete("", 0));
+        assert_eq!((c.start, c.end), (0, 0));
+        assert_eq!(
+            c.items.iter().map(|i| i.label.as_str()).collect::<Vec<_>>(),
+            ["from", "let"]
+        );
     }
 }

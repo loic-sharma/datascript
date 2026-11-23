@@ -3,12 +3,13 @@
 
 use std::borrow::Cow;
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use datascript_compiler::FunctionCatalog;
+use datascript_compiler::ide::{Completion, CompletionKind, FileCompletion};
+use datascript_compiler::source::format_of_path;
 use datascript_diagnostics::FileId;
-use datascript_syntax::{OPERATOR_NAMES, SyntaxKind, lex};
+use datascript_syntax::{OPERATOR_NAMES, SyntaxKind, display_name, lex};
 use nu_ansi_term::{Color, Style};
 use reedline::{
     ColumnarMenu, Completer, Emacs, FileBackedHistory, Highlighter, KeyCode, KeyModifiers,
@@ -17,9 +18,9 @@ use reedline::{
     default_emacs_keybindings,
 };
 
-use super::session::COMMANDS;
+use super::session::{COMMANDS, CompletionContext};
 use super::{Printer, ReplSession, Step, input};
-use crate::args::ColorChoice;
+use crate::args::{ColorChoice, TableArg};
 
 /// History entries kept.
 const HISTORY_SIZE: usize = 1000;
@@ -31,11 +32,16 @@ pub fn run(
     runtime: &tokio::runtime::Runtime,
     color: ColorChoice,
 ) -> u8 {
-    let names = Arc::new(Mutex::new(repl.completion_names()));
+    let completion = Arc::new(Mutex::new(repl.completion_context()));
     // The buffer as last drawn: reedline clears it before reporting Ctrl-C, so this is how the
     // loop knows whether the prompt was empty.
     let last_buffer = Arc::new(Mutex::new(String::new()));
-    let mut editor = editor(color, names.clone(), last_buffer.clone());
+    let mut editor = editor(
+        color,
+        completion.clone(),
+        runtime.handle().clone(),
+        last_buffer.clone(),
+    );
     let prompt = ReplPrompt;
     println!(
         "DataScript {} — type .help for help",
@@ -48,7 +54,7 @@ pub fn run(
                     continue;
                 }
                 let step = runtime.block_on(submit(&mut repl, &printer, &text));
-                *lock(&names) = repl.completion_names();
+                *lock(&completion) = repl.completion_context();
                 if let Step::Quit = step {
                     return 0;
                 }
@@ -130,7 +136,8 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 fn editor(
     color: ColorChoice,
-    names: Arc<Mutex<Vec<String>>>,
+    context: Arc<Mutex<CompletionContext>>,
+    runtime: tokio::runtime::Handle,
     last_buffer: Arc<Mutex<String>>,
 ) -> Reedline {
     let mut keybindings = default_emacs_keybindings();
@@ -150,7 +157,7 @@ fn editor(
             color: color_on(color),
             last_buffer,
         }))
-        .with_completer(Box::new(DsCompleter { names }))
+        .with_completer(Box::new(DsCompleter { context, runtime }))
         .with_menu(ReedlineMenu::EngineCompleter(Box::new(menu)))
         .with_edit_mode(Box::new(Emacs::new(keybindings)))
 }
@@ -265,100 +272,488 @@ fn style_of(kind: SyntaxKind, text: &str) -> Style {
     }
 }
 
-/// Completes operator, function, saved let and host table names, and meta commands at the start
-/// of the input. Columns come later (M3-02).
+/// The most file names one completion lists (same cap as the language server).
+const MAX_FILES: usize = 500;
+
+/// Completes columns, operators, functions, saved lets, keywords, files, host tables and meta
+/// commands. Language items come from `datascript_compiler::ide::complete` over the saved lets
+/// and the current input (M3-07); meta commands and host tables are added by the REPL.
 struct DsCompleter {
-    names: Arc<Mutex<Vec<String>>>,
+    context: Arc<Mutex<CompletionContext>>,
+    runtime: tokio::runtime::Handle,
 }
 
 impl Completer for DsCompleter {
     fn complete(&mut self, line: &str, pos: usize) -> Vec<Suggestion> {
+        let pos = line.floor_char_boundary(pos.min(line.len()));
+        let context = lock(&self.context).clone();
         let before = &line[..pos];
-        let typed = before.trim_start();
-        let (start, candidates): (usize, Vec<String>) =
-            if typed.starts_with('.') && !typed.contains(char::is_whitespace) {
-                // Still typing the command name.
-                let commands = COMMANDS.iter().filter(|c| c.starts_with(typed));
-                (pos - typed.len(), commands.map(|c| c.to_string()).collect())
-            } else {
-                let (start, word) = word_before(line, pos);
-                if word.is_empty() {
-                    return Vec::new();
-                }
-                let saved = lock(&self.names);
-                let mut all: Vec<String> = OPERATOR_NAMES
-                    .iter()
-                    .copied()
-                    .chain(FunctionCatalog::builtin().names())
-                    .map(str::to_string)
-                    .chain(saved.iter().cloned())
-                    .filter(|c| c.starts_with(word))
-                    .collect();
-                all.sort();
-                all.dedup();
-                (start, all)
-            };
-        candidates
-            .into_iter()
-            .map(|value| Suggestion {
-                value,
-                description: None,
-                style: None,
-                extra: None,
-                span: reedline::Span::new(start, pos),
-                append_whitespace: true,
-                display_override: None,
-                match_indices: None,
-            })
-            .collect()
+        let trimmed = before.trim_start();
+        if trimmed.starts_with('.') {
+            return complete_meta(&context, &self.runtime, line, pos, trimmed);
+        }
+        complete_query(&context, &self.runtime, line, pos)
     }
 }
 
-/// The name being typed before `pos`, and where it starts. Operator names may contain `-`
-/// (`project-away`).
-fn word_before(line: &str, pos: usize) -> (usize, &str) {
-    let before = &line[..pos];
-    let start = before
-        .char_indices()
+fn complete_meta(
+    context: &CompletionContext,
+    runtime: &tokio::runtime::Handle,
+    line: &str,
+    pos: usize,
+    trimmed: &str,
+) -> Vec<Suggestion> {
+    let cmd_start = pos - trimmed.len();
+    if !trimmed.contains(char::is_whitespace) {
+        let end = line[cmd_start..]
+            .find(char::is_whitespace)
+            .map_or(line.len(), |i| cmd_start + i);
+        let append_ws = !line[end..].starts_with(char::is_whitespace);
+        return COMMANDS
+            .iter()
+            .filter(|c| c.starts_with(trimmed))
+            .map(|c| suggestion((*c).to_string(), None, cmd_start, end, append_ws))
+            .collect();
+    }
+    let cmd = trimmed
+        .split_whitespace()
+        .next()
+        .expect("trimmed starts with '.'");
+    let cmd_end = cmd_start + cmd.len();
+    match cmd {
+        ".schema" => {
+            // Check `.schema <arg>` as `from <arg>`, matching `ReplSession::schema`.
+            let synthetic = format!("from{}", &line[cmd_end..]);
+            let synth_pos = 4 + (pos - cmd_end);
+            let mut items = complete_query(context, runtime, &synthetic, synth_pos);
+            for item in &mut items {
+                item.span = reedline::Span::new(
+                    cmd_end + item.span.start.saturating_sub(4),
+                    cmd_end + item.span.end.saturating_sub(4),
+                );
+            }
+            items
+        }
+        ".format" => {
+            let arg = line[cmd_end..pos].trim_start();
+            if arg.contains(char::is_whitespace) {
+                return Vec::new();
+            }
+            let start = pos - arg.len();
+            let end = line[pos..]
+                .find(char::is_whitespace)
+                .map_or(line.len(), |i| pos + i);
+            let append_ws = !line[end..].starts_with(char::is_whitespace);
+            ["table", "csv", "json"]
+                .into_iter()
+                .filter(|f| f.starts_with(arg))
+                .map(|f| suggestion(f.to_string(), None, start, end, append_ws))
+                .collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn complete_query(
+    context: &CompletionContext,
+    runtime: &tokio::runtime::Handle,
+    line: &str,
+    pos: usize,
+) -> Vec<Suggestion> {
+    let completions = runtime.block_on(context.complete(line, pos));
+    let start = completions.start;
+    let end = completions.end;
+    let typed = &line[start..pos];
+    let space_follows = line[end..].starts_with(char::is_whitespace);
+
+    let mut items = completions.items;
+    if is_table_position(line, start, completions.files.as_ref()) {
+        add_host_tables(&mut items, context.tables());
+    }
+
+    let mut out = Vec::new();
+    for item in items {
+        // Reedline cannot expand LSP snippets (`$0`, `${1:name}`), so insert the plain label.
+        let value = if item.snippet {
+            item.label
+        } else {
+            item.insert
+        };
+        if !value.starts_with(typed) {
+            continue;
+        }
+        let append_whitespace = item.kind != CompletionKind::Function && !space_follows;
+        out.push(suggestion(
+            value,
+            item.detail,
+            start,
+            end,
+            append_whitespace,
+        ));
+    }
+
+    if let Some(files) = &completions.files {
+        out.extend(file_suggestions(
+            files,
+            &context.base_dir().join(&files.dir),
+            typed,
+            start,
+            end,
+            space_follows,
+        ));
+    }
+
+    out
+}
+
+/// Whether the cursor is in a table-source position (`from`, `join`, `union`) where a host table
+/// name fits, rather than inside quotes or a reader call (`read_csv(`).
+fn is_table_position(text: &str, start: usize, files: Option<&FileCompletion>) -> bool {
+    if !files.is_some_and(|f| f.quote.is_none()) {
+        return false;
+    }
+    let prev = lex(&text[..start], FileId(0))
+        .tokens
+        .into_iter()
         .rev()
-        .take_while(|(_, c)| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
-        .last()
-        .map_or(pos, |(i, _)| i);
-    (start, &line[start..pos])
+        .find(|t| !t.kind.is_trivia());
+    !matches!(prev.map(|t| t.kind), Some(SyntaxKind::L_PAREN))
+}
+
+/// Adds host tables (`--table name=path`) alongside tabular lets, skipping any name already
+/// shadowed by a `let` in `items`.
+fn add_host_tables(items: &mut Vec<Completion>, tables: &[TableArg]) {
+    let mut extra: Vec<Completion> = tables
+        .iter()
+        .filter_map(|t| {
+            let label = display_name(&t.name);
+            if items.iter().any(|i| i.label == label) {
+                return None;
+            }
+            Some(Completion {
+                insert: label.clone(),
+                label,
+                kind: CompletionKind::Table,
+                detail: Some(format!("host table ({})", t.path)),
+                documentation: None,
+                snippet: false,
+            })
+        })
+        .collect();
+    extra.sort_by(|a, b| a.label.cmp(&b.label));
+    let insert_at = items
+        .iter()
+        .position(|i| i.kind > CompletionKind::Table)
+        .unwrap_or(items.len());
+    items.splice(insert_at..insert_at, extra);
+}
+
+/// Lists data files and directories in `dir` matching `typed`, matching the language server's
+/// filtering and ordering (`datascript-lsp/src/ide.rs`).
+fn file_suggestions(
+    files: &FileCompletion,
+    dir: &Path,
+    typed: &str,
+    start: usize,
+    end: usize,
+    space_follows: bool,
+) -> Vec<Suggestion> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut found: Vec<(bool, String, String)> = entries
+        .filter_map(Result::ok)
+        .filter_map(|e| {
+            let name = e.file_name().to_str()?.to_owned();
+            if name.starts_with('.') {
+                return None;
+            }
+            let is_dir = e.file_type().ok()?.is_dir();
+            if !is_dir && format_of_path(&name).is_none() {
+                return None;
+            }
+            let label = if is_dir {
+                format!("{name}/")
+            } else {
+                name.clone()
+            };
+            let value = match (files.quote, is_dir) {
+                (Some(_), _) => label,
+                (None, true) => format!("'{}{label}", files.dir),
+                (None, false) => format!("'{}{label}'", files.dir),
+            };
+            value.starts_with(typed).then_some((is_dir, name, value))
+        })
+        .collect();
+    // Directories first, then files, each by name.
+    found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    found.truncate(MAX_FILES);
+    found
+        .into_iter()
+        .map(|(is_dir, _, value)| {
+            let append_whitespace = files.quote.is_none() && !is_dir && !space_follows;
+            let detail = Some(if is_dir { "directory" } else { "file" }.to_string());
+            suggestion(value, detail, start, end, append_whitespace)
+        })
+        .collect()
+}
+
+fn suggestion(
+    value: String,
+    description: Option<String>,
+    start: usize,
+    end: usize,
+    append_whitespace: bool,
+) -> Suggestion {
+    Suggestion {
+        value,
+        description,
+        style: None,
+        extra: None,
+        span: reedline::Span::new(start, end),
+        append_whitespace,
+        display_override: None,
+        match_indices: None,
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
+    use datascript_compiler::SourceRef;
+    use datascript_datafusion::DataFusionEngine;
+    use datascript_engine::{FixedClock, Session};
+
     use super::*;
 
-    fn complete(line: &str, names: &[&str]) -> Vec<String> {
+    fn workspace_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    }
+
+    fn repl_with_tables(tables: &[(&str, &str)]) -> ReplSession {
+        let mut engine = DataFusionEngine::default();
+        let mut args = Vec::new();
+        for &(name, path) in tables {
+            let source = SourceRef::for_path(path);
+            engine = engine.with_table(name, source);
+            args.push(TableArg {
+                name: name.to_string(),
+                path: path.to_string(),
+            });
+        }
+        let mut repl = ReplSession::new(
+            Session::new(Arc::new(engine), Arc::new(FixedClock(0))),
+            args,
+        );
+        repl.set_base_dir(workspace_root());
+        repl
+    }
+
+    fn suggestions_at(
+        repl: &ReplSession,
+        rt: &tokio::runtime::Runtime,
+        line: &str,
+        pos: usize,
+    ) -> Vec<Suggestion> {
         let mut completer = DsCompleter {
-            names: Arc::new(Mutex::new(names.iter().map(|s| s.to_string()).collect())),
+            context: Arc::new(Mutex::new(repl.completion_context())),
+            runtime: rt.handle().clone(),
         };
-        completer
-            .complete(line, line.len())
+        completer.complete(line, pos)
+    }
+
+    fn values(repl: &ReplSession, rt: &tokio::runtime::Runtime, line: &str) -> Vec<String> {
+        suggestions_at(repl, rt, line, line.len())
             .into_iter()
             .map(|s| s.value)
             .collect()
     }
 
     #[test]
-    fn completes_operators_functions_lets_and_tables() {
-        assert!(complete("from t | whe", &[]).contains(&"where".to_string()));
-        assert!(complete("from t | project-a", &[]).contains(&"project-away".to_string()));
-        assert!(complete("from t | extend y = strl", &[]).contains(&"strlen".to_string()));
+    fn completes_columns_from_a_file_source() {
+        let rt = runtime();
+        let repl = repl_with_tables(&[]);
+        let line = "from 'tests/data/orders.csv' | where am";
+        let items = suggestions_at(&repl, &rt, line, line.len());
         assert_eq!(
-            complete("from big_o", &["big_orders", "small"]),
-            ["big_orders"]
+            items.iter().map(|s| s.value.as_str()).collect::<Vec<_>>(),
+            ["amount"]
         );
-        assert!(complete("from t | take ", &[]).is_empty());
+        assert_eq!(items[0].description.as_deref(), Some("real"));
+        assert_eq!(items[0].span, reedline::Span::new(37, 39));
+        assert!(items[0].append_whitespace);
+
+        // Columns reflect earlier pipeline stages in table order.
+        let narrowed = values(
+            &repl,
+            &rt,
+            "from 'tests/data/orders.csv' | project amount, orderId | where ",
+        );
+        assert_eq!(&narrowed[..2], ["amount", "orderId"]);
+        assert!(!narrowed.contains(&"customerId".to_string()));
+        assert!(!narrowed.contains(&"timestamp".to_string()));
+
+        // Mid-line completion replaces the word at the cursor without adding a second space.
+        let mid = "from 'tests/data/orders.csv' | where am > 10";
+        let items = suggestions_at(&repl, &rt, mid, 39);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].value, "amount");
+        assert_eq!(items[0].span, reedline::Span::new(37, 39));
+        assert!(!items[0].append_whitespace);
+    }
+
+    #[test]
+    fn completes_columns_from_a_saved_let_table() {
+        let rt = runtime();
+        let mut repl = repl_with_tables(&[]);
+        let checked = rt.block_on(
+            repl.check_input("let big = from 'tests/data/orders.csv' | where amount > 100;"),
+        );
+        assert!(!checked.failed(), "{:?}", checked.diagnostics);
+
+        let after_project = values(&repl, &rt, "from big | project ");
+        assert_eq!(
+            &after_project[..4],
+            ["orderId", "customerId", "amount", "timestamp"]
+        );
+        assert_eq!(values(&repl, &rt, "from big | where am"), ["amount"]);
+
+        // Tabular lets appear after `from`, not in scalar expressions; scalar lets vice versa.
+        let checked = rt.block_on(repl.check_input("let cutoff = 100;"));
+        assert!(!checked.failed(), "{:?}", checked.diagnostics);
+        assert!(values(&repl, &rt, "from b").contains(&"big".to_string()));
+        assert!(!values(&repl, &rt, "from cut").contains(&"cutoff".to_string()));
+        assert_eq!(
+            values(&repl, &rt, "from big | where amount > cut"),
+            ["cutoff"]
+        );
+        assert!(!values(&repl, &rt, "from big | where b").contains(&"big".to_string()));
+
+        // Redefining a saved let in the current input uses the new definition's columns.
+        assert_eq!(
+            values(
+                &repl,
+                &rt,
+                "let big = from 'tests/data/customers.csv'; from big | where na",
+            ),
+            ["name"]
+        );
+    }
+
+    #[test]
+    fn a_failing_source_gives_no_columns() {
+        let rt = runtime();
+        let repl = repl_with_tables(&[]);
+        assert!(
+            values(
+                &repl,
+                &rt,
+                "from 'tests/data/does-not-exist.csv' | where am"
+            )
+            .is_empty()
+        );
+        assert!(
+            values(
+                &repl,
+                &rt,
+                "from 'tests/data/does-not-exist.csv' | project-away "
+            )
+            .is_empty()
+        );
+        let after_project = values(
+            &repl,
+            &rt,
+            "from 'tests/data/does-not-exist.csv' | project ",
+        );
+        for col in ["orderId", "customerId", "amount", "timestamp"] {
+            assert!(!after_project.contains(&col.to_string()));
+        }
+        assert!(values(&repl, &rt, "from nope | where am").is_empty());
+        assert!(values(&repl, &rt, "from 'tests/data/orders.xyz' | where am").is_empty());
+    }
+
+    #[test]
+    fn completes_operators_functions_lets_tables_and_files() {
+        let rt = runtime();
+        let repl = repl_with_tables(&[("orders", "tests/data/orders.csv")]);
+
+        // Operators after `|`, including hyphenated ones.
+        assert_eq!(values(&repl, &rt, "from orders | whe"), ["where"]);
+        let line = "from orders | project-a";
+        let items = suggestions_at(&repl, &rt, line, line.len());
+        assert_eq!(
+            items.iter().map(|s| s.value.as_str()).collect::<Vec<_>>(),
+            ["project-away"]
+        );
+        assert_eq!(items[0].span, reedline::Span::new(14, 23));
+        assert_eq!(
+            values(&repl, &rt, "from orders | project-"),
+            ["project-away", "project-rename"]
+        );
+
+        // Functions insert plain names (no `$0` snippets) without trailing whitespace,
+        // and aggregates only appear inside `summarize`.
+        let line = "from orders | extend y = strl";
+        let items = suggestions_at(&repl, &rt, line, line.len());
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].value, "strlen");
+        assert!(!items[0].append_whitespace);
+        assert!(!values(&repl, &rt, "from orders | where s").contains(&"sum".to_string()));
+        assert!(values(&repl, &rt, "from orders | summarize s").contains(&"sum".to_string()));
+        assert!(values(&repl, &rt, "from orders | count ").is_empty());
+
+        // Host tables appear in table positions (`from`, `join`, `union`) and yield columns,
+        // but do not appear inside `read_csv(`.
+        assert_eq!(values(&repl, &rt, "from ord"), ["orders"]);
+        assert_eq!(values(&repl, &rt, "from orders | where am"), ["amount"]);
+        assert_eq!(
+            values(&repl, &rt, "from 'tests/data/customers.csv' | join ord"),
+            ["orders"]
+        );
+        assert!(values(&repl, &rt, "from read_csv(ord").is_empty());
+
+        // File completion inside a path string.
+        let line = "from 'tests/data/ord";
+        let items = suggestions_at(&repl, &rt, line, line.len());
+        assert_eq!(
+            items.iter().map(|s| s.value.as_str()).collect::<Vec<_>>(),
+            ["orders.csv", "orders.parquet"]
+        );
+        assert_eq!(items[0].span, reedline::Span::new(17, 20));
+        assert!(!items[0].append_whitespace);
     }
 
     #[test]
     fn completes_meta_commands_at_the_start_only() {
-        assert_eq!(complete(".sc", &[]), [".schema"]);
-        assert_eq!(complete(".", &[]).len(), COMMANDS.len());
-        assert!(complete(".schema ord", &["orders"]).contains(&"orders".to_string()));
+        let rt = runtime();
+        let mut repl = repl_with_tables(&[("orders", "tests/data/orders.csv")]);
+        let checked = rt.block_on(repl.check_input("let big = from orders;"));
+        assert!(!checked.failed(), "{:?}", checked.diagnostics);
+
+        assert_eq!(values(&repl, &rt, ".sc"), [".schema"]);
+        assert_eq!(values(&repl, &rt, ".").len(), COMMANDS.len());
+        let line = ".schema ord";
+        let items = suggestions_at(&repl, &rt, line, line.len());
+        assert_eq!(
+            items.iter().map(|s| s.value.as_str()).collect::<Vec<_>>(),
+            ["orders"]
+        );
+        assert_eq!(items[0].span, reedline::Span::new(8, 11));
+        assert_eq!(values(&repl, &rt, ".schema b"), ["big"]);
+        assert_eq!(
+            values(&repl, &rt, ".schema 'tests/data/ord"),
+            ["orders.csv", "orders.parquet"]
+        );
+        assert_eq!(values(&repl, &rt, ".format c"), ["csv"]);
+        assert!(values(&repl, &rt, ".help x").is_empty());
     }
 
     #[test]
