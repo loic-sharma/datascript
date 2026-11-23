@@ -889,6 +889,40 @@ incremental sync. It does not pick an engine; `ds lsp` passes a `Session` over D
   `"1" + 1` help suggests `toreal()` (`tolong()` for `%`), since a string column may hold `"1.5"`.
 *(M2-14, 2026-11-22.)*
 
+### D-059 — Optional trailing commas in lists (M2-19)
+**Accepted.** Every comma-separated list in DataScript accepts an optional trailing `,` (**≠ KQL**;
+KQL rejects trailing commas, so queries that use them cannot be pasted verbatim into Kusto).
+
+- **Rationale.** During interactive exploration, users routinely comment out the last line or
+  reorder items in multi-line `project`, `extend`, `summarize`, `case(...)`, and
+  `render ... with (...)` clauses. Accepting optional trailing commas removes edit friction and
+  keeps diffs single-line.
+- **List positions covered.**
+  - Delimited `(...)` lists: function and reader call arguments, `in (...)` value lists, and
+    `render ... with (...)` property lists (including after a multi-value property such as
+    `ycolumns = a, b,`).
+  - Operator lists terminated by `|`, `;`, `)`, or EOF: `project`, `extend`, `project-away`,
+    `project-rename`, `distinct <cols>`, `sort by` / `order by`, `join ... on`, and `union`.
+  - `summarize` lists: both the aggregate list before `by` and the grouping key list after `by`.
+    A comma before `by = expr` is not trailing, preserving a column named `by` (matching
+    `Parser::at_by`).
+  - Whitespace and comments after a trailing comma are ignored automatically because the parser
+    operates on significant tokens.
+- **Statement-boundary recovery.** A trailing `,` before `let` (when not `let =`, which remains
+  `DS0126`) or a line-initial statement-starting `from` at depth 0 (D-037) ends the list so
+  `from 'a.csv' | project a,\nfrom 'b.csv'` and `from 'a.csv' | project a,\nlet x = 1` recover
+  cleanly as `DS0106` (missing `;`) while keeping `a,\nb`, `a,\nfrom | ...`, `a,\nfrom - 1`, and
+  `f(a,\nfrom 'b.csv')` as list continuations.
+- **Non-lists and malformed commas stay errors.** Empty-list commas (`(,)`), leading commas
+  (`, a`), consecutive commas (`a,, b`, `a,,`), and non-list constructs (`where a, b` `DS0115`,
+  `where a,` `DS0101`, `top 5 by amount desc,` `DS0101`, `take 5,` `DS0101`, `between (1 .. 10,)`
+  `DS0101`, `(a,)` `DS0101`, `a[0,]` `DS0101`, `distinct *,` `DS0116`, and `long(null,)` `DS0101`)
+  remain syntax errors. `at_typed_null` matches `type(null,)` directly so `long(null,)` reports
+  `DS0101` instead of falling through to a call and reporting `DS1004` ("unknown function `long`").
+- **`DS0127` retired.** `DS0127` (trailing comma at the end of a list) is retired (`CodeStatus::Retired`,
+  no constant, `severity: None`), never to be reused.
+*(M2-19, 2026-11-22.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

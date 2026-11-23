@@ -109,8 +109,6 @@ pub const DS0124: Code = Code::new(124);
 pub const DS0125: Code = Code::new(125);
 /// reserved word used as a name (help: quote it, `['null']`)
 pub const DS0126: Code = Code::new(126);
-/// trailing comma at the end of a list
-pub const DS0127: Code = Code::new(127);
 /// list after `in` written in square brackets
 pub const DS0128: Code = Code::new(128);
 /// `in ~` / `!in ~` written with a space (machine-applicable fix to `in~`)
@@ -409,10 +407,10 @@ pub const REGISTRY: &[CodeInfo] = &[
         status: CodeStatus::Active,
     },
     CodeInfo {
-        code: DS0127,
-        severity: Some(Severity::Error),
-        summary: "trailing comma at the end of a list",
-        status: CodeStatus::Active,
+        code: Code::new(127),
+        severity: None,
+        summary: "*retired* (was: trailing comma at the end of a list; D-059 allows them)",
+        status: CodeStatus::Retired,
     },
     CodeInfo {
         code: DS0128,

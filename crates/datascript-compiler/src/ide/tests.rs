@@ -519,3 +519,85 @@ fn signature_help_tracks_the_argument() {
     assert!(signature_at("from 'orders.csv' | where nothing(‸").is_none());
     assert!(signature_at("from 'orders.csv' | where amount in (1, ‸").is_none());
 }
+
+#[test]
+fn signature_help_with_trailing_comma() {
+    // Before the trailing comma, `written` counts actual arguments, not commas + 1.
+    let help = signature_at("from 'orders.csv' | extend x = round(am‸ount,)").unwrap();
+    assert_eq!(help.active_argument, 0);
+    let sig = &help.signatures[help.active_signature];
+    let p = sig.parameters[sig.active_parameter.unwrap()];
+    assert_eq!(&sig.label[p.0..p.1], "x: T");
+
+    // After the trailing comma, the cursor is on parameter 1 (`digits`).
+    let help = signature_at("from 'orders.csv' | extend x = round(amount, ‸)").unwrap();
+    assert_eq!(help.active_argument, 1);
+    let sig = &help.signatures[help.active_signature];
+    let p = sig.parameters[sig.active_parameter.unwrap()];
+    assert_eq!(&sig.label[p.0..p.1], "digits: integer");
+
+    // A 1-arg function still highlights parameter 0 before a trailing comma, and none after it.
+    let help = signature_at("from 'orders.csv' | extend n = strlen(ord‸erId,)").unwrap();
+    assert_eq!(help.active_argument, 0);
+    assert_eq!(
+        help.signatures[help.active_signature].active_parameter,
+        Some(0)
+    );
+    let help = signature_at("from 'orders.csv' | extend n = strlen(orderId, ‸)").unwrap();
+    assert_eq!(help.active_argument, 1);
+    assert_eq!(
+        help.signatures[help.active_signature].active_parameter,
+        None
+    );
+
+    // Variadic `case` with a trailing comma still recognizes `else` before the comma.
+    let help =
+        signature_at("from 'orders.csv' | extend s = case(amount > 1, 'hi', 'l‸o',)").unwrap();
+    assert_eq!(help.active_argument, 2);
+    let sig = &help.signatures[help.active_signature];
+    let p = sig.parameters[sig.active_parameter.unwrap()];
+    assert_eq!(&sig.label[p.0..p.1], "else: T");
+}
+
+#[test]
+fn completions_after_trailing_commas() {
+    let prelude = "let big = from 'orders.csv';\n";
+
+    // Function and reader calls with a trailing comma before `)`.
+    let c = completions("from 'orders.csv' | extend s = strcat(orderId, ‸)");
+    assert_eq!(labels_of(&c, CompletionKind::Column), COLUMNS);
+    assert!(labels_of(&c, CompletionKind::Function).contains(&"tolower"));
+    let l = labels("from read_csv('orders.csv', delimiter = ',', ‸)");
+    assert_has(&l, &["header", "compression", "infer_rows"]);
+
+    // Operator lists with a trailing comma before `|`.
+    let c = completions("from 'orders.csv' | project amount, ‸ | take 5");
+    assert_eq!(labels_of(&c, CompletionKind::Column), COLUMNS);
+    let c = completions(&format!(
+        "{prelude}from 'orders.csv' | union big, ‸ | take 5"
+    ));
+    assert_eq!(labels_of(&c, CompletionKind::Table), ["big"]);
+    assert!(c.files.is_some());
+    let c = completions("from 'orders.csv' | project-away amount, ‸ | take 5");
+    assert_eq!(labels_of(&c, CompletionKind::Column), COLUMNS);
+    assert_eq!(c.items.len(), 4);
+    let c = completions("from 'orders.csv' | distinct amount, ‸ | take 5");
+    assert_eq!(labels_of(&c, CompletionKind::Column), COLUMNS);
+    assert_eq!(c.items.len(), 4);
+
+    // `summarize` trailing commas before `by` and after `by`.
+    let c = completions("from 'orders.csv' | summarize sum(amount), ‸ by customerId");
+    assert!(labels_of(&c, CompletionKind::Function).contains(&"count"));
+    let c = completions("from 'orders.csv' | summarize sum(amount) by customerId, ‸ | take 5");
+    assert_eq!(labels_of(&c, CompletionKind::Column), COLUMNS);
+    assert!(!labels_of(&c, CompletionKind::Function).contains(&"sum"));
+
+    // `render ... with (...)` with a trailing comma before `)`.
+    let l = labels("from 'orders.csv' | render piechart with (title = 'x', ‸)");
+    assert_has(&l, &["xcolumn", "ycolumns", "legend"]);
+    assert_lacks(&l, &["series", "kind"]);
+    assert_has(
+        &labels("from 'orders.csv' | project amount | render barchart with (ycolumns = amount, ‸)"),
+        &["amount", "series", "title"],
+    );
+}

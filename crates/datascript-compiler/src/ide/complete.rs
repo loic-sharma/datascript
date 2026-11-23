@@ -613,8 +613,19 @@ fn render_context(
             Context::RenderProps(kind)
         }
         SyntaxKind::COMMA => {
-            // `ycolumns = a, ` may go on with columns, or start the next property.
-            match parent.as_ref().and_then(prop_of) {
+            // `ycolumns = a, ` may go on with columns, or start the next property. Before `)` or
+            // the next `name =`, the comma sits in `RENDER_PROPS` right after that `RENDER_PROP`.
+            let prop = parent.as_ref().and_then(prop_of).or_else(|| {
+                let mut sibling = prev.prev_sibling_or_token();
+                while let Some(el) = sibling {
+                    if !el.kind().is_trivia() {
+                        return el.into_node().and_then(|n| prop_of(&n));
+                    }
+                    sibling = el.prev_sibling_or_token();
+                }
+                None
+            });
+            match prop {
                 Some(prop) if property_takes_columns(&prop) => Context::Both(vec![
                     Context::RenderValue {
                         prop,
