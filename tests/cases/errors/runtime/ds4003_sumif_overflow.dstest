@@ -1,6 +1,5 @@
 # `sumif` of integers checks for overflow (DS4003).
 mode: run
-skip: M2-17 (`sumif` overflow reports `sum` instead of `sumif`)
 ---- query
 from '../../../data/orders.csv'
 | summarize total = sumif(9000000000000000000, isnotnull(amount))
