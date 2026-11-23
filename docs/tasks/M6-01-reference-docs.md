@@ -19,5 +19,10 @@ functions generated from the catalog), the error index from M2-08, and an embedd
       close Q-008 in DECISIONS.md, and make the reference docs say which.
 - [ ] (from M1-13, maintainer only: needs user feedback) Q-005: with the first user feedback, check that `['order id']` (a column) and
       `from 'orders.csv'` (a path) are not confused, then close Q-005 in DECISIONS.md.
+- [ ] (from KQL review, 2026-11) Add a "Coming from KQL" page. Lead with the differences that
+      change results without an error: `where x != v` drops null rows, `join` defaults to `inner`
+      (not `innerunique`), and `tostring(null)` and `extract()` with no match give null instead of
+      `""`. Then the ones that give an error with a fix (`from` at a query head, `sort` direction,
+      `let` shadowing, dropped aliases). Build it from the `≠ KQL` marks in LANGUAGE.md (M6-04).
 
 ## Follow-ups

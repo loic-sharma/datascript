@@ -19,5 +19,16 @@ Not this task's: `split`, `make_list` and `make_set` belong to M2-03 (they need 
 
 ## Carried over
 - [ ] (from M1-02) `*` as a function argument (`arg_max(x, *)`) is not parsed yet.
+- [ ] (from KQL review, 2026-11) `iif` is KQL's alias for `iff`. Keep `iff` as the only name and give
+      `iif(...)` a tailored error with a machine-applicable fix to `iff`, as `filter` → `where`
+      does. `iif` stays in `PREDICATE_FUNCTIONS` (`targeted.rs`) so `iif(x = 1, …)` still gets the
+      `==` fix.
+- [ ] (from KQL review, 2026-11) `floor(x, size)` with two arguments (KQL's alias for `bin`): give a
+      tailored error suggesting `bin(x, size)` instead of a bare arity error.
+- [ ] (from KQL review, 2026-11) Add one-argument `trim(s)`, `trim_start(s)` and `trim_end(s)` that
+      trim whitespace, keeping KQL's two-argument `trim(regex, s)` (D-031). Record the extra
+      overload in DECISIONS.md.
+- [ ] (from KQL review, 2026-11) Prioritize the everyday log-filtering string operators/functions:
+      `has_any`, `has_all`, `hasprefix`, `hassuffix` (and their `_cs` / `!` forms where KQL has them).
 
 ## Follow-ups
