@@ -1,0 +1,13 @@
+# `sumif` of timespans checks for overflow (DS4003), even alongside `sum`.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| summarize ok = sum(1h), total = sumif(50000000d, isnotnull(amount))
+---- expected
+error[DS4003]: the result of `sumif` does not fit in a `timespan`
+  --> query:2:35
+  |
+2 | | summarize ok = sum(1h), total = sumif(50000000d, isnotnull(amount))
+  |                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this overflowed
+  |
+  = note: datetimes and timespans are counted in microseconds and hold about ±292,000 years

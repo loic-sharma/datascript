@@ -773,7 +773,7 @@ impl Exprs {
             if e.ty == Type::Real {
                 agg::sum(x)
             } else {
-                udaf::checked_sum(to_arrow_type(e.ty), e.ty.name(), e.span).call(vec![x])
+                udaf::checked_sum(function, to_arrow_type(e.ty), e.ty.name(), e.span).call(vec![x])
             }
         };
         Ok(match function.as_str() {
