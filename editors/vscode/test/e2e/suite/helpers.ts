@@ -101,3 +101,79 @@ export async function terminalNamed(name: string, timeoutMs = 10_000): Promise<v
     await sleep(20);
   }
 }
+
+/** A notification shown through `vscode.window.show*Message`. */
+export interface ShownMessage {
+  message: string;
+  items: string[];
+}
+
+/**
+ * Intercepts `vscode.window.showInformationMessage` or `showErrorMessage` while `body` runs,
+ * returning what was shown and always restoring the original method.
+ */
+export async function captureMessages(
+  kind: 'showInformationMessage' | 'showErrorMessage',
+  body: (captured: ShownMessage[]) => Promise<void>,
+): Promise<ShownMessage[]> {
+  const captured: ShownMessage[] = [];
+  const win = vscode.window as unknown as Record<
+    'showInformationMessage' | 'showErrorMessage',
+    (...args: unknown[]) => Thenable<unknown>
+  >;
+  const original = win[kind];
+  win[kind] = (message: unknown, ...rest: unknown[]) => {
+    const items = rest
+      .filter((arg) => typeof arg === 'string' || (typeof arg === 'object' && arg !== null && 'title' in arg))
+      .map((arg) => (typeof arg === 'string' ? arg : String((arg as { title: unknown }).title)));
+    captured.push({ message: String(message), items });
+    return Promise.resolve(undefined);
+  };
+  try {
+    await body(captured);
+  } finally {
+    win[kind] = original;
+  }
+  return captured;
+}
+
+/** Updates a `datascript.server.*` workspace setting and waits for the restart it triggers. */
+export async function updateServerSetting(
+  api: DataScriptApi,
+  key: string,
+  value: unknown,
+  timeoutMs = 10_000,
+): Promise<void> {
+  const config = vscode.workspace.getConfiguration('datascript.server');
+  if (value === undefined && config.inspect(key)?.workspaceValue === undefined) {
+    await api.ready();
+    return;
+  }
+  let resolveChanged!: () => void;
+  let timer: NodeJS.Timeout | undefined;
+  const changed = new Promise<void>((resolve, reject) => {
+    resolveChanged = resolve;
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `timed out waiting for datascript.server.${key} configuration change after ${timeoutMs}ms`,
+          ),
+        ),
+      timeoutMs,
+    );
+  });
+  const subscription = vscode.workspace.onDidChangeConfiguration((event) => {
+    if (event.affectsConfiguration('datascript.server')) {
+      resolveChanged();
+    }
+  });
+  try {
+    await config.update(key, value, vscode.ConfigurationTarget.Workspace);
+    await changed;
+  } finally {
+    clearTimeout(timer);
+    subscription.dispose();
+  }
+  await api.ready();
+}
