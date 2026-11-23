@@ -311,25 +311,28 @@ fn runtime_error_points_at_its_input_and_keeps_session() {
             .and(contains("--> <repl:2>:"))
             .and(contains("<repl:3>").not()),
     )
-    .stdout(contains("o-0001").and(contains("30")));
+    .stdout(
+        "orderId | total\n\
+         string  | long\n\
+         --------+------\n\
+         o-0001  |    30\n",
+    );
 }
 
 #[test]
 fn saved_let_whose_file_is_removed_points_at_repl_1() {
-    use std::io::{BufRead, BufReader, Write};
+    use std::io::{BufRead, BufReader, Read, Write};
     use std::process::Stdio;
 
     let dir = tempfile::tempdir().unwrap();
     let tmp = dir.path().join("tmp.csv");
     std::fs::write(&tmp, "x\n1\n").unwrap();
     // ~610 KiB of CSV output exceeds OS pipe buffers (4–64 KiB), so `ds` deterministically
-    // blocks inside `<repl:2>` after `<repl:1>` has saved `t` and before `<repl:3>` starts.
+    // blocks inside `<repl:3>` after `<repl:1>` and `<repl:2>` have succeeded and before
+    // `<repl:4>` starts.
     let pad_row = format!("{}\n", "a".repeat(60));
-    std::fs::write(
-        dir.path().join("pad.csv"),
-        format!("s\n{}", pad_row.repeat(10_000)),
-    )
-    .unwrap();
+    let pad_body = pad_row.repeat(10_000);
+    std::fs::write(dir.path().join("pad.csv"), format!("s\n{pad_body}")).unwrap();
 
     let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_ds"))
         .current_dir(dir.path())
@@ -345,6 +348,7 @@ fn saved_let_whose_file_is_removed_points_at_repl_1() {
         .write_all(
             b"let t = from 'tmp.csv';\n\
               .format csv\n\
+              from t | take 1;\n\
               from 'pad.csv';\n\
               from t | take 1;\n",
         )
@@ -352,20 +356,34 @@ fn saved_let_whose_file_is_removed_points_at_repl_1() {
     drop(stdin);
 
     let mut stdout = BufReader::new(child.stdout.take().unwrap());
-    let mut header = String::new();
-    stdout.read_line(&mut header).unwrap();
-    assert_eq!(header, "s\n");
+    let mut line = String::new();
+    // `<repl:2>` proves `<repl:1>` succeeded, saved `t`, and read `tmp.csv` before removal.
+    stdout.read_line(&mut line).unwrap();
+    assert_eq!(line, "x\n");
+    line.clear();
+    stdout.read_line(&mut line).unwrap();
+    assert_eq!(line, "1\n");
+    // Reading `pad.csv`'s header proves `<repl:3>` is now blocked writing to stdout, so
+    // `<repl:2>`'s handle is closed and `<repl:4>` has not started yet.
+    line.clear();
+    stdout.read_line(&mut line).unwrap();
+    assert_eq!(line, "s\n");
 
-    // `<repl:1>` has finished and saved `t`; `<repl:2>` is blocked writing `pad.csv`.
     std::fs::remove_file(&tmp).unwrap();
 
-    // Drain the rest of stdout so `<repl:2>` finishes and `<repl:3>` runs.
-    std::io::copy(&mut stdout, &mut std::io::sink()).unwrap();
+    // Drain the rest of stdout so `<repl:3>` finishes and `<repl:4>` runs.
+    let mut rest = String::new();
+    stdout.read_to_string(&mut rest).unwrap();
     drop(stdout);
+    // Only `pad.csv`'s 10,000 rows follow — nothing from `<repl:4>`.
+    assert_eq!(rest.len(), pad_body.len());
+    assert_eq!(rest, pad_body);
 
     let output = child.wait_with_output().unwrap();
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert_eq!(output.status.code(), Some(1), "{stderr}");
+    // Exactly one error: `<repl:4>` failed because `<repl:1>`'s file was removed.
+    assert_eq!(stderr.matches("error[").count(), 1, "{stderr}");
     assert!(stderr.contains("error[DS3001]"), "{stderr}");
     assert!(stderr.contains("--> <repl:1>:1:14"), "{stderr}");
 }
