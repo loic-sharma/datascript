@@ -92,6 +92,8 @@ Two shared files are touched by many tasks:
 | [M2-12](M2-12-runtime-source-errors.md) | Name the file in runtime read errors | M1-13, M2-13 | todo |
 | [M2-13](M2-13-task-contract-fixes.md) | Fix task contracts and diagnostic code blocks | M1-13 | done |
 | [M2-14](M2-14-spec-code-mismatches.md) | Spec/code mismatches from the docs review | M1-13 | done |
+| [M2-15](M2-15-golden-run-gaps.md) | Golden `run` coverage gaps | M1-13 | todo |
+| [M2-16](M2-16-cli-repl-test-gaps.md) | CLI and REPL integration test gaps | M2-11 | todo |
 
 ## M3 — Editor experience
 
@@ -104,6 +106,8 @@ Two shared files are touched by many tasks:
 | [M3-05](M3-05-vscode-run.md) | VS Code Run CodeLens with CLI-style output | M3-04 | done |
 | [M3-06](M3-06-vscode-results-panel.md) | VS Code results panel (grid and charts) | M3-05, M4-02, M4-03, M2-13 | todo |
 | [M3-07](M3-07-repl-column-completion.md) | REPL column completion | M3-02 | todo |
+| [M3-08](M3-08-lsp-test-gaps.md) | LSP integration test gaps | M3-05 | todo |
+| [M3-09](M3-09-vscode-e2e-gaps.md) | VS Code extension E2E test gaps | M3-05 | todo |
 
 ## M4 — Local web UI
 
