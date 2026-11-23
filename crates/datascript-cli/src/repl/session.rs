@@ -780,6 +780,41 @@ impl CompletionContext {
         &self.base_dir
     }
 
+    /// Names of `let` bindings in scope at byte offset `pos` of `line`: kept saved lets plus any
+    /// `let` statement in `line` that ends at or before `pos`. Used to skip host tables shadowed
+    /// by a non-table `let` until `ide::complete` accepts host tables (M4-04).
+    pub fn let_names_before(&self, line: &str, pos: usize) -> HashSet<String> {
+        let pos = line.floor_char_boundary(pos.min(line.len()));
+        let parsed = parse(line, FileId(0));
+        let mut defined = HashSet::new();
+        let mut in_line = Vec::new();
+        for stmt in parsed.program().statements() {
+            if let Stmt::Let(let_stmt) = stmt
+                && let Some(name) = let_stmt.name().and_then(|n| n.text())
+            {
+                let end = usize::from(let_stmt.syntax().text_range().end());
+                if end <= pos {
+                    in_line.push(name.clone());
+                }
+                defined.insert(name);
+            }
+        }
+        let defined_refs: HashSet<&str> = defined.iter().map(String::as_str).collect();
+        let removed = removed_lets(
+            self.saved
+                .iter()
+                .map(|l| (l.name.as_str(), l.names.as_slice())),
+            &defined_refs,
+        );
+        self.saved
+            .iter()
+            .zip(removed)
+            .filter(|(_, r)| !*r)
+            .map(|(l, _)| l.name.clone())
+            .chain(in_line)
+            .collect()
+    }
+
     /// Computes compiler completions for `line` at byte offset `pos`.
     ///
     /// Schema lookups go through the session's cache without invalidating it, so a file the

@@ -28,5 +28,5 @@ the LSP, the `ds ui` server and WASM offer the same columns for the same text.
 - [x] Tests in `datascript-cli` cover these cases.
 
 ## Follow-ups
-- None. Host tables are added in table-source positions (`from`, `join`, `union`, `.schema`) by the
-  REPL until `datascript_compiler::ide::complete` accepts host tables (M4-04).
+- Handed to M4-04: host tables are added in table-source positions (`from`, `join`, `union`,
+  `.schema`) by the REPL until `datascript_compiler::ide::complete` accepts host tables.

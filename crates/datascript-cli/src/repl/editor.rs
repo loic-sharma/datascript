@@ -2,6 +2,7 @@
 //! lexer, Tab completion and persistent history.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -12,9 +13,9 @@ use datascript_diagnostics::FileId;
 use datascript_syntax::{OPERATOR_NAMES, SyntaxKind, display_name, lex};
 use nu_ansi_term::{Color, Style};
 use reedline::{
-    ColumnarMenu, Completer, Emacs, FileBackedHistory, Highlighter, KeyCode, KeyModifiers,
-    MenuBuilder, Prompt, PromptEditMode, PromptHistorySearch, Reedline, ReedlineEvent,
-    ReedlineMenu, Signal, StyledText, Suggestion, ValidationResult, Validator,
+    ColumnarMenu, Completer, Emacs, FileBackedHistory, Highlighter, InputMode, KeyCode,
+    KeyModifiers, MenuBuilder, Prompt, PromptEditMode, PromptHistorySearch, Reedline,
+    ReedlineEvent, ReedlineMenu, Signal, StyledText, Suggestion, ValidationResult, Validator,
     default_emacs_keybindings,
 };
 
@@ -149,7 +150,7 @@ fn editor(
             ReedlineEvent::MenuNext,
         ]),
     );
-    let menu = ColumnarMenu::default().with_name("completion_menu");
+    let menu = completion_menu();
     Reedline::create()
         .with_history(history())
         .with_validator(Box::new(SubmitRule))
@@ -160,6 +161,14 @@ fn editor(
         .with_completer(Box::new(DsCompleter { context, runtime }))
         .with_menu(ReedlineMenu::EngineCompleter(Box::new(menu)))
         .with_edit_mode(Box::new(Emacs::new(keybindings)))
+}
+
+/// The completion menu, configured with `InputMode::FullBuffer` so `DsCompleter` sees the whole
+/// buffer on mid-line and mid-word Tab completion instead of only the prefix up to the cursor.
+fn completion_menu() -> ColumnarMenu {
+    ColumnarMenu::default()
+        .with_name("completion_menu")
+        .with_input_mode(InputMode::FullBuffer)
 }
 
 /// Whether to highlight: the same rule as diagnostics, for standard output.
@@ -368,7 +377,8 @@ fn complete_query(
 
     let mut items = completions.items;
     if is_table_position(line, start, completions.files.as_ref()) {
-        add_host_tables(&mut items, context.tables());
+        let shadowed = context.let_names_before(line, pos);
+        add_host_tables(&mut items, context.tables(), &shadowed);
     }
 
     let mut out = Vec::new();
@@ -421,11 +431,14 @@ fn is_table_position(text: &str, start: usize, files: Option<&FileCompletion>) -
 }
 
 /// Adds host tables (`--table name=path`) alongside tabular lets, skipping any name already
-/// shadowed by a `let` in `items`.
-fn add_host_tables(items: &mut Vec<Completion>, tables: &[TableArg]) {
+/// shadowed by a `let` in scope.
+fn add_host_tables(items: &mut Vec<Completion>, tables: &[TableArg], shadowed: &HashSet<String>) {
     let mut extra: Vec<Completion> = tables
         .iter()
         .filter_map(|t| {
+            if shadowed.contains(&t.name) {
+                return None;
+            }
             let label = display_name(&t.name);
             if items.iter().any(|i| i.label == label) {
                 return None;
@@ -718,6 +731,10 @@ mod tests {
             values(&repl, &rt, "from 'tests/data/customers.csv' | join ord"),
             ["orders"]
         );
+        assert_eq!(
+            values(&repl, &rt, "from 'tests/data/customers.csv' | union ord"),
+            ["orders"]
+        );
         assert!(values(&repl, &rt, "from read_csv(ord").is_empty());
 
         // File completion inside a path string.
@@ -729,6 +746,160 @@ mod tests {
         );
         assert_eq!(items[0].span, reedline::Span::new(17, 20));
         assert!(!items[0].append_whitespace);
+
+        // Quoted directory completion appends `/` without trailing whitespace, and directories
+        // sort before files.
+        let line = "from 'tests/";
+        let items = suggestions_at(&repl, &rt, line, line.len());
+        let data_dir = items.iter().find(|s| s.value == "data/").unwrap();
+        assert!(!data_dir.append_whitespace);
+        let line = "from 'tests/data/";
+        let items = suggestions_at(&repl, &rt, line, line.len());
+        let first_file = items
+            .iter()
+            .position(|s| !s.value.ends_with('/'))
+            .expect("at least one data file");
+        let last_dir = items
+            .iter()
+            .rposition(|s| s.value.ends_with('/'))
+            .expect("at least one subdirectory");
+        assert!(last_dir < first_file, "directories should precede files");
+
+        // Unquoted file completion quotes files (with trailing whitespace) and leaves
+        // directories open without trailing whitespace.
+        let mut data_repl = repl_with_tables(&[]);
+        data_repl.set_base_dir(workspace_root().join("tests/data"));
+        let items = suggestions_at(&data_repl, &rt, "from ", 5);
+        let events = items.iter().find(|s| s.value == "'events/").unwrap();
+        assert!(!events.append_whitespace);
+        let orders_file = items.iter().find(|s| s.value == "'orders.csv'").unwrap();
+        assert!(orders_file.append_whitespace);
+        let events_idx = items.iter().position(|s| s.value == "'events/").unwrap();
+        let orders_idx = items
+            .iter()
+            .position(|s| s.value == "'orders.csv'")
+            .unwrap();
+        assert!(events_idx < orders_idx);
+    }
+
+    #[test]
+    fn host_table_shadowed_by_saved_let_is_not_duplicated_or_offered() {
+        let rt = runtime();
+        let mut repl = repl_with_tables(&[("orders", "tests/data/orders.csv")]);
+
+        // A tabular let of the same name shadows the host table without duplicating it.
+        let checked =
+            rt.block_on(repl.check_input("let orders = from 'tests/data/customers.csv';"));
+        assert!(!checked.failed(), "{:?}", checked.diagnostics);
+        assert_eq!(values(&repl, &rt, "from ord"), ["orders"]);
+        assert_eq!(values(&repl, &rt, "from orders | where na"), ["name"]);
+
+        // A non-string scalar let also shadows the host table, so `from ord` offers nothing.
+        let checked = rt.block_on(repl.check_input("let orders = 42;"));
+        assert!(!checked.failed(), "{:?}", checked.diagnostics);
+        assert!(values(&repl, &rt, "from ord").is_empty());
+    }
+
+    #[test]
+    fn transitive_redefinition_drops_dependent_saved_lets() {
+        let rt = runtime();
+        let mut repl = repl_with_tables(&[]);
+        let checked = rt.block_on(repl.check_input("let a = from 'tests/data/orders.csv';"));
+        assert!(!checked.failed(), "{:?}", checked.diagnostics);
+        let checked = rt.block_on(repl.check_input("let b = from a | project amount;"));
+        assert!(!checked.failed(), "{:?}", checked.diagnostics);
+
+        assert_eq!(values(&repl, &rt, "from b | where am"), ["amount"]);
+        // Redefining `a` in the current input removes both `a` and `b` from the prefix.
+        assert!(
+            values(
+                &repl,
+                &rt,
+                "let a = from 'tests/data/customers.csv'; from b | where am",
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            values(
+                &repl,
+                &rt,
+                "let a = from 'tests/data/customers.csv'; from a | where na",
+            ),
+            ["name"]
+        );
+    }
+
+    #[test]
+    fn handles_multiline_and_multibyte_utf8_offsets() {
+        let rt = runtime();
+        let mut repl = repl_with_tables(&[]);
+        let checked = rt.block_on(repl.check_input("let greeting = 'héllo 🚀';"));
+        assert!(!checked.failed(), "{:?}", checked.diagnostics);
+
+        // Multi-line buffer maps offsets cleanly across newlines and saved lets.
+        let multi = "from 'tests/data/orders.csv'\n| where am";
+        let items = suggestions_at(&repl, &rt, multi, multi.len());
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].value, "amount");
+        assert_eq!(items[0].span, reedline::Span::new(37, 39));
+
+        // Multi-byte UTF-8 before the cursor preserves byte spans.
+        let utf8 = "from 'tests/data/orders.csv' | where customerId == 'café' and am";
+        let items = suggestions_at(&repl, &rt, utf8, utf8.len());
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].value, "amount");
+        assert_eq!(&utf8[items[0].span.start..items[0].span.end], "am");
+
+        // A cursor byte offset landing mid-codepoint does not panic.
+        let mid_char = utf8.find('é').unwrap() + 1;
+        let _ = suggestions_at(&repl, &rt, utf8, mid_char);
+    }
+
+    #[test]
+    fn menu_passes_full_buffer_for_mid_line_and_mid_word_completion() {
+        use reedline::{Editor, Menu, UndoBehavior};
+
+        let rt = runtime();
+        let repl = repl_with_tables(&[]);
+        let mut completer = DsCompleter {
+            context: Arc::new(Mutex::new(repl.completion_context())),
+            runtime: rt.handle().clone(),
+        };
+        let mut menu = completion_menu();
+
+        // Mid-line completion before ` > 10` sees the following space and avoids a double space.
+        let mut editor = Editor::default();
+        let mid = "from 'tests/data/orders.csv' | where am > 10";
+        editor.edit_buffer(
+            |buf| {
+                buf.set_buffer(mid.to_string());
+                buf.set_insertion_point(39);
+            },
+            UndoBehavior::CreateUndoPoint,
+        );
+        menu.update_values(&mut editor, &mut completer);
+        menu.replace_in_buffer(&mut editor);
+        assert_eq!(
+            editor.get_buffer(),
+            "from 'tests/data/orders.csv' | where amount > 10"
+        );
+
+        // Mid-word completion replaces the full word instead of leaving the suffix behind.
+        let mut editor = Editor::default();
+        let mid_word = "from 'tests/data/orders.csv' | where amou > 10";
+        editor.edit_buffer(
+            |buf| {
+                buf.set_buffer(mid_word.to_string());
+                buf.set_insertion_point(39);
+            },
+            UndoBehavior::CreateUndoPoint,
+        );
+        menu.update_values(&mut editor, &mut completer);
+        menu.replace_in_buffer(&mut editor);
+        assert_eq!(
+            editor.get_buffer(),
+            "from 'tests/data/orders.csv' | where amount > 10"
+        );
     }
 
     #[test]

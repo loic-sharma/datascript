@@ -19,5 +19,6 @@ the same compiler APIs the LSP uses.
 
 ## Carried over
 - [ ] (from M3-02) `datascript_compiler::ide::complete` knows no host tables (the LSP has none). When `ds ui` gets host tables, give `complete` a way to receive their names so they are offered after `from`, next to tabular `let`s. File names come back as `Completions::files` for the server to list, as the LSP does in `crates/datascript-lsp/src/ide.rs`.
+- [ ] (from M3-07) Once `datascript_compiler::ide::complete` accepts host tables, pass the REPL's `--table` names to it and remove the `is_table_position` / `add_host_tables` workaround in `crates/datascript-cli/src/repl/editor.rs` (and `CompletionContext::let_names_before` in `crates/datascript-cli/src/repl/session.rs`).
 
 ## Follow-ups
