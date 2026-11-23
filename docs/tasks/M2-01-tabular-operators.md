@@ -21,5 +21,6 @@ Add the simpler ○ operators and sources from LANGUAGE.md: `lookup`, `as`, `sam
 - [ ] (from M1-25) `lookup from t on k` should get DS0152 with the fix removing `from`, as `join` and `union` do: call `grammar::right_table` for the table after `lookup`.
 - [ ] (from M3-02) Teach completion the new operators in `datascript_compiler::ide::complete` (`classify`): the right side of `lookup` is a table position like `join`'s, and each operator's clauses need their keywords and column contexts. Add a case per operator to `crates/datascript-compiler/src/ide/tests.rs`, and an `operator_doc` line each (`ide/mod.rs`).
 - [ ] (from M2-13) Add the new operators (`lookup`, `as`, `sample`, `project-reorder`) and generators (`datatable`, `range`, `print`) to the TextMate grammar in `editors/vscode/syntaxes/datascript.tmLanguage.json`; the Rust test that checks the grammar against the lexer (D-053) should cover them.
+- [ ] (from M2-19) Accept optional trailing commas in every new comma-separated list (`datatable(...) [...]` schema and value lists, `print` items, `project-reorder` columns, `lookup ... on` keys) by parsing them with `list()` (or matching terminator logic).
 
 ## Follow-ups

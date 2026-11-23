@@ -96,6 +96,7 @@ Two shared files are touched by many tasks:
 | [M2-16](M2-16-cli-repl-test-gaps.md) | CLI and REPL integration test gaps | M2-11 | done |
 | [M2-17](M2-17-sumif-overflow-message.md) | `sumif` overflow names `sum` instead of `sumif` | M2-15 | done |
 | [M2-18](M2-18-calendar-year-range-min.md) | `calendar::year_range` panics on `i64::MIN` year | M2-15 | done |
+| [M2-19](M2-19-trailing-commas.md) | Trailing commas in lists | M1-13 | todo |
 
 ## M3 — Editor experience
 
@@ -144,3 +145,6 @@ task adds something the editor or web UI must show, its "Carried over" section s
 After M1, milestones M2–M6 are largely independent tracks (language, editor, web, wasm) that can
 proceed in parallel. Keep wasm32 compatibility (checked in CI) intact on every track so M5 doesn't
 turn into a big-bang port.
+
+Within M2, M2-19 edits `list()` in `datascript-syntax` (`grammar.rs`) and should not run in parallel
+with M2-01, M2-03, M2-04 or M2-05 (prefer landing M2-19 first).
