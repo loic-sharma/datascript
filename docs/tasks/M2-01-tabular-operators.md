@@ -25,6 +25,10 @@ Add the simpler ○ operators and sources from LANGUAGE.md: `lookup`, `as`, `sam
 - [ ] (from KQL review, 2026-11) Add `union withsource = <col>`: a column naming which input each row
       came from. For file sources, decide whether it holds the table name, the path, or the file a
       glob matched (useful for `from 'logs/*.parquet' | union …`), and record that in DECISIONS.md.
-      If this is too much for M2-01, move it to its own task.
+      Note that returning per-file glob names affects `Scan`/lowering in
+      `crates/datascript-datafusion/src/lower.rs` (which merges uniform-schema globs into one
+      multi-path `ListingTable`), not just `Union`. Also cover `withsource` in completion
+      (`ide/complete.rs`) and the TextMate grammar (`datascript.tmLanguage.json`, alongside
+      `kind(?=\s*=)`). If this is too much for M2-01, move it to its own task.
 
 ## Follow-ups

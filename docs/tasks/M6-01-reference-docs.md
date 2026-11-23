@@ -1,7 +1,7 @@
 # M6-01 — Language reference and docs site
 
 **Status:** todo
-**Depends on:** M2-08, M5-03 (embedded playground), M2-13. Not on all of M2, on purpose: the site
+**Depends on:** M2-08, M5-03 (embedded playground), M2-13, M6-04. Not on all of M2, on purpose: the site
 can start with the language as it is, and each later M2 task updates the reference for what it adds
 (functions come from the catalog).
 **Crates:** docs site
@@ -21,8 +21,10 @@ functions generated from the catalog), the error index from M2-08, and an embedd
       `from 'orders.csv'` (a path) are not confused, then close Q-005 in DECISIONS.md.
 - [ ] (from KQL review, 2026-11) Add a "Coming from KQL" page. Lead with the differences that
       change results without an error: `where x != v` drops null rows, `join` defaults to `inner`
-      (not `innerunique`), and `tostring(null)` and `extract()` with no match give null instead of
-      `""`. Then the ones that give an error with a fix (`from` at a query head, `sort` direction,
-      `let` shadowing, dropped aliases). Build it from the `≠ KQL` marks in LANGUAGE.md (M6-04).
+      (not `innerunique`) and `join ... on key` merges the key column (D-019), and `tostring(null)`
+      and `extract()` with no match give null instead of `""`. Then cover `sort` direction (`asc`
+      by default: warning `DS2103` with a fix, but runs and reverses order if ignored), and the
+      ones that give an error with a fix or help (`from` at a query head, `let` shadowing, dropped
+      aliases). Build it from the `≠ KQL` marks in LANGUAGE.md (M6-04).
 
 ## Follow-ups

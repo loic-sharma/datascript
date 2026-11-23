@@ -104,7 +104,7 @@ split it by document into new tasks.
   - §1/§4.1/§5: integer literals and integer arithmetic are 64-bit `long` (D-021); KQL uses 32-bit
     `int` for small literals and keeps `int + int` as `int`.
   - §1/§4: prefix `not x` without parentheses, `1_000_000` digit separators, and no `0x` hex literals.
-  - The KQL aliases we drop on purpose: `filter` (→ `where`), `iif` (→ `iff`), and the join kinds
-    `anti`, `semi`, `leftantisemi`, `rightantisemi`.
+  - The KQL aliases we drop on purpose: `filter` (→ `where`), `iif` (→ `iff`), `todouble`
+    (→ `toreal`), and the join kinds `anti`, `semi`, `leftantisemi`, `rightantisemi`.
 
 ## Follow-ups

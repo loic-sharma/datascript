@@ -135,7 +135,7 @@ Two shared files are touched by many tasks:
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
-| [M6-01](M6-01-reference-docs.md) | Language reference and docs site | M2-08, M5-03, M2-13 | todo |
+| [M6-01](M6-01-reference-docs.md) | Language reference and docs site | M2-08, M5-03, M2-13, M6-04 | todo |
 | [M6-02](M6-02-packaging.md) | Packaging and releases | M1-13, M2-13, M3-04, M4-02, M5-02 | todo |
 | [M6-03](M6-03-sql-backend.md) | Second backend: SQL emitter | M1-13 | done |
 | [M6-04](M6-04-core-docs-refresh.md) | Bring the core docs in line with the code | M2-13, M2-14 | todo |
