@@ -1,0 +1,45 @@
+# Multi-key joins: `on a, b` merges both key columns (and coalesces both in `fullouter`),
+# while `on $left.a == $right.x, $left.b == $right.y` keeps all four key columns.
+mode: run
+---- query
+let jan = from '../../../data/events/2024-01.ndjson'
+    | summarize jan_n = count() by user, event;
+let feb = from '../../../data/events/2024-02.ndjson'
+    | summarize feb_n = count() by user, event;
+let feb_renamed = from feb
+    | project u = user, ev = event, feb_n;
+from jan
+| join feb on user, event
+| sort by user asc, event asc;
+from jan
+| join kind = fullouter feb on user, event
+| sort by user asc, event asc;
+from jan
+| join feb_renamed on $left.user == $right.u, $left.event == $right.ev
+| sort by user asc, event asc
+---- expected
+user   | event    | jan_n | feb_n
+string | string   | long  | long
+-------+----------+-------+------
+u-3    | purchase |     2 |     1
+u-5    | view     |     1 |     1
+
+user   | event    | jan_n | feb_n
+string | string   | long  | long
+-------+----------+-------+------
+u-1    | purchase |  null |     2
+u-1    | view     |  null |     1
+u-2    | view     |  null |     1
+u-3    | click    |  null |     1
+u-3    | purchase |     2 |     1
+u-4    | click    |  null |     1
+u-4    | purchase |     1 |  null
+u-4    | view     |     3 |  null
+u-5    | purchase |     1 |  null
+u-5    | view     |     1 |     1
+
+user   | event    | jan_n | u      | ev       | feb_n
+string | string   | long  | string | string   | long
+-------+----------+-------+--------+----------+------
+u-3    | purchase |     2 | u-3    | purchase |     1
+u-5    | view     |     1 | u-5    | view     |     1

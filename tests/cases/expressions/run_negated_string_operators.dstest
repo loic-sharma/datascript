@@ -1,0 +1,58 @@
+# Negated string operators: `!contains_cs`, `!has_cs`, `!startswith`, `!startswith_cs`,
+# `!endswith`, `!endswith_cs`. Includes exact match, case-difference, partial-term, non-match,
+# and null rows (left and right).
+mode: run
+---- query
+from '../../data/edge/nulls.csv'
+| extend s = case(
+    id == 1, 'Error-42 found',
+    id == 2, 'error-42 FOUND',
+    id == 3, 'Errors-42 foundx',
+    id == 4, 'other',
+    string(null))
+| project id, s,
+    ncontains_cs = s !contains_cs 'Error',
+    nhas_cs = s !has_cs 'Error',
+    nsw = s !startswith 'Error',
+    nsw_cs = s !startswith_cs 'Error',
+    new = s !endswith 'found',
+    new_cs = s !endswith_cs 'found'
+| sort by id asc;
+from '../../data/edge/nulls.csv'
+| where id == 1
+| project
+    ncontains_cs = 'Error' !contains_cs string(null),
+    nhas_cs = 'Error' !has_cs string(null),
+    nsw = 'Error' !startswith string(null),
+    nsw_cs = 'Error' !startswith_cs string(null),
+    new = 'Error' !endswith string(null),
+    new_cs = 'Error' !endswith_cs string(null);
+from '../../data/edge/nulls.csv'
+| extend s = case(
+    id == 1, 'Error-42 found',
+    id == 2, 'error-42 FOUND',
+    id == 3, 'Errors-42 foundx',
+    id == 4, 'other',
+    string(null))
+| where s !startswith_cs 'Error' and s !endswith 'found'
+| project id, s
+| sort by id asc
+---- expected
+id   | s                | ncontains_cs | nhas_cs | nsw   | nsw_cs | new   | new_cs
+long | string           | bool         | bool    | bool  | bool   | bool  | bool
+-----+------------------+--------------+---------+-------+--------+-------+-------
+   1 | Error-42 found   | false        | false   | false | false  | false | false
+   2 | error-42 FOUND   | true         | true    | false | true   | false | true
+   3 | Errors-42 foundx | false        | true    | false | false  | true  | true
+   4 | other            | true         | true    | true  | true   | true  | true
+   5 | null             | null         | null    | null  | null   | null  | null
+
+ncontains_cs | nhas_cs | nsw  | nsw_cs | new  | new_cs
+bool         | bool    | bool | bool   | bool | bool
+-------------+---------+------+--------+------+-------
+null         | null    | null | null   | null | null
+
+id   | s
+long | string
+-----+-------
+   4 | other

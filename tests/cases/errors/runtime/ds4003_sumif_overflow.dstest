@@ -1,0 +1,13 @@
+# `sumif` of integers checks for overflow (DS4003).
+mode: run
+---- query
+from '../../../data/orders.csv'
+| summarize total = sumif(9000000000000000000, isnotnull(amount))
+---- expected
+error[DS4003]: the result of `sumif` does not fit in a `long`
+  --> query:2:21
+  |
+2 | | summarize total = sumif(9000000000000000000, isnotnull(amount))
+  |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this overflowed
+  |
+  = note: a `long` holds whole numbers from -9223372036854775808 to 9223372036854775807

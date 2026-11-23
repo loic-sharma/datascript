@@ -37,17 +37,26 @@ fn ints(array: &ArrayRef) -> Result<ArrayRef> {
     })
 }
 
-/// `sum` of integers or timespans, failing on overflow.
+/// `sum` or `sumif` of integers or timespans, failing on overflow.
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub(crate) struct CheckedSum {
+    name: String,
+    what: String,
     ret: DataType,
     ty: &'static str,
     span: Span,
     signature: Signature,
 }
 
-pub(crate) fn checked_sum(ret: DataType, ty: &'static str, span: Span) -> AggregateUDF {
+pub(crate) fn checked_sum(
+    function: &str,
+    ret: DataType,
+    ty: &'static str,
+    span: Span,
+) -> AggregateUDF {
     AggregateUDF::from(CheckedSum {
+        name: format!("ds_{function}"),
+        what: format!("`{function}`"),
         ret,
         ty,
         span,
@@ -57,7 +66,7 @@ pub(crate) fn checked_sum(ret: DataType, ty: &'static str, span: Span) -> Aggreg
 
 impl AggregateUDFImpl for CheckedSum {
     fn name(&self) -> &str {
-        "ds_sum"
+        &self.name
     }
 
     fn signature(&self) -> &Signature {
@@ -72,6 +81,7 @@ impl AggregateUDFImpl for CheckedSum {
         Ok(Box::new(SumAccumulator {
             sum: None,
             ret: self.ret.clone(),
+            what: self.what.clone(),
             ty: self.ty,
             span: self.span,
         }))
@@ -90,6 +100,7 @@ impl AggregateUDFImpl for CheckedSum {
 struct SumAccumulator {
     sum: Option<i64>,
     ret: DataType,
+    what: String,
     ty: &'static str,
     span: Span,
 }
@@ -106,7 +117,7 @@ impl SumAccumulator {
                 .sum
                 .unwrap_or(0)
                 .checked_add(v)
-                .ok_or_else(|| located(self.span, "`sum`", self.ty, Fail::Overflow))?;
+                .ok_or_else(|| located(self.span, &self.what, self.ty, Fail::Overflow))?;
             self.sum = Some(sum);
         }
         Ok(())
@@ -131,7 +142,7 @@ impl Accumulator for SumAccumulator {
     }
 
     fn size(&self) -> usize {
-        size_of_val(self)
+        size_of_val(self) + self.what.capacity()
     }
 }
 
@@ -324,5 +335,32 @@ impl Accumulator for PercentileAccumulator {
 
     fn size(&self) -> usize {
         size_of_val(self) + self.ints.capacity() * 8 + self.reals.capacity() * 8
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+
+    use datascript_diagnostics::FileId;
+
+    use super::*;
+
+    fn hash_of<T: Hash>(value: &T) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        value.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    #[test]
+    fn checked_sum_distinguishes_sum_and_sumif() {
+        let span = Span::new(FileId(0), 0, 5);
+        let sum = checked_sum("sum", DataType::Int64, "long", span);
+        let sumif = checked_sum("sumif", DataType::Int64, "long", span);
+
+        assert_eq!(sum.name(), "ds_sum");
+        assert_eq!(sumif.name(), "ds_sumif");
+        assert_ne!(sum, sumif);
+        assert_ne!(hash_of(&sum), hash_of(&sumif));
     }
 }

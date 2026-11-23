@@ -1,0 +1,14 @@
+# `endofyear` with an offset past the datetime range is DS4003.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| take 1
+| project y = endofyear(timestamp, 500000)
+---- expected
+error[DS4003]: the result of `endofyear` does not fit in a `datetime`
+  --> query:3:15
+  |
+3 | | project y = endofyear(timestamp, 500000)
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this overflowed
+  |
+  = note: datetimes and timespans are counted in microseconds and hold about ±292,000 years

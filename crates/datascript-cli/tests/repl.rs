@@ -271,3 +271,150 @@ fn table_with_an_unknown_format_is_a_usage_error() {
 fn diagnostics_are_plain_even_with_color_always_requested_by_auto() {
     repl("from nope;\n").code(1).stderr(contains("\x1b[").not());
 }
+
+#[test]
+fn startup_max_rows_flag_sets_initial_limit() {
+    Command::new(env!("CARGO_BIN_EXE_ds"))
+        .current_dir(data_dir())
+        .env_remove("NO_COLOR")
+        .args(["--max-rows", "2"])
+        .write_stdin("from 'orders.csv' | project orderId;\n.max-rows\n")
+        .assert()
+        .success()
+        .stdout(
+            contains("o-0002\n… 48 more rows (show them with .max-rows 50)\n")
+                .and(contains("tables show 2 rows\n")),
+        )
+        .stderr("");
+
+    Command::new(env!("CARGO_BIN_EXE_ds"))
+        .current_dir(data_dir())
+        .env_remove("NO_COLOR")
+        .args(["--max-rows", "0"])
+        .write_stdin(".max-rows\n")
+        .assert()
+        .success()
+        .stdout("tables show every row\n")
+        .stderr("");
+}
+
+#[test]
+fn runtime_error_points_at_its_input_and_keeps_session() {
+    repl(
+        "let a = 10;\n\
+         let b = 20; from 'orders.csv' | take 1 | extend z = 1 / (tolong(amount) - tolong(amount));\n\
+         from 'orders.csv' | take 1 | project orderId, total = a + b;\n",
+    )
+    .code(1)
+    .stderr(
+        contains("error[DS4003]")
+            .and(contains("--> <repl:2>:"))
+            .and(contains("<repl:3>").not()),
+    )
+    .stdout(
+        "orderId | total\n\
+         string  | long\n\
+         --------+------\n\
+         o-0001  |    30\n",
+    );
+}
+
+#[test]
+fn saved_let_whose_file_is_removed_points_at_repl_1() {
+    use std::io::{BufRead, BufReader, Read, Write};
+    use std::process::Stdio;
+
+    let dir = tempfile::tempdir().unwrap();
+    let tmp = dir.path().join("tmp.csv");
+    std::fs::write(&tmp, "x\n1\n").unwrap();
+    // ~610 KiB of CSV output exceeds OS pipe buffers (4–64 KiB), so `ds` deterministically
+    // blocks inside `<repl:3>` after `<repl:1>` and `<repl:2>` have succeeded and before
+    // `<repl:4>` starts.
+    let pad_row = format!("{}\n", "a".repeat(60));
+    let pad_body = pad_row.repeat(10_000);
+    std::fs::write(dir.path().join("pad.csv"), format!("s\n{pad_body}")).unwrap();
+
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_ds"))
+        .current_dir(dir.path())
+        .env_remove("NO_COLOR")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let mut stdin = child.stdin.take().unwrap();
+    stdin
+        .write_all(
+            b"let t = from 'tmp.csv';\n\
+              .format csv\n\
+              from t | take 1;\n\
+              from 'pad.csv';\n\
+              from t | take 1;\n",
+        )
+        .unwrap();
+    drop(stdin);
+
+    let mut stdout = BufReader::new(child.stdout.take().unwrap());
+    let mut line = String::new();
+    // `<repl:2>` proves `<repl:1>` succeeded, saved `t`, and read `tmp.csv` before removal.
+    stdout.read_line(&mut line).unwrap();
+    assert_eq!(line, "x\n");
+    line.clear();
+    stdout.read_line(&mut line).unwrap();
+    assert_eq!(line, "1\n");
+    // Reading `pad.csv`'s header proves `<repl:3>` is now blocked writing to stdout, so
+    // `<repl:2>`'s handle is closed and `<repl:4>` has not started yet.
+    line.clear();
+    stdout.read_line(&mut line).unwrap();
+    assert_eq!(line, "s\n");
+
+    std::fs::remove_file(&tmp).unwrap();
+
+    // Drain the rest of stdout so `<repl:3>` finishes and `<repl:4>` runs.
+    let mut rest = String::new();
+    stdout.read_to_string(&mut rest).unwrap();
+    drop(stdout);
+    // Only `pad.csv`'s 10,000 rows follow — nothing from `<repl:4>`.
+    assert_eq!(rest.len(), pad_body.len());
+    assert_eq!(rest, pad_body);
+
+    let output = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    // Exactly one error: `<repl:4>` failed because `<repl:1>`'s file was removed.
+    assert_eq!(stderr.matches("error[").count(), 1, "{stderr}");
+    assert!(stderr.contains("error[DS3001]"), "{stderr}");
+    assert!(stderr.contains("--> <repl:1>:1:14"), "{stderr}");
+}
+
+#[test]
+fn max_rows_meta_command_query_and_bad_argument() {
+    repl(".max-rows\n.max-rows 1\n.max-rows\n.max-rows 0\n.max-rows\n")
+        .success()
+        .stdout("tables show 100 rows\ntables show 1 row\ntables show every row\n")
+        .stderr("");
+
+    repl(".max-rows lots\n").code(1).stderr(
+        "error: `.max-rows` needs a whole number, found `lots`\n  \
+         tip: use `.max-rows 20`, or `.max-rows 0` to show every row\n",
+    );
+
+    repl(".max-rows -1\n")
+        .code(1)
+        .stderr(contains("`.max-rows` needs a whole number, found `-1`"));
+}
+
+#[test]
+fn extra_arguments_to_no_arg_commands() {
+    for cmd in [".help", ".tables", ".quit", ".exit"] {
+        repl(&format!("{cmd} x\n")).code(1).stderr(format!(
+            "error: `{cmd}` takes no argument\n  tip: type `{cmd}` on its own\n"
+        ));
+    }
+    // `.quit x` is an error and does not leave the REPL.
+    repl(".quit x\n.tables\n")
+        .code(1)
+        .stdout(contains("no host tables or saved lets yet"))
+        .stderr(contains("error: `.quit` takes no argument"));
+}

@@ -1,0 +1,14 @@
+# Dividing the smallest `long` (`i64::MIN`) by `-1` overflows `long` (DS4003).
+mode: run
+---- query
+from '../../../data/orders.csv'
+| take 1
+| extend x = (tolong(amount) * 0 - 9223372036854775807 - 1) / -1
+---- expected
+error[DS4003]: the result of `/` does not fit in a `long`
+  --> query:3:14
+  |
+3 | | extend x = (tolong(amount) * 0 - 9223372036854775807 - 1) / -1
+  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this overflowed
+  |
+  = note: a `long` holds whole numbers from -9223372036854775808 to 9223372036854775807

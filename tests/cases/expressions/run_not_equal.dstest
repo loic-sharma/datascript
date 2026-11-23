@@ -1,0 +1,49 @@
+# `!=` across numbers (with widening), case-sensitive strings, datetimes, and nulls:
+# comparing with null produces null, and `where` drops null rows (LANGUAGE.md §4).
+mode: run
+---- query
+from '../../data/edge/nulls.csv'
+| project id,
+    ne_int = toint(id) != 2,
+    ne_real = value != 2.5,
+    ne_str_case = name != 'ALPHA',
+    ne_str = name != 'alpha',
+    ne_dt = when != datetime(2024-01-02)
+| sort by id asc;
+from '../../data/edge/nulls.csv'
+| where value != 2.5
+| project id, value
+| sort by id asc;
+from '../../data/customers.csv'
+| where country != 'DE'
+| project customerId, country
+| sort by customerId asc
+---- expected
+id   | ne_int | ne_real | ne_str_case | ne_str | ne_dt
+long | bool   | bool    | bool        | bool   | bool
+-----+--------+---------+-------------+--------+------
+   1 | true   | true    | true        | false  | true
+   2 | false  | false   | null        | null   | false
+   3 | true   | null    | true        | true   | true
+   4 | true   | true    | true        | true   | null
+   5 | true   | null    | null        | null   | null
+
+id   | value
+long | real
+-----+------
+   1 |   1.5
+   4 |   4.5
+
+customerId | country
+string     | string
+-----------+--------
+c-001      | BR
+c-002      | NG
+c-003      | CN
+c-007      | CZ
+c-011      | IL
+c-019      | MA
+c-023      | DK
+c-042      | JP
+c-056      | BG
+c-200      | JO

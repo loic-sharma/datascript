@@ -88,3 +88,10 @@ The grammar test compares `syntaxes/datascript.tmLanguage.json` with the real le
 `crates/datascript-syntax/tests/textmate_tokens.rs` writes the lexer's tokens for
 `test/grammar/*.ds` to `test/grammar/tokens.json`, and fails if a token kind is missing from the
 fixtures. After changing a fixture, rerun it with `DS_BLESS=1`.
+
+VS Code exposes no API to grant Workspace Trust programmatically, so the restart from Restricted
+Mode to full check (`onDidGrantWorkspaceTrust`) is verified manually: open a folder with
+`orders.csv` and a `.ds` file containing `from 'orders.csv' | project amout` in Restricted Mode
+(confirm no `DS1001` diagnostic and no `▶ Run` CodeLens), run **Workspaces: Manage Workspace
+Trust** and click **Trust**, then confirm the DataScript output channel logs the restart, `DS1001`
+appears on `amout`, and the `▶ Run` CodeLens appears.

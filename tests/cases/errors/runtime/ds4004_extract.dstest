@@ -1,0 +1,13 @@
+# A computed regular expression in `extract` that does not compile is DS4004 when the query runs.
+mode: run
+---- query
+from '../../../data/orders.csv'
+| project e = extract(strcat('a{', '2,1}'), 0, orderId)
+---- expected
+error[DS4004]: `a{2,1}` is not a valid regular expression
+  --> query:2:15
+  |
+2 | | project e = extract(strcat('a{', '2,1}'), 0, orderId)
+  |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ in this call of `extract`
+  |
+  = note: invalid repetition count range, the start must be <= the end (regexes use Rust `regex` syntax)
