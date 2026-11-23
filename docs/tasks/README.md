@@ -96,6 +96,7 @@ Two shared files are touched by many tasks:
 | [M2-16](M2-16-cli-repl-test-gaps.md) | CLI and REPL integration test gaps | M2-11 | done |
 | [M2-17](M2-17-sumif-overflow-message.md) | `sumif` overflow names `sum` instead of `sumif` | M2-15 | done |
 | [M2-18](M2-18-calendar-year-range-min.md) | `calendar::year_range` panics on `i64::MIN` year | M2-15 | done |
+| [M2-19](M2-19-trailing-commas.md) | Trailing commas in lists | M1-13 | todo |
 
 ## M3 — Editor experience
 
