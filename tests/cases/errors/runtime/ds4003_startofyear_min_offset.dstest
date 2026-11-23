@@ -3,7 +3,7 @@ mode: run
 skip: M2-18 (`calendar::year_range` panics on `i64::MIN` year)
 ---- query
 from '../../../data/orders.csv'
-| take 1
+| where orderId == 'o-0001'
 | project y = startofyear(startofyear(timestamp, -2023), -9223372036854775808)
 ---- expected
 error[DS4003]: the result of `startofyear` does not fit in a `datetime`
