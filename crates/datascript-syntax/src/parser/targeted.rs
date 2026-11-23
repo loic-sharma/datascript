@@ -1383,7 +1383,17 @@ impl Parser<'_> {
     }
 
     /// DS0116: `distinct *, a`. `star` is the token index of `*`; the current token is the comma.
-    pub(super) fn distinct_star_with_columns(&mut self, star: usize) {
+    /// DS0116: `distinct *` followed by `,` (with or without further columns). The current token
+    /// is `,`; `star` is the token index of `*`.
+    pub(super) fn distinct_star_with_columns(&mut self, star: usize, has_columns: bool) {
+        if !has_columns {
+            let comma = self.current_span();
+            let d = Diagnostic::error(codes::DS0116, "`distinct *` cannot have a trailing `,`")
+                .primary(comma, "`*` already means every column")
+                .help_with("remove the `,`", Suggestion::replace(comma, ""));
+            self.report(d);
+            return;
+        }
         let star_start = self.tokens[star].start;
         let next_start = self
             .tokens
@@ -1795,29 +1805,6 @@ impl Parser<'_> {
                 format!("to use it as a name, quote it: `{quoted}`"),
                 Suggestion::replace(span, quoted),
             );
-        self.report(d);
-    }
-
-    /// DS0127: a `,` with nothing after it at the end of a list. The current token is the comma.
-    pub(super) fn trailing_comma(&mut self) {
-        let comma = self.current_span();
-        let after = match self.nth(1) {
-            PIPE => "before `|`",
-            SEMICOLON => "before `;`",
-            R_PAREN => "before `)`",
-            R_BRACK => "before `]`",
-            _ => "at the end of the input",
-        };
-        // Before a closing bracket, remove the space after the comma too: `f(a, )` → `f(a)`.
-        let removed = match self.tokens.get(self.pos + 1) {
-            Some(next) if matches!(next.kind, R_PAREN | R_BRACK) => {
-                self.span(comma.start, next.start)
-            }
-            _ => comma,
-        };
-        let d = Diagnostic::error(codes::DS0127, format!("trailing `,` {after}"))
-            .primary(comma, "nothing follows this `,` in the list")
-            .help_with("remove the `,`", Suggestion::replace(removed, ""));
         self.report(d);
     }
 

@@ -1,0 +1,200 @@
+# Optional trailing commas in operator lists before `|`, `;`, `)`, and EOF.
+mode: syntax
+---- query
+from t
+| project a, b = a + 1,
+| extend c = b * 2,
+| project-away a,
+| project-rename d = b,
+| distinct c, d,
+| sort by d desc,
+| order by c asc,
+| join u on d,
+| union v, w,;
+(from t | project a,) | sort by a asc,
+---- expected
+PROGRAM@0..215
+  PIPELINE@0..174
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 "\n"
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    PROJECT_OP@9..30
+      IDENT@9..16 "project"
+      WHITESPACE@16..17 " "
+      NAMED_EXPR@17..18
+        NAME_REF@17..18
+          IDENT@17..18 "a"
+      COMMA@18..19 ","
+      WHITESPACE@19..20 " "
+      NAMED_EXPR@20..29
+        NAME@20..21
+          IDENT@20..21 "b"
+        WHITESPACE@21..22 " "
+        EQ@22..23 "="
+        WHITESPACE@23..24 " "
+        BIN_EXPR@24..29
+          NAME_REF@24..25
+            IDENT@24..25 "a"
+          WHITESPACE@25..26 " "
+          PLUS@26..27 "+"
+          WHITESPACE@27..28 " "
+          LITERAL@28..29
+            LONG@28..29 "1"
+      COMMA@29..30 ","
+    WHITESPACE@30..31 "\n"
+    PIPE@31..32 "|"
+    WHITESPACE@32..33 " "
+    EXTEND_OP@33..50
+      IDENT@33..39 "extend"
+      WHITESPACE@39..40 " "
+      NAMED_EXPR@40..49
+        NAME@40..41
+          IDENT@40..41 "c"
+        WHITESPACE@41..42 " "
+        EQ@42..43 "="
+        WHITESPACE@43..44 " "
+        BIN_EXPR@44..49
+          NAME_REF@44..45
+            IDENT@44..45 "b"
+          WHITESPACE@45..46 " "
+          STAR@46..47 "*"
+          WHITESPACE@47..48 " "
+          LITERAL@48..49
+            LONG@48..49 "2"
+      COMMA@49..50 ","
+    WHITESPACE@50..51 "\n"
+    PIPE@51..52 "|"
+    WHITESPACE@52..53 " "
+    PROJECT_AWAY_OP@53..68
+      IDENT@53..60 "project"
+      MINUS@60..61 "-"
+      IDENT@61..65 "away"
+      WHITESPACE@65..66 " "
+      COLUMN_PATTERN@66..67
+        IDENT@66..67 "a"
+      COMMA@67..68 ","
+    WHITESPACE@68..69 "\n"
+    PIPE@69..70 "|"
+    WHITESPACE@70..71 " "
+    PROJECT_RENAME_OP@71..92
+      IDENT@71..78 "project"
+      MINUS@78..79 "-"
+      IDENT@79..85 "rename"
+      WHITESPACE@85..86 " "
+      RENAME_ITEM@86..91
+        NAME@86..87
+          IDENT@86..87 "d"
+        WHITESPACE@87..88 " "
+        EQ@88..89 "="
+        WHITESPACE@89..90 " "
+        NAME_REF@90..91
+          IDENT@90..91 "b"
+      COMMA@91..92 ","
+    WHITESPACE@92..93 "\n"
+    PIPE@93..94 "|"
+    WHITESPACE@94..95 " "
+    DISTINCT_OP@95..109
+      IDENT@95..103 "distinct"
+      WHITESPACE@103..104 " "
+      NAME_REF@104..105
+        IDENT@104..105 "c"
+      COMMA@105..106 ","
+      WHITESPACE@106..107 " "
+      NAME_REF@107..108
+        IDENT@107..108 "d"
+      COMMA@108..109 ","
+    WHITESPACE@109..110 "\n"
+    PIPE@110..111 "|"
+    WHITESPACE@111..112 " "
+    SORT_OP@112..127
+      IDENT@112..116 "sort"
+      WHITESPACE@116..117 " "
+      IDENT@117..119 "by"
+      WHITESPACE@119..120 " "
+      SORT_KEY@120..126
+        NAME_REF@120..121
+          IDENT@120..121 "d"
+        WHITESPACE@121..122 " "
+        IDENT@122..126 "desc"
+      COMMA@126..127 ","
+    WHITESPACE@127..128 "\n"
+    PIPE@128..129 "|"
+    WHITESPACE@129..130 " "
+    SORT_OP@130..145
+      IDENT@130..135 "order"
+      WHITESPACE@135..136 " "
+      IDENT@136..138 "by"
+      WHITESPACE@138..139 " "
+      SORT_KEY@139..144
+        NAME_REF@139..140
+          IDENT@139..140 "c"
+        WHITESPACE@140..141 " "
+        IDENT@141..144 "asc"
+      COMMA@144..145 ","
+    WHITESPACE@145..146 "\n"
+    PIPE@146..147 "|"
+    WHITESPACE@147..148 " "
+    JOIN_OP@148..160
+      IDENT@148..152 "join"
+      WHITESPACE@152..153 " "
+      NAME_REF@153..154
+        IDENT@153..154 "u"
+      WHITESPACE@154..155 " "
+      IDENT@155..157 "on"
+      WHITESPACE@157..158 " "
+      NAME_REF@158..159
+        IDENT@158..159 "d"
+      COMMA@159..160 ","
+    WHITESPACE@160..161 "\n"
+    PIPE@161..162 "|"
+    WHITESPACE@162..163 " "
+    UNION_OP@163..174
+      IDENT@163..168 "union"
+      WHITESPACE@168..169 " "
+      NAME_REF@169..170
+        IDENT@169..170 "v"
+      COMMA@170..171 ","
+      WHITESPACE@171..172 " "
+      NAME_REF@172..173
+        IDENT@172..173 "w"
+      COMMA@173..174 ","
+  SEMICOLON@174..175 ";"
+  WHITESPACE@175..176 "\n"
+  PIPELINE@176..214
+    PAREN_EXPR@176..197
+      L_PAREN@176..177 "("
+      PIPELINE@177..196
+        IDENT@177..181 "from"
+        WHITESPACE@181..182 " "
+        NAME_REF@182..183
+          IDENT@182..183 "t"
+        WHITESPACE@183..184 " "
+        PIPE@184..185 "|"
+        WHITESPACE@185..186 " "
+        PROJECT_OP@186..196
+          IDENT@186..193 "project"
+          WHITESPACE@193..194 " "
+          NAMED_EXPR@194..195
+            NAME_REF@194..195
+              IDENT@194..195 "a"
+          COMMA@195..196 ","
+      R_PAREN@196..197 ")"
+    WHITESPACE@197..198 " "
+    PIPE@198..199 "|"
+    WHITESPACE@199..200 " "
+    SORT_OP@200..214
+      IDENT@200..204 "sort"
+      WHITESPACE@204..205 " "
+      IDENT@205..207 "by"
+      WHITESPACE@207..208 " "
+      SORT_KEY@208..213
+        NAME_REF@208..209
+          IDENT@208..209 "a"
+        WHITESPACE@209..210 " "
+        IDENT@210..213 "asc"
+      COMMA@213..214 ","
+  WHITESPACE@214..215 "\n"

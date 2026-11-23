@@ -278,6 +278,14 @@ A right-hand table in `join`/`union`/`lookup` is a name, a path string, or a par
 expression, written without `from` (D-036): `join 'customers.csv' on customerId` works, and so
 does `join (from 'customers.csv' | where active) on customerId`.
 
+Every comma-separated operator list (`project`, `extend`, `project-away`, `project-rename`,
+`distinct <cols>`, `sort by` / `order by`, `join ... on`, `union`, and both the aggregate list
+before `by` and the key list after `by` in `summarize`) accepts an optional trailing `,`
+(**≠ KQL**, D-059; KQL rejects trailing commas, so queries using them cannot be pasted verbatim
+into Kusto). In `summarize`, a trailing `,` before `by` ends the aggregate list except when
+`by = ...` names an output column `by`. Non-list operators (`where`, `top`, `take`, `distinct *`)
+do not accept a trailing `,`.
+
 ### 3.3 Column naming
 
 - Output column names must be unique.
@@ -337,6 +345,9 @@ form `a contains x` for the string operators (D-033). Expressions may nest at mo
 
 - `x in (1, 2, 3)`: the list is scalar literals or expressions of one type (after widening).
   `in~` compares strings case-insensitively. Tabular `in (from T | project a)` is M2.
+- Function and reader call argument lists and `in (...)` value lists accept an optional trailing `,`
+  (**≠ KQL**, D-059). Non-list forms—parenthesized expressions `(a)`, index expressions `a[0]`,
+  `between (lo .. hi)`, and typed nulls `<type>(null)`—do not.
 - `x between (lo .. hi)`: inclusive on both ends.
 
 String operators (case-insensitive unless the name ends in `_cs`): `contains`, `!contains`, `has`,
@@ -500,6 +511,8 @@ properties to the client ("user agents are free to guess"). Its JSON form is in 
   `DS5005`.
 - One column may fill only one role (x, y or series); a column named in two is `DS5007` (KQL
   does not say).
+- A trailing `,` before `)` is allowed at the end of a `with (...)` property list, including after a
+  multi-value property such as `ycolumns = a, b,` (**≠ KQL**, D-059).
 - ≠ KQL: KQL does not say what happens with an unknown property or one that does not apply to
   the kind (clients ignore them). DataScript reports them, so a typo never draws a different chart
   than intended. KQL also lists `series` for `piechart`, which has no meaning there; it is `DS5006`.
@@ -617,25 +630,29 @@ right_table    = string_lit | ident | "(" tabular_expr ")" ;
 operator       = where_op | project_op | extend_op | summarize_op | sort_op | top_op
                | take_op | count_op | distinct_op | join_op | union_op | render_op | ... ;
 where_op       = "where" scalar_expr ;
-project_op     = "project" proj_item { "," proj_item } ;
+project_op     = "project" proj_item { "," proj_item } [ "," ] ;
 proj_item      = [ ident "=" ] scalar_expr ;
-summarize_op   = "summarize" [ agg_item { "," agg_item } ] [ "by" proj_item { "," proj_item } ] ;
-sort_op        = ( "sort" | "order" ) "by" sort_key { "," sort_key } ;
+summarize_op   = "summarize" [ agg_item { "," agg_item } [ "," ] ] [ "by" proj_item { "," proj_item } [ "," ] ] ;
+sort_op        = ( "sort" | "order" ) "by" sort_key { "," sort_key } [ "," ] ;
 sort_key       = scalar_expr [ "asc" | "desc" ] [ "nulls" ( "first" | "last" ) ] ;
 top_op         = "top" scalar_expr "by" sort_key ;
-join_op        = "join" [ "kind" "=" ident ] right_table "on" join_cond { "," join_cond } ;
+join_op        = "join" [ "kind" "=" ident ] right_table "on" join_cond { "," join_cond } [ "," ] ;
 join_cond      = ident | "$left" "." ident "==" "$right" "." ident ;
-union_op       = "union" right_table { "," right_table } ;
-render_op      = "render" ident [ "with" "(" prop { "," prop } ")" ] ;
+union_op       = "union" right_table { "," right_table } [ "," ] ;
+render_op      = "render" ident [ "with" "(" prop { "," prop } [ "," ] ")" ] ;
 prop           = ident "=" scalar_expr { "," scalar_expr } ;  (* the binder checks the value, §6.1 *)
-in_expr        = scalar_expr ( "in" | "!in" | "in~" | "!in~" ) "(" scalar_expr { "," scalar_expr } ")" ;
+call_args      = "(" [ arg { "," arg } [ "," ] ] ")" ;
+in_expr        = scalar_expr ( "in" | "!in" | "in~" | "!in~" ) "(" scalar_expr { "," scalar_expr } [ "," ] ")" ;
 between_expr   = scalar_expr ( "between" | "!between" ) "(" scalar_expr ".." scalar_expr ")" ;
 typed_null     = type_name "(" "null" ")" ;                         (* §1, not a call *)
 hyph_op_name   = ident "-" ident ;            (* adjacent tokens, no trivia; only right after "|" *)
 ```
 
 Keywords are contextual (§1.1): the parser checks an identifier's text where the grammar expects a
-keyword.
+keyword. Optional trailing commas in comma-separated lists (shown as `[ "," ]` above, and also in
+`extend`, `project-away`, `project-rename`, and `distinct <cols>`) are **≠ KQL** (D-059): KQL
+rejects trailing commas, so queries using them cannot be pasted verbatim into Kusto. Empty-list
+commas `(,)`, leading commas `, a`, and consecutive commas `a,, b` remain syntax errors (`DS0101`).
 
 The parser accepts more than this sketch in table positions: a source after `from` and a
 `right_table` may be any scalar expression, and the binder rejects the ones that are not tables
