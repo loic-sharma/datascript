@@ -85,10 +85,13 @@ comments verbatim.
   - Single space before `(` in `in (...)` / `!in (...)` / `in~ (...)` / `!in~ (...)` and
     `between (...)` / `!between (...)`.
 - **Wrapping order, lists & clauses (no trailing commas):**
-  - **Wrapping order:** Wrap the **outermost** wrappable construct first (e.g. pipeline stages
-    before operator lists, operator lists before call arguments), then re-measure each inner
+  - **Wrapping order & reflow:** Wrap the **outermost** wrappable construct first (e.g. pipeline
+    stages before operator lists, operator lists before call arguments), then re-measure each inner
     construct at its new indentation and wrap it only if it still exceeds 100 columns (or contains
-    comments or multi-line children).
+    comments or multi-line children). Unlike pipelines (which preserve user-split `|` lines),
+    non-pipeline constructs — operator lists, `summarize`, `case(...)`, function calls,
+    `render ... with (...)`, and binary/boolean expressions — **reflow back to one line** when they
+    fit within 100 columns and contain no comments or multi-line children.
   - **No trailing commas:** DataScript rejects trailing commas (`DS0127`), so wrapped lists
     **never** emit a trailing comma.
   - **Single-item hugging:** When a list-taking operator (`project`, `extend`, `union`, etc.) has
@@ -98,11 +101,17 @@ comments verbatim.
     `sort by`, `union`, `join ... on`): stay on one line when the full line fits within 100 columns
     and contains no comments or multi-line children; otherwise break after the operator keyword
     (`| project`, `| sort by`, `| union`, `) on`, etc.) with one item per line indented +2 spaces.
+    For `join` with a parenthesized right-hand subquery, break the subquery `(...)` **before**
+    wrapping the `on` condition list; wrap `on` only if `) on ...` still exceeds 100 columns (or
+    contains comments).
   - **`summarize`:** Stays on one line if it fits; when wrapped:
-    - Aggregates indent **+4 spaces** (+2 under `summarize`),
-    - `by` aligns under `summarize` at **+2 spaces**,
-    - `by` keys stay on the `  by ...` line if it fits within 100 columns (with no comments or
+    - Aggregates indent **+4 spaces** (+2 under `summarize`), whether or not a `by` clause is
+      present.
+    - When both aggregates and `by` are present, `by` aligns under `summarize` at **+2 spaces**, and
+      `by` keys stay on the `  by ...` line if it fits within 100 columns (with no comments or
       multi-line expressions), or wrap to **+4 spaces** (+2 under `by`) otherwise.
+    - A `by`-only `summarize` (`| summarize by ...`) exceeding 100 columns breaks after `by` with
+      keys at **+2 spaces** (matching `| sort by`).
   - **`top N by`:** Stays on one line if it fits; if the sort key exceeds 100 columns, break after
     `by` and indent the sort key +2 spaces (wrapping inside the key expression if it still exceeds
     100 columns).
@@ -114,11 +123,18 @@ comments verbatim.
   - **`case(...)`:** Stays on one line if it has at most 2 condition/value pairs, contains no
     comments, and fits within 100 columns; otherwise wraps after `(` with each `condition, value,`
     pair on its own line at +2 indent and the final `else` value on its own line.
-  - **Boolean chains (`and` / `or`):** In `where` and other boolean expressions (`extend`, `case`,
-    `join ... on`), when a chain exceeds 100 columns, break at the **lowest-precedence** operator
-    first: wrap before `or` at +2 indent, keeping each `and` group together unless that `and` group
-    itself still exceeds 100 columns — in which case wrap before `and` at +2 under its `or` branch
-    (+4 from `|`). Pure `and` or pure `or` chains wrap before each operator at +2 indent.
+  - **Boolean & binary chains (`and` / `or`, arithmetic, comparisons) and parenthesized
+    sub-expressions:** In `where` and other expressions (`extend`, `project`, `case`, `iff`,
+    `countif`, `sumif`, etc.), when a chain exceeds 100 columns, break at the **lowest-precedence**
+    operator first with leading operators: wrap before `or` at +2 indent, keeping each `and` group
+    together unless that `and` group itself still exceeds 100 columns — in which case **every**
+    wrapped `and` group inside that broken `or` chain (including the **first** `or` branch) wraps
+    before `and` at +2 under `or` (+4 from `|`), so `and` never lands in the same column as `or`.
+    Pure `and` or pure `or` chains wrap before each operator at +2 indent. Non-boolean binary chains
+    (`+`, `-`, `*`, `/`, `%`, etc.) follow the same lowest-precedence-first, leading-operator rule.
+    When a parenthesized sub-expression (such as `a and (b or c or ...) and d`) exceeds 100 columns
+    or contains comments, break after `(` and before `)` with its body indented +2 and `)` aligned
+    with the enclosing indent.
 - **Semicolons & blank lines:**
   - Semicolons are preserved verbatim (never added or removed). A statement following `;` starts on
     a new line.
@@ -355,7 +371,8 @@ from events
 ```
 
 Mixed `and`/`or` chains wrap at the lowest-precedence operator (`or`) first; an `and` group only
-wraps (at +2 under its `or` branch, i.e. +4 from `|`) if that branch itself exceeds 100 columns:
+wraps (at +2 under `or`, i.e. +4 from `|`) if that branch itself exceeds 100 columns — including
+when it is the **first** `or` branch, so `and` never shares a column with `or`:
 
 Before:
 ```ds
@@ -374,13 +391,57 @@ from orders
   or isPriorityAccount and region == "US"
 ```
 
-### 6. Long `project`, `extend`, `project-rename`, `project-away`, and `distinct` lists
-
-In a multi-line pipeline, short lists and `distinct *` stay on their operator's line:
+When the first `or` branch wraps, its `and` continuations still sit at +4 while `or` sits at +2.
+When a parenthesized sub-expression exceeds 100 columns, it breaks after `(` and before `)` with
+its body indented +2:
 
 Before:
 ```ds
-from orders | project orderId , customerId , amount | extend net=amount-discount | project-rename id=orderId | project-away tmp* , debug_flag | distinct *
+from orders
+| where status == "pending" and amount >= 1000 and customerTier == "enterprise" and timestamp >= ago(7d) or isPriorityAccount and region == "US";
+
+from orders
+| where not archived and (status == "paid" or status == "invoiced" or status == "settled" or customerTier == "enterprise") and region == "US"
+```
+
+After:
+```ds
+from orders
+| where status == "pending"
+    and amount >= 1000
+    and customerTier == "enterprise"
+    and timestamp >= ago(7d)
+  or isPriorityAccount and region == "US";
+
+from orders
+| where not archived
+  and (
+    status == "paid"
+    or status == "invoiced"
+    or status == "settled"
+    or customerTier == "enterprise"
+  )
+  and region == "US"
+```
+
+### 6. Long `project`, `extend`, `project-rename`, `project-away`, and `distinct` lists
+
+In a multi-line pipeline, short lists and `distinct *` stay on their operator's line, and short
+already-wrapped lists or expressions without comments reflow back onto one line (while the
+already-split pipeline itself stays multi-line):
+
+Before:
+```ds
+from orders | project orderId , customerId , amount | extend net=amount-discount | project-rename id=orderId | project-away tmp* , debug_flag | distinct *;
+
+from orders
+| where
+  amount > 100
+  and status == "paid"
+| project
+  orderId,
+  customerId,
+  amount
 ```
 
 After:
@@ -390,7 +451,11 @@ from orders
 | extend net = amount - discount
 | project-rename id = orderId
 | project-away tmp*, debug_flag
-| distinct *
+| distinct *;
+
+from orders
+| where amount > 100 and status == "paid"
+| project orderId, customerId, amount
 ```
 
 Lists exceeding 100 columns wrap with one item per line, 2-space indent, and no trailing comma:
@@ -501,6 +566,38 @@ from orders
   by region, bin(timestamp, 1d)
 ```
 
+Aggregates-only `summarize` still indents aggregates at **+4** (+2 under `summarize`), while
+`by`-only `summarize` breaks after `by` at **+2** (matching `sort by`):
+
+Before:
+```ds
+from orders
+| summarize orderCount = count(), paidCount = countif(status == "paid"), totalRevenue = sum(amount), avgOrder = avg(amount);
+
+from orders
+| summarize by region, country, customerSegment, salesChannel, paymentMethod, fulfillmentCenter, day = bin(timestamp, 1d)
+```
+
+After:
+```ds
+from orders
+| summarize
+    orderCount = count(),
+    paidCount = countif(status == "paid"),
+    totalRevenue = sum(amount),
+    avgOrder = avg(amount);
+
+from orders
+| summarize by
+  region,
+  country,
+  customerSegment,
+  salesChannel,
+  paymentMethod,
+  fulfillmentCenter,
+  day = bin(timestamp, 1d)
+```
+
 ### 8. `sort by` / `order by`, `top N by`, and `take` / `limit`
 
 Short single-line queries stay on one line; `order by` and `limit` are preserved verbatim:
@@ -602,8 +699,9 @@ from orders
 
 ### 10. `join` with parenthesized subqueries and complex `on` clauses
 
-Short single-line `join` with an inline subquery stays on one line; a longer `join` with
-`kind = leftouter` and multi-key `$left` / `$right` conditions expands the subquery at +2 indent:
+Short single-line `join` with an inline subquery stays on one line; a longer `join` breaks its
+parenthesized subquery at +2 indent **before** wrapping `on`, keeping `) on ...` on one line when
+it fits:
 
 Before:
 ```ds
