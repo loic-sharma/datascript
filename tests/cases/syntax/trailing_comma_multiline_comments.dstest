@@ -1,0 +1,233 @@
+# Multi-line lists with trailing commas, comments, and `from` continuations.
+mode: syntax
+---- query
+from t
+| project
+    a,
+    b, // last item
+| summarize
+    total = sum(a), /* comment before by */
+    by
+    b, // last key
+| extend
+    x = case(
+        a > 1, 'big',
+        'small', // default branch
+    ),;
+from t | project a,
+b;
+from t | project a,
+from | take 1;
+from t | project a,
+from - 1;
+from t | extend x = f(a,
+from 'b.csv')
+---- expected
+PROGRAM@0..341
+  PIPELINE@0..212
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 "\n"
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    PROJECT_OP@9..30
+      IDENT@9..16 "project"
+      WHITESPACE@16..21 "\n    "
+      NAMED_EXPR@21..22
+        NAME_REF@21..22
+          IDENT@21..22 "a"
+      COMMA@22..23 ","
+      WHITESPACE@23..28 "\n    "
+      NAMED_EXPR@28..29
+        NAME_REF@28..29
+          IDENT@28..29 "b"
+      COMMA@29..30 ","
+    WHITESPACE@30..31 " "
+    LINE_COMMENT@31..43 "// last item"
+    WHITESPACE@43..44 "\n"
+    PIPE@44..45 "|"
+    WHITESPACE@45..46 " "
+    SUMMARIZE_OP@46..113
+      IDENT@46..55 "summarize"
+      WHITESPACE@55..60 "\n    "
+      NAMED_EXPR@60..74
+        NAME@60..65
+          IDENT@60..65 "total"
+        WHITESPACE@65..66 " "
+        EQ@66..67 "="
+        WHITESPACE@67..68 " "
+        CALL_EXPR@68..74
+          NAME_REF@68..71
+            IDENT@68..71 "sum"
+          ARG_LIST@71..74
+            L_PAREN@71..72 "("
+            NAME_REF@72..73
+              IDENT@72..73 "a"
+            R_PAREN@73..74 ")"
+      COMMA@74..75 ","
+      WHITESPACE@75..76 " "
+      BLOCK_COMMENT@76..99 "/* comment before by */"
+      WHITESPACE@99..104 "\n    "
+      BY_CLAUSE@104..113
+        IDENT@104..106 "by"
+        WHITESPACE@106..111 "\n    "
+        NAMED_EXPR@111..112
+          NAME_REF@111..112
+            IDENT@111..112 "b"
+        COMMA@112..113 ","
+    WHITESPACE@113..114 " "
+    LINE_COMMENT@114..125 "// last key"
+    WHITESPACE@125..126 "\n"
+    PIPE@126..127 "|"
+    WHITESPACE@127..128 " "
+    EXTEND_OP@128..212
+      IDENT@128..134 "extend"
+      WHITESPACE@134..139 "\n    "
+      NAMED_EXPR@139..211
+        NAME@139..140
+          IDENT@139..140 "x"
+        WHITESPACE@140..141 " "
+        EQ@141..142 "="
+        WHITESPACE@142..143 " "
+        CALL_EXPR@143..211
+          NAME_REF@143..147
+            IDENT@143..147 "case"
+          ARG_LIST@147..211
+            L_PAREN@147..148 "("
+            WHITESPACE@148..157 "\n        "
+            BIN_EXPR@157..162
+              NAME_REF@157..158
+                IDENT@157..158 "a"
+              WHITESPACE@158..159 " "
+              GT@159..160 ">"
+              WHITESPACE@160..161 " "
+              LITERAL@161..162
+                LONG@161..162 "1"
+            COMMA@162..163 ","
+            WHITESPACE@163..164 " "
+            LITERAL@164..169
+              STRING@164..169 "'big'"
+            COMMA@169..170 ","
+            WHITESPACE@170..179 "\n        "
+            LITERAL@179..186
+              STRING@179..186 "'small'"
+            COMMA@186..187 ","
+            WHITESPACE@187..188 " "
+            LINE_COMMENT@188..205 "// default branch"
+            WHITESPACE@205..210 "\n    "
+            R_PAREN@210..211 ")"
+      COMMA@211..212 ","
+  SEMICOLON@212..213 ";"
+  WHITESPACE@213..214 "\n"
+  PIPELINE@214..235
+    IDENT@214..218 "from"
+    WHITESPACE@218..219 " "
+    NAME_REF@219..220
+      IDENT@219..220 "t"
+    WHITESPACE@220..221 " "
+    PIPE@221..222 "|"
+    WHITESPACE@222..223 " "
+    PROJECT_OP@223..235
+      IDENT@223..230 "project"
+      WHITESPACE@230..231 " "
+      NAMED_EXPR@231..232
+        NAME_REF@231..232
+          IDENT@231..232 "a"
+      COMMA@232..233 ","
+      WHITESPACE@233..234 "\n"
+      NAMED_EXPR@234..235
+        NAME_REF@234..235
+          IDENT@234..235 "b"
+  SEMICOLON@235..236 ";"
+  WHITESPACE@236..237 "\n"
+  PIPELINE@237..270
+    IDENT@237..241 "from"
+    WHITESPACE@241..242 " "
+    NAME_REF@242..243
+      IDENT@242..243 "t"
+    WHITESPACE@243..244 " "
+    PIPE@244..245 "|"
+    WHITESPACE@245..246 " "
+    PROJECT_OP@246..261
+      IDENT@246..253 "project"
+      WHITESPACE@253..254 " "
+      NAMED_EXPR@254..255
+        NAME_REF@254..255
+          IDENT@254..255 "a"
+      COMMA@255..256 ","
+      WHITESPACE@256..257 "\n"
+      NAMED_EXPR@257..261
+        NAME_REF@257..261
+          IDENT@257..261 "from"
+    WHITESPACE@261..262 " "
+    PIPE@262..263 "|"
+    WHITESPACE@263..264 " "
+    TAKE_OP@264..270
+      IDENT@264..268 "take"
+      WHITESPACE@268..269 " "
+      LITERAL@269..270
+        LONG@269..270 "1"
+  SEMICOLON@270..271 ";"
+  WHITESPACE@271..272 "\n"
+  PIPELINE@272..300
+    IDENT@272..276 "from"
+    WHITESPACE@276..277 " "
+    NAME_REF@277..278
+      IDENT@277..278 "t"
+    WHITESPACE@278..279 " "
+    PIPE@279..280 "|"
+    WHITESPACE@280..281 " "
+    PROJECT_OP@281..300
+      IDENT@281..288 "project"
+      WHITESPACE@288..289 " "
+      NAMED_EXPR@289..290
+        NAME_REF@289..290
+          IDENT@289..290 "a"
+      COMMA@290..291 ","
+      WHITESPACE@291..292 "\n"
+      NAMED_EXPR@292..300
+        BIN_EXPR@292..300
+          NAME_REF@292..296
+            IDENT@292..296 "from"
+          WHITESPACE@296..297 " "
+          MINUS@297..298 "-"
+          WHITESPACE@298..299 " "
+          LITERAL@299..300
+            LONG@299..300 "1"
+  SEMICOLON@300..301 ";"
+  WHITESPACE@301..302 "\n"
+  PIPELINE@302..340
+    IDENT@302..306 "from"
+    WHITESPACE@306..307 " "
+    NAME_REF@307..308
+      IDENT@307..308 "t"
+    WHITESPACE@308..309 " "
+    PIPE@309..310 "|"
+    WHITESPACE@310..311 " "
+    EXTEND_OP@311..340
+      IDENT@311..317 "extend"
+      WHITESPACE@317..318 " "
+      NAMED_EXPR@318..340
+        NAME@318..319
+          IDENT@318..319 "x"
+        WHITESPACE@319..320 " "
+        EQ@320..321 "="
+        WHITESPACE@321..322 " "
+        CALL_EXPR@322..340
+          NAME_REF@322..323
+            IDENT@322..323 "f"
+          ARG_LIST@323..340
+            L_PAREN@323..324 "("
+            NAME_REF@324..325
+              IDENT@324..325 "a"
+            COMMA@325..326 ","
+            WHITESPACE@326..327 "\n"
+            PIPELINE@327..339
+              IDENT@327..331 "from"
+              WHITESPACE@331..332 " "
+              LITERAL@332..339
+                STRING@332..339 "'b.csv'"
+            R_PAREN@339..340 ")"
+  WHITESPACE@340..341 "\n"

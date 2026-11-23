@@ -521,6 +521,14 @@ fn classify(doc: &Doc<'_>, cursor: &Cursor) -> Context {
                     keywords: if in_by { vec![] } else { vec!["by"] },
                     infix: true,
                 }
+            } else if !in_by
+                && prev.kind() == SyntaxKind::COMMA
+                && parent_kind == Some(SyntaxKind::SUMMARIZE_OP)
+            {
+                Context::Both(vec![
+                    expression(input(), true),
+                    Context::Keywords(vec!["by"]),
+                ])
             } else {
                 expression(input(), !in_by)
             }
@@ -613,8 +621,19 @@ fn render_context(
             Context::RenderProps(kind)
         }
         SyntaxKind::COMMA => {
-            // `ycolumns = a, ` may go on with columns, or start the next property.
-            match parent.as_ref().and_then(prop_of) {
+            // `ycolumns = a, ` may go on with columns, or start the next property. Before `)` or
+            // the next `name =`, the comma sits in `RENDER_PROPS` right after that `RENDER_PROP`.
+            let prop = parent.as_ref().and_then(prop_of).or_else(|| {
+                let mut sibling = prev.prev_sibling_or_token();
+                while let Some(el) = sibling {
+                    if !el.kind().is_trivia() {
+                        return el.into_node().and_then(|n| prop_of(&n));
+                    }
+                    sibling = el.prev_sibling_or_token();
+                }
+                None
+            });
+            match prop {
                 Some(prop) if property_takes_columns(&prop) => Context::Both(vec![
                     Context::RenderValue {
                         prop,

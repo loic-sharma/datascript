@@ -1,6 +1,5 @@
 # `startofyear` from year 0 with offset `i64::MIN` overflows `datetime` (DS4003), and must not panic.
 mode: run
-skip: M2-18 (`calendar::year_range` panics on `i64::MIN` year)
 ---- query
 from '../../../data/orders.csv'
 | where orderId == 'o-0001'

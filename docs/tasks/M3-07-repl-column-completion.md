@@ -1,6 +1,6 @@
 # M3-07 — REPL column completion
 
-**Status:** todo
+**Status:** done — REPL Tab completion now analyses the current input after the saved lets via `CompletionContext` (reusing `Session`'s schema cache without invalidating it) and delegates language items to `datascript_compiler::ide::complete`, adding REPL-only host tables, file listing and meta-command completion.
 **Depends on:** M3-02
 **Crates:** `datascript-cli`
 **Diagnostic codes:** none expected
@@ -22,9 +22,11 @@ the LSP, the `ds ui` server and WASM offer the same columns for the same text.
   session already read.
 
 ## Acceptance criteria
-- [ ] `from 'tests/data/orders.csv' | where am<Tab>` offers `amount`.
-- [ ] Columns from a saved `let` table work (`let big = from '…' | where amount > 100;` then `from big | project <Tab>`).
-- [ ] A source that fails to load gives no columns and no error output on Tab.
-- [ ] Tests in `datascript-cli` cover these cases.
+- [x] `from 'tests/data/orders.csv' | where am<Tab>` offers `amount`.
+- [x] Columns from a saved `let` table work (`let big = from '…' | where amount > 100;` then `from big | project <Tab>`).
+- [x] A source that fails to load gives no columns and no error output on Tab.
+- [x] Tests in `datascript-cli` cover these cases.
 
 ## Follow-ups
+- Handed to M4-04: host tables are added in table-source positions (`from`, `join`, `union`,
+  `.schema`) by the REPL until `datascript_compiler::ide::complete` accepts host tables.

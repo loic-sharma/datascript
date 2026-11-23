@@ -1,0 +1,30 @@
+# End-to-end execution of queries using trailing commas across operators, summarize, and calls.
+mode: run
+---- query
+let selected = from read_csv('../../data/orders.csv', header = true,)
+| where customerId in ('c-042', 'c-007', 'c-113',)
+| extend
+    tier = case(
+        amount >= 150.0, 'high',
+        'std',
+    ),
+| project-away orderId, timestamp,
+| project-rename cid = customerId,;
+
+from selected
+| join kind = inner '../../data/customers.csv' on $left.cid == $right.customerId,
+| summarize
+    revenue = round(sum(amount), 2,),
+    orders = count(),
+    by customerId, name, tier,
+| sort by revenue desc, customerId asc, tier asc,
+| project customerId, name, tier, orders, revenue,
+---- expected
+customerId | name        | tier   | orders | revenue
+string     | string      | string | long   | real
+-----------+-------------+--------+--------+--------
+c-042      | Hana Sato   | high   |      5 | 1071.5
+c-007      | Dana Novak  | high   |      5 |  855.0
+c-113      | Kai Mueller | std    |      4 |  402.25
+c-042      | Hana Sato   | std    |      2 |  179.0
+c-007      | Dana Novak  | std    |      1 |  125.0

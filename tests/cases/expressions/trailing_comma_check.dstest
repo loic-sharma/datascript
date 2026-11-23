@@ -1,0 +1,29 @@
+# Queries with trailing commas across operators, calls, readers, and render check cleanly.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, timestamp: datetime); 'customers.csv'(customerId: string, name: string, country: string)
+---- query
+let high = from read_csv('orders.csv', header = true,)
+| where customerId in ('c-042', 'c-007',)
+| extend
+    tier = case(amount > 150.0, 'high', 'std',),
+    tag = strcat(customerId, '-', tier,),
+| project-away timestamp,
+| project-rename cid = customerId,;
+
+from high
+| join kind = inner 'customers.csv' on $left.cid == $right.customerId,
+| summarize
+    revenue = sum(amount),
+    orders = count(),
+    by customerId, country,
+| distinct customerId, country, revenue, orders,
+| sort by revenue desc, customerId asc,
+| project customerId, country, revenue,
+| union (from 'customers.csv' | extend revenue = 0.0 | project customerId, country, revenue,),
+| render barchart with (xcolumn = customerId, ycolumns = revenue, title = "Revenue",)
+---- expected
+query 1 columns:
+  customerId: string
+  country: string
+  revenue: real

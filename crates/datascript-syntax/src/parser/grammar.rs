@@ -843,14 +843,18 @@ fn operator_named(
             let star = p.pos;
             let starred = p.eat(STAR);
             if !starred || p.at(COMMA) {
+                let mut parse_cols = true;
                 if starred {
-                    // `distinct *, a` (DS0116): parse the columns too.
-                    p.distinct_star_with_columns(star);
+                    // `distinct *, a` (DS0116): parse the columns too unless nothing follows `,`.
+                    parse_cols = !at_list_end_after_comma(p);
+                    p.distinct_star_with_columns(star, parse_cols);
                     p.bump();
                 }
-                list(p, |p| {
-                    expr(p);
-                });
+                if parse_cols {
+                    list(p, |p| {
+                        expr(p);
+                    });
+                }
             }
             DISTINCT_OP
         }
@@ -890,16 +894,22 @@ fn where_commas(p: &mut Parser<'_>, start: u32) {
 }
 
 /// `project *` (DS0117): SQL's `SELECT *`. Wraps `*` and a comma after it in an `ERROR` node, and
-/// returns whether there was a comma, so more columns follow.
+/// returns whether columns follow the comma.
 fn project_star(p: &mut Parser<'_>, op_start: u32) -> bool {
     let alone =
         matches!(p.nth(1), PIPE | SEMICOLON | LET_KW | EOF) || (p.nth(1) == R_PAREN && p.depth > 0);
     p.project_star(op_start, alone);
     let m = p.start();
     p.bump(); // *
-    let comma = p.eat(COMMA);
+    let has_cols = if p.at(COMMA) {
+        let trailing = at_list_end_after_comma(p);
+        p.bump(); // ,
+        !trailing
+    } else {
+        false
+    };
     m.complete(p, ERROR);
-    comma
+    has_cols
 }
 
 /// `sort` or `top` without `by` (DS0121): parses the keys anyway if they are there.
@@ -1005,19 +1015,48 @@ pub(super) fn certain_operator(
     (len > 0).then_some((name, len, by_included))
 }
 
-/// `item { ',' item }`. A trailing `,` before the end of the list is reported (DS0127).
+/// Whether the token right after the current `,` ends the list rather than starting another item.
+fn at_list_end_after_comma(p: &Parser<'_>) -> bool {
+    match p.nth(1) {
+        PIPE | SEMICOLON | EOF | R_PAREN | R_BRACK => true,
+        // `from t | project a,\nlet x = 1` ends the list (DS0106); `project a, let = 1` and
+        // `project-away a, let | take 5` do not (DS0126).
+        LET_KW => NAME_START.contains(p.nth(2)) || (p.nth(2).is_reserved_word() && p.nth(3) == EQ),
+        // Line-initial statement-starting `from` at top level (D-037): `project a,\nfrom 'b.csv'`
+        // recovers as DS0106, while `a,\nb`, `a,\nfrom | ...`, `a,\nfrom - 1`, and
+        // `f(a,\nfrom 'b.csv')` continue the list.
+        IDENT => {
+            p.depth == 0
+                && p.nth_line_start(1)
+                && p.nth_at_kw(1, "from")
+                && EXPR_START.contains(p.nth(2))
+                && !matches!(p.nth(2), MINUS | NOT_KW)
+        }
+        _ => false,
+    }
+}
+
+/// `item { ',' item } [ ',' ]`.
 fn list(p: &mut Parser<'_>, item: impl Fn(&mut Parser<'_>)) {
+    list_until(p, |_| false, item);
+}
+
+/// `item { ',' item } [ ',' ]`, also treating a `,` directly before `extra_end` as trailing.
+fn list_until(
+    p: &mut Parser<'_>,
+    extra_end: impl Fn(&Parser<'_>) -> bool,
+    item: impl Fn(&mut Parser<'_>),
+) {
     loop {
         item(p);
         if !p.at(COMMA) {
             break;
         }
-        if matches!(p.nth(1), PIPE | SEMICOLON | EOF | R_PAREN | R_BRACK) {
-            p.trailing_comma();
-            p.bump();
+        let trailing = at_list_end_after_comma(p) || extra_end(p);
+        p.bump();
+        if trailing {
             break;
         }
-        p.bump();
     }
 }
 
@@ -1085,16 +1124,22 @@ fn rename_item(p: &mut Parser<'_>) {
     m.complete_if_nonempty(p, RENAME_ITEM);
 }
 
-/// `[agg { ',' agg }] ['by' key { ',' key }]`
+/// `[agg { ',' agg } [ ',' ]] ['by' key { ',' key } [ ',' ]]`
 fn summarize_body(p: &mut Parser<'_>) {
     if !p.at_by() && p.at_set(EXPR_START) {
-        list(p, |p| {
-            if p.at_by() {
-                p.error_expected_expr();
-            } else {
-                named_expr(p);
-            }
-        });
+        list_until(
+            p,
+            // A trailing `,` directly before `by` ends the aggregate list, unless `by = ...`
+            // names an output column `by` (matching `Parser::at_by`).
+            |p| p.nth_at_kw(1, "by") && p.nth(2) != EQ,
+            |p| {
+                if p.at_by() {
+                    p.error_expected_expr();
+                } else {
+                    named_expr(p);
+                }
+            },
+        );
     }
     if p.at_by() {
         let m = p.start();
@@ -1125,7 +1170,7 @@ fn sort_key(p: &mut Parser<'_>) {
     m.complete_if_nonempty(p, SORT_KEY);
 }
 
-/// `['kind' '=' ident] right_table 'on' cond { ',' cond }`
+/// `['kind' '=' ident] right_table 'on' cond { ',' cond } [ ',' ]`
 fn join_body(p: &mut Parser<'_>) {
     if p.at_kw("kind") && p.nth(1) == EQ {
         let m = p.start();
@@ -1188,7 +1233,7 @@ fn right_table(p: &mut Parser<'_>, op: &str) {
     }
 }
 
-/// `kind ['with' '(' prop { ',' prop } ')']`
+/// `kind ['with' '(' prop { ',' prop } [ ',' ] ')']`
 fn render_body(p: &mut Parser<'_>) {
     let at_with = p.at_kw("with") && p.nth(1) == L_PAREN;
     if p.at(IDENT) && !at_with {
@@ -1230,7 +1275,10 @@ fn render_prop(p: &mut Parser<'_>) {
     p.name_before_eq();
     p.bump(); // =
     expr(p);
-    while p.at(COMMA) && !(NAME_START.contains(p.nth(1)) && p.nth(2) == EQ) && p.nth(1) != R_PAREN {
+    while p.at(COMMA)
+        && !(NAME_START.contains(p.nth(1)) && p.nth(2) == EQ)
+        && !at_list_end_after_comma(p)
+    {
         p.bump(); // ,
         expr(p);
     }
@@ -1654,9 +1702,13 @@ fn primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
     match kind {
         IDENT if at_typed_null(p) => {
             let m = p.start();
-            for _ in 0..4 {
-                p.bump(); // type ( null )
-            }
+            p.bump(); // type
+            let open = p.pos;
+            p.bump(); // (
+            p.depth += 1;
+            p.bump(); // null
+            expect_closing(p, open);
+            p.depth -= 1;
             Some(m.complete(p, TYPED_NULL))
         }
         IDENT
@@ -1698,13 +1750,15 @@ fn primary(p: &mut Parser<'_>) -> Option<CompletedMarker> {
     }
 }
 
-/// `long(null)`: a type name directly followed by `(`, then `null` and `)`.
+/// `long(null)`: a type name directly followed by `(`, then `null` and `)`. Also matches
+/// `long(null,)` and `long(null,,)` so trailing commas report DS0101 instead of falling through
+/// to a call to an unknown function `long`.
 fn at_typed_null(p: &Parser<'_>) -> bool {
     TYPED_NULL_TYPES.contains(&p.nth_text(0))
         && p.nth(1) == L_PAREN
         && p.nth_joined(1)
         && p.nth(2) == NULL_KW
-        && p.nth(3) == R_PAREN
+        && (p.nth(3) == R_PAREN || (p.nth(3) == COMMA && matches!(p.nth(4), R_PAREN | COMMA)))
 }
 
 /// Member access `a.b` and indexing `a[0]`. `start` is the byte offset where `lhs` starts.
@@ -1770,8 +1824,8 @@ fn paren_expr(p: &mut Parser<'_>) -> CompletedMarker {
     paren
 }
 
-/// `'(' [arg { ',' arg }] ')'`, where an argument is `[name '='] value`. The list after `in`
-/// (`in_list`) needs at least one value.
+/// `'(' [arg { ',' arg } [ ',' ]] ')'`, where an argument is `[name '='] value`. The list after
+/// `in` (`in_list`) needs at least one value.
 fn arg_list(p: &mut Parser<'_>, in_list: bool) {
     let m = p.start();
     let open = p.pos;

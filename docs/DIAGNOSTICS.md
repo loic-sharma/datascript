@@ -142,7 +142,7 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS3060–DS3064 | M2-12 runtime read errors (none expected; DS3008 is reused) |
 | DS3065–DS3069, DS4060–DS4064 | M4-01 local web UI server (Q-007's "results truncated" info diagnostic; DS3007 above) |
 
-**Retired codes**: DS2007 (D-020), DS2101 (D-050). List them here when a code is retired.
+**Retired codes**: DS0127 (D-059), DS2007 (D-020), DS2101 (D-050). List them here when a code is retired.
 
 | Range | Area |
 |---|---|
@@ -192,7 +192,7 @@ design decision and implemented by the task named in the allocation table.
 | DS0124 | error | `innerunique` is not supported (explains D-004) |
 | DS0125 | error | query starts with an operator or a pipe instead of `from` and a table (`where a > 1`, `| take 5`) |
 | DS0126 | error | reserved word used as a name (help: quote it, `['null']`) |
-| DS0127 | error | trailing comma at the end of a list |
+| DS0127 | — | *retired* (was: trailing comma at the end of a list; D-059 allows them) |
 | DS0128 | error | list after `in` written in square brackets |
 | DS0129 | error | `in ~` / `!in ~` written with a space (machine-applicable fix to `in~`) |
 | DS0150 | error | query or pipeline does not start with `from` (machine-applicable fix inserts it when the head is clearly a table, D-036) |

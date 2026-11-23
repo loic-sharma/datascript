@@ -111,13 +111,15 @@ pub(crate) fn start_of(period: Period, us: i64, offset: i64) -> Result<i64, Fail
 /// The last microsecond of the period containing `us`, moved by `offset` periods.
 pub(crate) fn end_of(period: Period, us: i64, offset: i64) -> Result<i64, Fail> {
     let next = offset.checked_add(1).ok_or(Fail::Overflow)?;
-    Ok(start_of(period, us, next)? - 1)
+    start_of(period, us, next)?
+        .checked_sub(1)
+        .ok_or(Fail::Overflow)
 }
 
 /// Years far outside the range of a `datetime`; checked before day arithmetic so it cannot
 /// overflow.
 fn year_range(year: i64) -> Result<(), Fail> {
-    if year.abs() > 400_000 {
+    if !(-400_000..=400_000).contains(&year) {
         Err(Fail::Overflow)
     } else {
         Ok(())
@@ -302,5 +304,30 @@ mod tests {
         assert_eq!(format(t, "M/d/yy h:mm tt").unwrap(), "3/5/24 1:07 PM");
         assert_eq!(format(t, "s.FFFF").unwrap(), "1.25");
         assert!(format(t, "yyyy-QQ").is_err());
+    }
+
+    #[test]
+    fn year_range_handles_extremes_without_panicking() {
+        assert_eq!(year_range(i64::MIN), Err(Fail::Overflow));
+        assert_eq!(year_range(i64::MAX), Err(Fail::Overflow));
+        assert_eq!(year_range(-400_001), Err(Fail::Overflow));
+        assert_eq!(year_range(400_001), Err(Fail::Overflow));
+        assert_eq!(year_range(-400_000), Ok(()));
+        assert_eq!(year_range(400_000), Ok(()));
+
+        // Year 0 with offset i64::MIN lands directly on year i64::MIN in startofyear;
+        // year -1 with offset i64::MIN lands on year i64::MIN via endofyear (offset + 1).
+        assert_eq!(
+            start_of(Period::Year, us(0, 1, 1), i64::MIN),
+            Err(Fail::Overflow)
+        );
+        assert_eq!(
+            end_of(Period::Year, us(0, 1, 1), i64::MIN),
+            Err(Fail::Overflow)
+        );
+        assert_eq!(
+            end_of(Period::Year, us(-1, 1, 1), i64::MIN),
+            Err(Fail::Overflow)
+        );
     }
 }

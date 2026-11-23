@@ -1,0 +1,456 @@
+# Non-list constructs reject trailing or extra commas with their expected diagnostic codes.
+mode: syntax
+---- query
+from t | where a, b;
+from t | where a,;
+from t | top 5 by amount desc,;
+from t | take 5,;
+from t | where a between (1 .. 10,);
+from t | extend x = (a,);
+from t | extend x = a[0,];
+from t | distinct *,;
+from t | project *, | take 5;
+from t | extend x = long(null,);
+from t | extend x = long(null,,);
+from t | distinct *,
+---- expected
+PROGRAM@0..320
+  PIPELINE@0..19
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    WHERE_OP@9..19
+      IDENT@9..14 "where"
+      WHITESPACE@14..15 " "
+      NAME_REF@15..16
+        IDENT@15..16 "a"
+      COMMA@16..17 ","
+      WHITESPACE@17..18 " "
+      NAME_REF@18..19
+        IDENT@18..19 "b"
+  SEMICOLON@19..20 ";"
+  WHITESPACE@20..21 "\n"
+  PIPELINE@21..38
+    IDENT@21..25 "from"
+    WHITESPACE@25..26 " "
+    NAME_REF@26..27
+      IDENT@26..27 "t"
+    WHITESPACE@27..28 " "
+    PIPE@28..29 "|"
+    WHITESPACE@29..30 " "
+    WHERE_OP@30..37
+      IDENT@30..35 "where"
+      WHITESPACE@35..36 " "
+      NAME_REF@36..37
+        IDENT@36..37 "a"
+    ERROR@37..38
+      COMMA@37..38 ","
+  SEMICOLON@38..39 ";"
+  WHITESPACE@39..40 "\n"
+  PIPELINE@40..70
+    IDENT@40..44 "from"
+    WHITESPACE@44..45 " "
+    NAME_REF@45..46
+      IDENT@45..46 "t"
+    WHITESPACE@46..47 " "
+    PIPE@47..48 "|"
+    WHITESPACE@48..49 " "
+    TOP_OP@49..69
+      IDENT@49..52 "top"
+      WHITESPACE@52..53 " "
+      LITERAL@53..54
+        LONG@53..54 "5"
+      WHITESPACE@54..55 " "
+      IDENT@55..57 "by"
+      WHITESPACE@57..58 " "
+      SORT_KEY@58..69
+        NAME_REF@58..64
+          IDENT@58..64 "amount"
+        WHITESPACE@64..65 " "
+        IDENT@65..69 "desc"
+    ERROR@69..70
+      COMMA@69..70 ","
+  SEMICOLON@70..71 ";"
+  WHITESPACE@71..72 "\n"
+  PIPELINE@72..88
+    IDENT@72..76 "from"
+    WHITESPACE@76..77 " "
+    NAME_REF@77..78
+      IDENT@77..78 "t"
+    WHITESPACE@78..79 " "
+    PIPE@79..80 "|"
+    WHITESPACE@80..81 " "
+    TAKE_OP@81..87
+      IDENT@81..85 "take"
+      WHITESPACE@85..86 " "
+      LITERAL@86..87
+        LONG@86..87 "5"
+    ERROR@87..88
+      COMMA@87..88 ","
+  SEMICOLON@88..89 ";"
+  WHITESPACE@89..90 "\n"
+  PIPELINE@90..125
+    IDENT@90..94 "from"
+    WHITESPACE@94..95 " "
+    NAME_REF@95..96
+      IDENT@95..96 "t"
+    WHITESPACE@96..97 " "
+    PIPE@97..98 "|"
+    WHITESPACE@98..99 " "
+    WHERE_OP@99..125
+      IDENT@99..104 "where"
+      WHITESPACE@104..105 " "
+      BETWEEN_EXPR@105..125
+        NAME_REF@105..106
+          IDENT@105..106 "a"
+        WHITESPACE@106..107 " "
+        IDENT@107..114 "between"
+        WHITESPACE@114..115 " "
+        L_PAREN@115..116 "("
+        LITERAL@116..117
+          LONG@116..117 "1"
+        WHITESPACE@117..118 " "
+        DOT2@118..120 ".."
+        WHITESPACE@120..121 " "
+        LITERAL@121..123
+          LONG@121..123 "10"
+        ERROR@123..124
+          COMMA@123..124 ","
+        R_PAREN@124..125 ")"
+  SEMICOLON@125..126 ";"
+  WHITESPACE@126..127 "\n"
+  PIPELINE@127..151
+    IDENT@127..131 "from"
+    WHITESPACE@131..132 " "
+    NAME_REF@132..133
+      IDENT@132..133 "t"
+    WHITESPACE@133..134 " "
+    PIPE@134..135 "|"
+    WHITESPACE@135..136 " "
+    EXTEND_OP@136..151
+      IDENT@136..142 "extend"
+      WHITESPACE@142..143 " "
+      NAMED_EXPR@143..151
+        NAME@143..144
+          IDENT@143..144 "x"
+        WHITESPACE@144..145 " "
+        EQ@145..146 "="
+        WHITESPACE@146..147 " "
+        PAREN_EXPR@147..151
+          L_PAREN@147..148 "("
+          NAME_REF@148..149
+            IDENT@148..149 "a"
+          ERROR@149..150
+            COMMA@149..150 ","
+          R_PAREN@150..151 ")"
+  SEMICOLON@151..152 ";"
+  WHITESPACE@152..153 "\n"
+  PIPELINE@153..178
+    IDENT@153..157 "from"
+    WHITESPACE@157..158 " "
+    NAME_REF@158..159
+      IDENT@158..159 "t"
+    WHITESPACE@159..160 " "
+    PIPE@160..161 "|"
+    WHITESPACE@161..162 " "
+    EXTEND_OP@162..178
+      IDENT@162..168 "extend"
+      WHITESPACE@168..169 " "
+      NAMED_EXPR@169..178
+        NAME@169..170
+          IDENT@169..170 "x"
+        WHITESPACE@170..171 " "
+        EQ@171..172 "="
+        WHITESPACE@172..173 " "
+        INDEX_EXPR@173..178
+          NAME_REF@173..174
+            IDENT@173..174 "a"
+          L_BRACK@174..175 "["
+          LITERAL@175..176
+            LONG@175..176 "0"
+          ERROR@176..177
+            COMMA@176..177 ","
+          R_BRACK@177..178 "]"
+  SEMICOLON@178..179 ";"
+  WHITESPACE@179..180 "\n"
+  PIPELINE@180..200
+    IDENT@180..184 "from"
+    WHITESPACE@184..185 " "
+    NAME_REF@185..186
+      IDENT@185..186 "t"
+    WHITESPACE@186..187 " "
+    PIPE@187..188 "|"
+    WHITESPACE@188..189 " "
+    DISTINCT_OP@189..200
+      IDENT@189..197 "distinct"
+      WHITESPACE@197..198 " "
+      STAR@198..199 "*"
+      COMMA@199..200 ","
+  SEMICOLON@200..201 ";"
+  WHITESPACE@201..202 "\n"
+  PIPELINE@202..230
+    IDENT@202..206 "from"
+    WHITESPACE@206..207 " "
+    NAME_REF@207..208
+      IDENT@207..208 "t"
+    WHITESPACE@208..209 " "
+    PIPE@209..210 "|"
+    WHITESPACE@210..211 " "
+    PROJECT_OP@211..221
+      IDENT@211..218 "project"
+      WHITESPACE@218..219 " "
+      ERROR@219..221
+        STAR@219..220 "*"
+        COMMA@220..221 ","
+    WHITESPACE@221..222 " "
+    PIPE@222..223 "|"
+    WHITESPACE@223..224 " "
+    TAKE_OP@224..230
+      IDENT@224..228 "take"
+      WHITESPACE@228..229 " "
+      LITERAL@229..230
+        LONG@229..230 "5"
+  SEMICOLON@230..231 ";"
+  WHITESPACE@231..232 "\n"
+  PIPELINE@232..263
+    IDENT@232..236 "from"
+    WHITESPACE@236..237 " "
+    NAME_REF@237..238
+      IDENT@237..238 "t"
+    WHITESPACE@238..239 " "
+    PIPE@239..240 "|"
+    WHITESPACE@240..241 " "
+    EXTEND_OP@241..263
+      IDENT@241..247 "extend"
+      WHITESPACE@247..248 " "
+      NAMED_EXPR@248..263
+        NAME@248..249
+          IDENT@248..249 "x"
+        WHITESPACE@249..250 " "
+        EQ@250..251 "="
+        WHITESPACE@251..252 " "
+        TYPED_NULL@252..263
+          IDENT@252..256 "long"
+          L_PAREN@256..257 "("
+          NULL_KW@257..261 "null"
+          ERROR@261..262
+            COMMA@261..262 ","
+          R_PAREN@262..263 ")"
+  SEMICOLON@263..264 ";"
+  WHITESPACE@264..265 "\n"
+  PIPELINE@265..297
+    IDENT@265..269 "from"
+    WHITESPACE@269..270 " "
+    NAME_REF@270..271
+      IDENT@270..271 "t"
+    WHITESPACE@271..272 " "
+    PIPE@272..273 "|"
+    WHITESPACE@273..274 " "
+    EXTEND_OP@274..297
+      IDENT@274..280 "extend"
+      WHITESPACE@280..281 " "
+      NAMED_EXPR@281..297
+        NAME@281..282
+          IDENT@281..282 "x"
+        WHITESPACE@282..283 " "
+        EQ@283..284 "="
+        WHITESPACE@284..285 " "
+        TYPED_NULL@285..297
+          IDENT@285..289 "long"
+          L_PAREN@289..290 "("
+          NULL_KW@290..294 "null"
+          ERROR@294..296
+            COMMA@294..295 ","
+            COMMA@295..296 ","
+          R_PAREN@296..297 ")"
+  SEMICOLON@297..298 ";"
+  WHITESPACE@298..299 "\n"
+  PIPELINE@299..319
+    IDENT@299..303 "from"
+    WHITESPACE@303..304 " "
+    NAME_REF@304..305
+      IDENT@304..305 "t"
+    WHITESPACE@305..306 " "
+    PIPE@306..307 "|"
+    WHITESPACE@307..308 " "
+    DISTINCT_OP@308..319
+      IDENT@308..316 "distinct"
+      WHITESPACE@316..317 " "
+      STAR@317..318 "*"
+      COMMA@318..319 ","
+  WHITESPACE@319..320 "\n"
+
+error[DS0115]: `where` takes one condition
+  --> query:1:17
+  |
+1 | from t | where a, b;
+  |                 ^ a comma does not join conditions
+  |
+  = help: combine the conditions with `and`: `a and b`
+
+error[DS0101]: expected `|` or `;`, found `,`
+  --> query:2:17
+  |
+2 | from t | where a,;
+  |                 ^
+
+error[DS0101]: expected `|` or `;`, found `,`
+  --> query:3:30
+  |
+3 | from t | top 5 by amount desc,;
+  |                              ^
+
+error[DS0101]: expected `|` or `;`, found `,`
+  --> query:4:16
+  |
+4 | from t | take 5,;
+  |                ^
+
+error[DS0101]: expected `)`, found `,`
+  --> query:5:34
+  |
+5 | from t | where a between (1 .. 10,);
+  |                          -       ^
+  |                          |
+  |                          to close this `(`
+
+error[DS0101]: expected `)`, found `,`
+  --> query:6:23
+  |
+6 | from t | extend x = (a,);
+  |                     - ^
+  |                     |
+  |                     to close this `(`
+
+error[DS0101]: expected `]`, found `,`
+  --> query:7:24
+  |
+7 | from t | extend x = a[0,];
+  |                      - ^
+  |                      |
+  |                      to close this `[`
+
+error[DS0116]: `distinct *` cannot have a trailing `,`
+  --> query:8:20
+  |
+8 | from t | distinct *,;
+  |                    ^ `*` already means every column
+  |
+  = help: remove the `,`
+
+error[DS0117]: `project *` is SQL's `SELECT *`
+  --> query:9:18
+  |
+9 | from t | project *, | take 5;
+  |                  ^ `project` lists the columns to keep
+  |
+  = help: to keep every column and add computed ones, use `extend`
+
+error[DS0101]: expected `)`, found `,`
+   --> query:10:30
+   |
+10 | from t | extend x = long(null,);
+   |                         -    ^
+   |                         |
+   |                         to close this `(`
+
+error[DS0101]: expected `)`, found `,`
+   --> query:11:30
+   |
+11 | from t | extend x = long(null,,);
+   |                         -    ^
+   |                         |
+   |                         to close this `(`
+
+error[DS0116]: `distinct *` cannot have a trailing `,`
+   --> query:12:20
+   |
+12 | from t | distinct *,
+   |                    ^ `*` already means every column
+   |
+   = help: remove the `,`
+
+with the machine-applicable fixes applied:
+    from t | where a and b;
+    from t | where a,;
+    from t | top 5 by amount desc,;
+    from t | take 5,;
+    from t | where a between (1 .. 10,);
+    from t | extend x = (a,);
+    from t | extend x = a[0,];
+    from t | distinct *;
+    from t | project *, | take 5;
+    from t | extend x = long(null,);
+    from t | extend x = long(null,,);
+    from t | distinct *
+which still has errors:
+
+error[DS0101]: expected `|` or `;`, found `,`
+  --> fixed:2:17
+  |
+2 | from t | where a,;
+  |                 ^
+
+error[DS0101]: expected `|` or `;`, found `,`
+  --> fixed:3:30
+  |
+3 | from t | top 5 by amount desc,;
+  |                              ^
+
+error[DS0101]: expected `|` or `;`, found `,`
+  --> fixed:4:16
+  |
+4 | from t | take 5,;
+  |                ^
+
+error[DS0101]: expected `)`, found `,`
+  --> fixed:5:34
+  |
+5 | from t | where a between (1 .. 10,);
+  |                          -       ^
+  |                          |
+  |                          to close this `(`
+
+error[DS0101]: expected `)`, found `,`
+  --> fixed:6:23
+  |
+6 | from t | extend x = (a,);
+  |                     - ^
+  |                     |
+  |                     to close this `(`
+
+error[DS0101]: expected `]`, found `,`
+  --> fixed:7:24
+  |
+7 | from t | extend x = a[0,];
+  |                      - ^
+  |                      |
+  |                      to close this `[`
+
+error[DS0117]: `project *` is SQL's `SELECT *`
+  --> fixed:9:18
+  |
+9 | from t | project *, | take 5;
+  |                  ^ `project` lists the columns to keep
+  |
+  = help: to keep every column and add computed ones, use `extend`
+
+error[DS0101]: expected `)`, found `,`
+   --> fixed:10:30
+   |
+10 | from t | extend x = long(null,);
+   |                         -    ^
+   |                         |
+   |                         to close this `(`
+
+error[DS0101]: expected `)`, found `,`
+   --> fixed:11:30
+   |
+11 | from t | extend x = long(null,,);
+   |                         -    ^
+   |                         |
+   |                         to close this `(`
