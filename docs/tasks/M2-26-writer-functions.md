@@ -2,8 +2,12 @@
 
 **Status:** todo
 **Depends on:** M2-25
-**Crates:** `datascript-syntax`, `datascript-compiler`, `datascript-engine`, `datascript-datafusion`
-**Diagnostic codes:** DS2330–DS2339 (types) (D-018)
+**Crates:** `datascript-syntax`, `datascript-compiler`, `datascript-diagnostics`, `datascript-engine`, `datascript-datafusion`
+**Diagnostic codes:** DS2330–DS2339 (types) (D-018). Most errors reuse existing codes (below).
+The new ones are for problems no existing code describes, such as options that conflict
+(`overwrite = true, append = true`) or a column-list option on a column whose type the writer
+cannot handle. A malformed column list (`force_quote = (a,, b)`) is the generic DS0101, so no
+syntax block is needed.
 
 ## Goal
 Writer functions as `output` targets, mirroring the reader functions, with the same option names
@@ -23,11 +27,10 @@ from 'orders.csv' | top 10 by amount desc | output write_json('out/top10.json', 
   catalog next to `source::READERS` (D-041), checked by the binder with the same codes as reader
   options (DS3003 unknown option with did-you-mean, DS2041 wrong value, DS2043 given twice, DS2042
   not exactly one path). Reword those codes' summaries in the DIAGNOSTICS.md registry and
-  `codes.rs` from "reader option" to "reader or writer option".
+  `codes.rs` (`datascript-diagnostics`) from "reader option" to "reader or writer option".
 - `datascript-syntax` has its own `READERS` list that a compiler test keeps in step with
   `source::READERS`; add the writer names the same way.
-- **Column-list option values.** `force_quote = (a, b)` (and M2-27's `partition_by = (year, month)`)
-  needs syntax that does not exist yet: a parenthesized list of column names is not an expression
+- **Column-list option values.** `force_quote = (a, b)` needs syntax that does not exist yet: a parenthesized list of column names is not an expression
   in `datascript-syntax`, and `OptionValue` (`crates/datascript-compiler/src/source.rs`) holds only
   `Bool`, `Long` and `String`. Add the syntax for option values only, an `OptionValue` case for a
   column list, and check each name against the input schema (DS1001 with did-you-mean).
@@ -52,7 +55,14 @@ specifiers as `format_datetime` (LANGUAGE.md §7), not DuckDB's `strftime` ones.
 `write_json(…, format = "array")` needs a streaming JSON array writer: `writers::write_json` still
 collects every row into a `Vec<Value>`. Make it stream (sharing the code with `printer.rs`).
 
-Partitioned output is M2-27's. Excel output (`write_xlsx`) is M2-24's.
+Excel output (`write_xlsx`) is M2-28's. Partitioned output (`partition_by`) is not planned yet;
+it comes back together with reading Hive-partitioned directories (Q-006, ROADMAP.md).
+
+**DuckDB option table.** Add a table to LANGUAGE.md's sink section listing every DuckDB
+`COPY … TO` option (check DuckDB's current documentation) with its DataScript name, or "not
+supported" and why (for example `partition_by`, `per_thread_output`, `file_size_bytes`,
+`filename_pattern`, and Parquet's `row_group_size_bytes`, `field_ids` and `kv_metadata`). Options
+not supported are added only when someone asks.
 
 ## Acceptance criteria
 - [ ] Golden `run` cases for every example in the Goal and every option, each reading the file
@@ -60,5 +70,6 @@ Partitioned output is M2-27's. Excel output (`write_xlsx`) is M2-24's.
 - [ ] Golden `check` cases: unknown option with did-you-mean, repeated option, wrong value type,
       unknown column in `force_quote`, a writer call with no path.
 - [ ] A test that a large `format = "array"` output is streamed, not collected.
+- [ ] The DuckDB option table in LANGUAGE.md.
 
 ## Follow-ups

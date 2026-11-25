@@ -29,6 +29,7 @@ Write the final API into ARCHITECTURE.md § WASM constraints and the API contrac
 - [ ] Generated `.d.ts` plus hand-written docs. Vitest tests in Node and in a browser.
 
 ## Carried over
+- [ ] (from planning, 2026-11-24) If M7-01 is done, URL sources are allowed natively (`ExecContext::allow_remote`). In the browser, fetch them with `fetch` (CORS permitting) instead of needing `registerFile`, honour `allow_remote`, and turn fetch failures into M7-01's errors, with a Vitest test. (If M7-01 lands after this task, M7-01 adds this item's work to M5-03 or a new task.)
 - [ ] (from planning, 2026-11-24) If M2-25 is done, `output` writes into the registered-file store; report written files from `run` (path, format, rows) so the UI can offer a download, with a Vitest test. (If M2-25 lands after this task, M2-25 does it.)
 
 ## Follow-ups

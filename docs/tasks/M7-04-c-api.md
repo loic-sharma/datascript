@@ -24,7 +24,7 @@ directly and does not use this.
     table many times: registration consumes the stream at once, materializes it in memory, and
     releases it. The header says the caller must not use the stream afterwards.
   - `ds_check(session, text, &diagnostics)`: diagnostics as JSON, the same format as
-    `ds check --diagnostics json`.
+    `ds check --format json`.
   - `ds_run(session, text, &run)` then `ds_run_next(run, &stream)` yielding one
     `ArrowArrayStream` per query statement (the Arrow C Stream Interface), over `RunStream`
     (D-055). Releasing a stream or the run cancels it.
@@ -33,9 +33,10 @@ directly and does not use this.
   who owns each pointer. Errors are a status code plus a diagnostics handle. Every entry point
   catches panics and returns DS9001; nothing unwinds into C.
 - Threading: say which handles may be used from several threads (a session is `Send + Sync`,
-  D-011) and how the tokio runtime is owned.
-- AGENTS.md allows `unsafe` only in the WASM crate. Record in DECISIONS.md that this crate is the
-  second exception, and give every `unsafe` block a `// SAFETY:` comment.
+  shared through `Arc`, D-011) and how the tokio runtime is owned.
+- AGENTS.md allows `unsafe` outside the WASM crate only with a comment explaining why. Give every
+  `unsafe` block a `// SAFETY:` comment, and record in DECISIONS.md why this crate needs `unsafe`
+  at all.
 - An ABI and versioning policy in ARCHITECTURE.md (what may change in a minor release).
 - Shipping the library and header with releases is M6-02's (already in its "Carried over").
 

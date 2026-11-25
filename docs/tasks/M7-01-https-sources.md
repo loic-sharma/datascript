@@ -30,8 +30,8 @@ their contents are fetched by `registerFile`.
   only there; `ds ui` leaves it off unless started with `--allow-remote` (D-016's sandbox covers
   the filesystem only). With the flag off, a URL source is an error from this task's block. If
   M4-01 is not done, its "Carried over" item wires the flag and the `--allow-remote` option.
-- WASM: a URL source is fetched with `fetch` (CORS permitting) instead of needing `registerFile`.
-  If that needs M5 work, carry it over to M5-02.
+- WASM is not this task's: the `object_store` HTTP store is native-only. M5-02's "Carried over"
+  item covers fetching URL sources in the browser.
 - Update LANGUAGE.md §3.1.
 
 ## Acceptance criteria

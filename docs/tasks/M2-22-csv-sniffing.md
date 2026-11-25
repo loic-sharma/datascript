@@ -35,8 +35,9 @@ before that code runs. It does not parse rows or infer types.
   wasm32 (unlike `is_json_array`, which M5-01 already has to fix). Compressed files (`.csv.gz`, …)
   are decompressed before sniffing.
 - **A self-contained module** (`sniff.rs` or similar) with a pure function over bytes, plus a small
-  change where `CsvReader` is built. `Engine::schema_of`, `SchemaLookup` and the other crates do not
-  change.
+  change where `CsvReader` is built. In `datascript-compiler`, only `SourceError` (a new case for
+  disagreeing dialects, `crates/datascript-compiler/src/source.rs`), the binder's mapping to this
+  task's code and the code registry change. `Engine::schema_of` and `SchemaLookup` do not.
 - Update LANGUAGE.md §3.1 (reader options and defaults, the tie order) and record the rules in
   DECISIONS.md.
 

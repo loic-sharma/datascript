@@ -69,12 +69,13 @@ abstraction works.
 ## M7 — Data access and embedding
 
 Read remote data (HTTPS, then S3, GCS and Azure) and embed DataScript in other languages: a
-Python package that returns Arrow, pandas and Polars results, and a C API for everything else.
+Python package that returns Arrow, pandas and Polars results. A C API for other languages is
+written up (M7-04) but waits for a consumer.
 
 **Done when:** `from 's3://bucket/logs/*.parquet'` runs from the CLI, and
 `datascript.run(...).df()` works in a notebook with the same diagnostics as the CLI.
 
 ## Explicitly later / unscheduled
 
-Hive-partitioned directories (Q-006), query parameters, notebooks, materialized `let`,
+Hive-partitioned directories, reading and writing (Q-006), query parameters, notebooks, materialized `let`,
 additional engines beyond the SQL emitter, and localization of error messages.
