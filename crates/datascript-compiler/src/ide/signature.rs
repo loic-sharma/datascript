@@ -1,6 +1,7 @@
 //! Signature help: the signatures of the function whose arguments the cursor is in.
 
 use datascript_diagnostics::SourceFile;
+use datascript_syntax::ast::{self, AstNode};
 use datascript_syntax::{SyntaxKind, SyntaxNode};
 
 use super::{Doc, callee_of, range};
@@ -55,7 +56,7 @@ pub fn signature_help(
         .filter(|t| t.kind() == SyntaxKind::COMMA)
         .collect();
     let active = commas.iter().filter(|c| range(c).end <= offset).count();
-    let written = commas.len() + 1;
+    let written = ast::ArgList::cast(args.clone()).map_or(0, |a| a.args().count());
     let signatures: Vec<SignatureInfo> = f
         .signatures
         .iter()

@@ -96,7 +96,7 @@ Two shared files are touched by many tasks:
 | [M2-16](M2-16-cli-repl-test-gaps.md) | CLI and REPL integration test gaps | M2-11 | done |
 | [M2-17](M2-17-sumif-overflow-message.md) | `sumif` overflow names `sum` instead of `sumif` | M2-15 | done |
 | [M2-18](M2-18-calendar-year-range-min.md) | `calendar::year_range` panics on `i64::MIN` year | M2-15 | done |
-| [M2-19](M2-19-trailing-commas.md) | Trailing commas in lists | M1-13 | todo |
+| [M2-19](M2-19-trailing-commas.md) | Trailing commas in lists | M1-13 | done |
 | [M2-20](M2-20-conversion-diagnostics.md) | Conversions that can never succeed | M1-13 | todo |
 
 ## M3 — Editor experience
@@ -109,7 +109,7 @@ Two shared files are touched by many tasks:
 | [M3-04](M3-04-vscode-extension.md) | VS Code extension | M3-01 | done |
 | [M3-05](M3-05-vscode-run.md) | VS Code Run CodeLens with CLI-style output | M3-04 | done |
 | [M3-06](M3-06-vscode-results-panel.md) | VS Code results panel (grid and charts) | M3-05, M4-02, M4-03, M2-13 | todo |
-| [M3-07](M3-07-repl-column-completion.md) | REPL column completion | M3-02 | todo |
+| [M3-07](M3-07-repl-column-completion.md) | REPL column completion | M3-02 | done |
 | [M3-08](M3-08-lsp-test-gaps.md) | LSP integration test gaps | M3-05 | done |
 | [M3-09](M3-09-vscode-e2e-gaps.md) | VS Code extension E2E test gaps | M3-05 | done |
 

@@ -16,5 +16,6 @@ and comments preserved.
 ## Carried over
 - [ ] (from planning, 2026-11-22) If M3-03 is done, add `textDocument/formatting` to the language server (M3-03 left it for after this task), with an LSP test.
 - [ ] (from M1-24) The formatter keeps `from <source>` on the first line of a pipeline, with operators on the following lines: `from orders⏎| where …`, never `from⏎orders`.
+- [ ] (from M2-19) Never add or remove a trailing `,` in comma-separated lists (preserve an existing trailing `,` verbatim, since D-059 makes trailing commas optional and the formatter is whitespace-only); ensure wrapping and single-item-hugging rules handle an existing trailing `,` before `)` or at the end of an operator list by keeping the `,` attached to the last item's line before the closing `)` or the next `|`.
 
 ## Follow-ups

@@ -1,0 +1,366 @@
+# Consecutive commas and missing `summarize ... by` keys remain DS0101 syntax errors.
+mode: syntax
+---- query
+from t | extend a = f(x,, y);
+from t | extend a = f(x,,);
+from t | project a,, b;
+from t | project a,,;
+from t | summarize count(),, by a;
+from t | summarize count(), by;
+from t | render linechart with (ycolumns = a,, b);
+from t | render table with (title = "x",,);
+from t | render linechart with (ycolumns = a, b,, title = "x");
+from t | render table with (title = "x",
+---- expected
+PROGRAM@0..371
+  PIPELINE@0..28
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    NAME_REF@5..6
+      IDENT@5..6 "t"
+    WHITESPACE@6..7 " "
+    PIPE@7..8 "|"
+    WHITESPACE@8..9 " "
+    EXTEND_OP@9..28
+      IDENT@9..15 "extend"
+      WHITESPACE@15..16 " "
+      NAMED_EXPR@16..28
+        NAME@16..17
+          IDENT@16..17 "a"
+        WHITESPACE@17..18 " "
+        EQ@18..19 "="
+        WHITESPACE@19..20 " "
+        CALL_EXPR@20..28
+          NAME_REF@20..21
+            IDENT@20..21 "f"
+          ARG_LIST@21..28
+            L_PAREN@21..22 "("
+            NAME_REF@22..23
+              IDENT@22..23 "x"
+            COMMA@23..24 ","
+            COMMA@24..25 ","
+            WHITESPACE@25..26 " "
+            NAME_REF@26..27
+              IDENT@26..27 "y"
+            R_PAREN@27..28 ")"
+  SEMICOLON@28..29 ";"
+  WHITESPACE@29..30 "\n"
+  PIPELINE@30..56
+    IDENT@30..34 "from"
+    WHITESPACE@34..35 " "
+    NAME_REF@35..36
+      IDENT@35..36 "t"
+    WHITESPACE@36..37 " "
+    PIPE@37..38 "|"
+    WHITESPACE@38..39 " "
+    EXTEND_OP@39..56
+      IDENT@39..45 "extend"
+      WHITESPACE@45..46 " "
+      NAMED_EXPR@46..56
+        NAME@46..47
+          IDENT@46..47 "a"
+        WHITESPACE@47..48 " "
+        EQ@48..49 "="
+        WHITESPACE@49..50 " "
+        CALL_EXPR@50..56
+          NAME_REF@50..51
+            IDENT@50..51 "f"
+          ARG_LIST@51..56
+            L_PAREN@51..52 "("
+            NAME_REF@52..53
+              IDENT@52..53 "x"
+            COMMA@53..54 ","
+            COMMA@54..55 ","
+            R_PAREN@55..56 ")"
+  SEMICOLON@56..57 ";"
+  WHITESPACE@57..58 "\n"
+  PIPELINE@58..80
+    IDENT@58..62 "from"
+    WHITESPACE@62..63 " "
+    NAME_REF@63..64
+      IDENT@63..64 "t"
+    WHITESPACE@64..65 " "
+    PIPE@65..66 "|"
+    WHITESPACE@66..67 " "
+    PROJECT_OP@67..80
+      IDENT@67..74 "project"
+      WHITESPACE@74..75 " "
+      NAMED_EXPR@75..76
+        NAME_REF@75..76
+          IDENT@75..76 "a"
+      COMMA@76..77 ","
+      COMMA@77..78 ","
+      WHITESPACE@78..79 " "
+      NAMED_EXPR@79..80
+        NAME_REF@79..80
+          IDENT@79..80 "b"
+  SEMICOLON@80..81 ";"
+  WHITESPACE@81..82 "\n"
+  PIPELINE@82..102
+    IDENT@82..86 "from"
+    WHITESPACE@86..87 " "
+    NAME_REF@87..88
+      IDENT@87..88 "t"
+    WHITESPACE@88..89 " "
+    PIPE@89..90 "|"
+    WHITESPACE@90..91 " "
+    PROJECT_OP@91..102
+      IDENT@91..98 "project"
+      WHITESPACE@98..99 " "
+      NAMED_EXPR@99..100
+        NAME_REF@99..100
+          IDENT@99..100 "a"
+      COMMA@100..101 ","
+      COMMA@101..102 ","
+  SEMICOLON@102..103 ";"
+  WHITESPACE@103..104 "\n"
+  PIPELINE@104..137
+    IDENT@104..108 "from"
+    WHITESPACE@108..109 " "
+    NAME_REF@109..110
+      IDENT@109..110 "t"
+    WHITESPACE@110..111 " "
+    PIPE@111..112 "|"
+    WHITESPACE@112..113 " "
+    SUMMARIZE_OP@113..137
+      IDENT@113..122 "summarize"
+      WHITESPACE@122..123 " "
+      NAMED_EXPR@123..130
+        CALL_EXPR@123..130
+          NAME_REF@123..128
+            IDENT@123..128 "count"
+          ARG_LIST@128..130
+            L_PAREN@128..129 "("
+            R_PAREN@129..130 ")"
+      COMMA@130..131 ","
+      COMMA@131..132 ","
+      WHITESPACE@132..133 " "
+      BY_CLAUSE@133..137
+        IDENT@133..135 "by"
+        WHITESPACE@135..136 " "
+        NAMED_EXPR@136..137
+          NAME_REF@136..137
+            IDENT@136..137 "a"
+  SEMICOLON@137..138 ";"
+  WHITESPACE@138..139 "\n"
+  PIPELINE@139..169
+    IDENT@139..143 "from"
+    WHITESPACE@143..144 " "
+    NAME_REF@144..145
+      IDENT@144..145 "t"
+    WHITESPACE@145..146 " "
+    PIPE@146..147 "|"
+    WHITESPACE@147..148 " "
+    SUMMARIZE_OP@148..169
+      IDENT@148..157 "summarize"
+      WHITESPACE@157..158 " "
+      NAMED_EXPR@158..165
+        CALL_EXPR@158..165
+          NAME_REF@158..163
+            IDENT@158..163 "count"
+          ARG_LIST@163..165
+            L_PAREN@163..164 "("
+            R_PAREN@164..165 ")"
+      COMMA@165..166 ","
+      WHITESPACE@166..167 " "
+      BY_CLAUSE@167..169
+        IDENT@167..169 "by"
+  SEMICOLON@169..170 ";"
+  WHITESPACE@170..171 "\n"
+  PIPELINE@171..220
+    IDENT@171..175 "from"
+    WHITESPACE@175..176 " "
+    NAME_REF@176..177
+      IDENT@176..177 "t"
+    WHITESPACE@177..178 " "
+    PIPE@178..179 "|"
+    WHITESPACE@179..180 " "
+    RENDER_OP@180..220
+      IDENT@180..186 "render"
+      WHITESPACE@186..187 " "
+      IDENT@187..196 "linechart"
+      WHITESPACE@196..197 " "
+      RENDER_PROPS@197..220
+        IDENT@197..201 "with"
+        WHITESPACE@201..202 " "
+        L_PAREN@202..203 "("
+        RENDER_PROP@203..219
+          NAME@203..211
+            IDENT@203..211 "ycolumns"
+          WHITESPACE@211..212 " "
+          EQ@212..213 "="
+          WHITESPACE@213..214 " "
+          NAME_REF@214..215
+            IDENT@214..215 "a"
+          COMMA@215..216 ","
+          COMMA@216..217 ","
+          WHITESPACE@217..218 " "
+          NAME_REF@218..219
+            IDENT@218..219 "b"
+        R_PAREN@219..220 ")"
+  SEMICOLON@220..221 ";"
+  WHITESPACE@221..222 "\n"
+  PIPELINE@222..264
+    IDENT@222..226 "from"
+    WHITESPACE@226..227 " "
+    NAME_REF@227..228
+      IDENT@227..228 "t"
+    WHITESPACE@228..229 " "
+    PIPE@229..230 "|"
+    WHITESPACE@230..231 " "
+    RENDER_OP@231..264
+      IDENT@231..237 "render"
+      WHITESPACE@237..238 " "
+      IDENT@238..243 "table"
+      WHITESPACE@243..244 " "
+      RENDER_PROPS@244..264
+        IDENT@244..248 "with"
+        WHITESPACE@248..249 " "
+        L_PAREN@249..250 "("
+        RENDER_PROP@250..262
+          NAME@250..255
+            IDENT@250..255 "title"
+          WHITESPACE@255..256 " "
+          EQ@256..257 "="
+          WHITESPACE@257..258 " "
+          LITERAL@258..261
+            STRING@258..261 "\"x\""
+          COMMA@261..262 ","
+        COMMA@262..263 ","
+        R_PAREN@263..264 ")"
+  SEMICOLON@264..265 ";"
+  WHITESPACE@265..266 "\n"
+  PIPELINE@266..328
+    IDENT@266..270 "from"
+    WHITESPACE@270..271 " "
+    NAME_REF@271..272
+      IDENT@271..272 "t"
+    WHITESPACE@272..273 " "
+    PIPE@273..274 "|"
+    WHITESPACE@274..275 " "
+    RENDER_OP@275..328
+      IDENT@275..281 "render"
+      WHITESPACE@281..282 " "
+      IDENT@282..291 "linechart"
+      WHITESPACE@291..292 " "
+      RENDER_PROPS@292..328
+        IDENT@292..296 "with"
+        WHITESPACE@296..297 " "
+        L_PAREN@297..298 "("
+        RENDER_PROP@298..314
+          NAME@298..306
+            IDENT@298..306 "ycolumns"
+          WHITESPACE@306..307 " "
+          EQ@307..308 "="
+          WHITESPACE@308..309 " "
+          NAME_REF@309..310
+            IDENT@309..310 "a"
+          COMMA@310..311 ","
+          WHITESPACE@311..312 " "
+          NAME_REF@312..313
+            IDENT@312..313 "b"
+          COMMA@313..314 ","
+        COMMA@314..315 ","
+        WHITESPACE@315..316 " "
+        RENDER_PROP@316..327
+          NAME@316..321
+            IDENT@316..321 "title"
+          WHITESPACE@321..322 " "
+          EQ@322..323 "="
+          WHITESPACE@323..324 " "
+          LITERAL@324..327
+            STRING@324..327 "\"x\""
+        R_PAREN@327..328 ")"
+  SEMICOLON@328..329 ";"
+  WHITESPACE@329..330 "\n"
+  PIPELINE@330..370
+    IDENT@330..334 "from"
+    WHITESPACE@334..335 " "
+    NAME_REF@335..336
+      IDENT@335..336 "t"
+    WHITESPACE@336..337 " "
+    PIPE@337..338 "|"
+    WHITESPACE@338..339 " "
+    RENDER_OP@339..370
+      IDENT@339..345 "render"
+      WHITESPACE@345..346 " "
+      IDENT@346..351 "table"
+      WHITESPACE@351..352 " "
+      RENDER_PROPS@352..370
+        IDENT@352..356 "with"
+        WHITESPACE@356..357 " "
+        L_PAREN@357..358 "("
+        RENDER_PROP@358..369
+          NAME@358..363
+            IDENT@358..363 "title"
+          WHITESPACE@363..364 " "
+          EQ@364..365 "="
+          WHITESPACE@365..366 " "
+          LITERAL@366..369
+            STRING@366..369 "\"x\""
+        COMMA@369..370 ","
+  WHITESPACE@370..371 "\n"
+
+error[DS0101]: expected an expression after `,`, found `,`
+  --> query:1:25
+  |
+1 | from t | extend a = f(x,, y);
+  |                         ^
+
+error[DS0101]: expected an expression after `,`, found `,`
+  --> query:2:25
+  |
+2 | from t | extend a = f(x,,);
+  |                         ^
+
+error[DS0101]: expected an expression after `,`, found `,`
+  --> query:3:20
+  |
+3 | from t | project a,, b;
+  |                    ^
+
+error[DS0101]: expected an expression after `,`, found `,`
+  --> query:4:20
+  |
+4 | from t | project a,,;
+  |                    ^
+
+error[DS0101]: expected an expression after `,`, found `,`
+  --> query:5:28
+  |
+5 | from t | summarize count(),, by a;
+  |                            ^
+
+error[DS0101]: expected an expression after `by`, found `;`
+  --> query:6:31
+  |
+6 | from t | summarize count(), by;
+  |                               ^
+
+error[DS0101]: expected an expression after `,`, found `,`
+  --> query:7:46
+  |
+7 | from t | render linechart with (ycolumns = a,, b);
+  |                                              ^
+
+error[DS0101]: expected an expression after `,`, found `,`
+  --> query:8:41
+  |
+8 | from t | render table with (title = "x",,);
+  |                                         ^
+
+error[DS0101]: expected an expression after `,`, found `,`
+  --> query:9:49
+  |
+9 | from t | render linechart with (ycolumns = a, b,, title = "x");
+  |                                                 ^
+
+error[DS0112]: unclosed `(`
+   --> query:10:28
+   |
+10 | from t | render table with (title = "x",
+   |                            ^            - the input ends before a `)`
+   |                            |
+   |                            this `(` is never closed
+   |
+   = help: add `)` where the bracketed part ends
