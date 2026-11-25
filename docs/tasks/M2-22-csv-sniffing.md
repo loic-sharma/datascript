@@ -2,7 +2,7 @@
 
 **Status:** todo
 **Depends on:** M1-13, M2-13
-**Crates:** `datascript-engine`, `datascript-compiler`, `datascript-datafusion`, `datascript-cli`
+**Crates:** `datascript-compiler`, `datascript-datafusion`
 **Diagnostic codes:** DS3070–DS3074 (D-018)
 
 ## Goal
@@ -10,37 +10,48 @@ Read a CSV file correctly without reader options when its dialect is not the def
 sniffer does. Today `.csv` means comma-separated with a header row, and anything else needs
 `read_csv(…, delimiter = ';', header = false)`.
 
+Keep it small: DataFusion has no sniffer, but it already reads any dialect it is told about and
+infers column types itself (`CsvFormat` and `infer_schema` in
+`crates/datascript-datafusion/src/sources.rs`). The sniffer only chooses the `CsvReader` settings
+before that code runs. It does not parse rows or infer types.
+
 ## Scope
-- Detect, from the first `infer_rows` lines: the delimiter (`,` `;` `\t` `|`), the quote character
-  (`"` or `'`) and whether the first row is a header (for example: the first row is all strings and
-  some later column is not).
-- Runs by default for `.csv`, `.tsv` and `read_csv(...)`. An option the user writes always wins
-  over what is detected; detection fills in only the options left out. `.tsv` still defaults to
-  `\t` unless the data clearly disagrees (decide, and write it down).
-- Each file of a glob is sniffed on its own, before glob schema merging (LANGUAGE.md §3.1). Files
-  with different dialects are fine; the merge is by column name as today.
-- DataFusion has no sniffer, so this is our own code. It runs on bytes already read for schema
-  inference and must build for wasm32 (no `std::fs` in the detection logic).
-- Show what was detected: `explain` and the REPL's `.schema` name the dialect used.
-- **Carrying the result back.** `Engine::schema_of` (`crates/datascript-engine/src/lib.rs`)
-  returns only `Result<SchemaRef, SourceError>`, and `SchemaLookup::Ready`
-  (`crates/datascript-compiler/src/source.rs`) carries only a `SchemaRef`. Extend both to carry
-  source metadata (the detected dialect) and warnings, so `check` can report the ambiguity warning
-  at the source's span and `explain` and the REPL can print the dialect.
-- **Per-file readers.** `Resolved` in `crates/datascript-datafusion/src/sources.rs` stores one
-  `Reader` for a whole glob. Mixed-dialect globs need a `CsvReader` per file, and
-  `Resolved::uniform()` must also compare dialects.
-- **Compression.** Sniff compressed files (`.csv.gz`, …) after decompressing the bytes read for
-  inference.
-- Update LANGUAGE.md §3.1 (reader options and defaults) and record the rules in DECISIONS.md.
+- **What is detected**, from a sample of the first `infer_rows` lines:
+  - the delimiter, from `,` `\t` `;` `|`: the candidate that splits the most sample rows into the
+    same number of fields, with more than one field. Ties go to the first in that order, which is
+    documented; there is no warning for a close call.
+  - whether the first row is a header: it is when some column's first value is text while the rest
+    of that column reads as numbers, dates or booleans. A file of text columns only keeps the
+    default (a header row).
+  - the quote character, `"` or `'`: `'` only when it wraps fields that contain the delimiter.
+- **When it runs:** for `.csv`, `.tsv` and `read_csv(...)`. An option the user writes always wins,
+  and detection fills in only the options left out. `.tsv` still defaults to `\t` unless the data
+  clearly disagrees (decide, and write it down).
+- **One dialect per source.** Each file of a glob is sniffed, and all must agree. If two files
+  disagree, that is an error from this task's block naming both files and their delimiters, with
+  help to write `read_csv(…, delimiter = …)`. `Resolved` keeps a single `Reader`, so
+  `Resolved::uniform()` and the scan code do not change.
+- **Reading the sample** goes through the object store, not `std::fs`, so the same code works on
+  wasm32 (unlike `is_json_array`, which M5-01 already has to fix). Compressed files (`.csv.gz`, …)
+  are decompressed before sniffing.
+- **A self-contained module** (`sniff.rs` or similar) with a pure function over bytes, plus a small
+  change where `CsvReader` is built. `Engine::schema_of`, `SchemaLookup` and the other crates do not
+  change.
+- Update LANGUAGE.md §3.1 (reader options and defaults, the tie order) and record the rules in
+  DECISIONS.md.
+
+Not in this task (informational; add a task only if users ask): showing the detected dialect in
+`explain` or `.schema`, a warning for an ambiguous delimiter (both need `schema_of` to carry
+metadata and warnings, a trait change across every backend), and globs whose files use different
+dialects (needs a reader per file).
 
 ## Acceptance criteria
 - [ ] Golden `run` cases over new fixtures: semicolon-delimited, pipe-delimited, tab-delimited
-      with a `.csv` extension, no header row, single-quoted fields, and a glob mixing two dialects.
-- [ ] A file where two delimiters fit equally well gives a warning (from this task's block) that
-      names the chosen delimiter and the `read_csv(…, delimiter = …)` that would override it.
+      with a `.csv` extension, no header row, single-quoted fields, a gzip-compressed
+      semicolon-delimited file, and a glob of two semicolon-delimited files.
+- [ ] A golden `check` case for a glob whose files use different delimiters (this task's error).
 - [ ] Writing `delimiter`, `header` or `quote` turns off detection for that option (golden case).
-- [ ] The core of the sniffer has unit tests over byte slices, and `datascript-datafusion` still
-      passes its wasm32 check.
+- [ ] The sniffer has unit tests over byte slices, including the tie order and a single-column
+      file, and `datascript-datafusion` still passes its wasm32 check.
 
 ## Follow-ups
