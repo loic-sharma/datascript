@@ -99,6 +99,13 @@ Two shared files are touched by many tasks:
 | [M2-19](M2-19-trailing-commas.md) | Trailing commas in lists | M1-13 | done |
 | [M2-20](M2-20-conversion-diagnostics.md) | Conversions that can never succeed | M1-13 | todo |
 | [M2-21](M2-21-division-by-zero-guard-help.md) | `DS4003` help: guard the divisor per row | M1-13 | todo |
+| [M2-22](M2-22-csv-sniffing.md) | CSV sniffing | M1-13, M2-13 | todo |
+| [M2-23](M2-23-describe-operator.md) | `describe` operator | M1-13, M2-13 | todo |
+| [M2-24](M2-24-excel-reader.md) | Excel reader | M1-13, M2-09, M2-13 | todo |
+| [M2-25](M2-25-output-operator.md) | `output` operator | M1-13, M2-13 | todo |
+| [M2-26](M2-26-writer-functions.md) | `output`: writer functions, options and compression | M2-25, M2-27 | todo |
+| [M2-27](M2-27-output-parquet-safety.md) | `output`: Parquet, self-overwrite check and read-back check | M2-25 | todo |
+| [M2-28](M2-28-excel-writer.md) | Excel writer | M2-24, M2-26 | todo |
 
 ## M3 — Editor experience
 
@@ -141,12 +148,29 @@ Two shared files are touched by many tasks:
 | [M6-03](M6-03-sql-backend.md) | Second backend: SQL emitter | M1-13 | todo |
 | [M6-04](M6-04-core-docs-refresh.md) | Bring the core docs in line with the code | M2-13, M2-14 | todo |
 
+## M7 — Data access and embedding
+
+| ID | Task | Depends on | Status |
+|---|---|---|---|
+| [M7-01](M7-01-https-sources.md) | HTTPS sources | M1-13, M2-13 | todo |
+| [M7-02](M7-02-cloud-object-stores.md) | S3, GCS and Azure sources | M7-01 | todo |
+| [M7-03](M7-03-python-package.md) | Python package | M2-11, M2-13, M7-05 | todo |
+| [M7-04](M7-04-c-api.md) | C API | M2-11, M2-13, M7-05 | blocked |
+| [M7-05](M7-05-in-memory-host-tables.md) | In-memory host tables on a live session | M2-13 | todo |
+
 The editor (M3) and the local web UI (M4) are being done before language breadth (M2). Where an M2
 task adds something the editor or web UI must show, its "Carried over" section says so.
 
-After M1, milestones M2–M6 are largely independent tracks (language, editor, web, wasm) that can
+After M1, milestones M2–M7 are largely independent tracks (language, editor, web, wasm) that can
 proceed in parallel. Keep wasm32 compatibility (checked in CI) intact on every track so M5 doesn't
 turn into a big-bang port.
+
+M2-22, M2-24…M2-28, M7-01 and M7-02 all touch source resolution or the reader and writer catalogs
+(`source::READERS`, `is_glob`, `SourceRef::for_path` and the DataFusion source code); run them one
+at a time, or keep each to its own modules. M2-23 (`describe`), M2-25 (`output`) and M2-26 (writer
+option syntax) edit `datascript-syntax`, so none of them should run in parallel with M2-01, M2-03,
+M2-04, M2-05 or each other. M7-03 and M7-04 both need M7-05 (in-memory host tables) first; once
+M7-04 is unblocked, the two can run in parallel.
 
 Within M2, M2-19 edits `list()` in `datascript-syntax` (`grammar.rs`) and should not run in parallel
 with M2-01, M2-03, M2-04 or M2-05 (prefer landing M2-19 first).

@@ -14,5 +14,7 @@ Changelog and versioning policy.
 
 ## Carried over
 - [ ] (from M3-04) Ship `ds` inside platform-specific VS Code packages (`vsce package --target darwin-arm64` …) and have `editors/vscode/src/extension.ts` prefer the bundled binary when `datascript.server.path` is unset. Today the default is `ds` on `PATH`. CI's `vscode` job already builds the .vsix; set the real `publisher` in `editors/vscode/package.json` before publishing.
+- [ ] (from planning, 2026-11-24) If M7-03 is done, publish its wheels to PyPI (built in CI by M7-03), under the same maintainer-approval rule. Otherwise leave this item for whoever finishes M7-03.
+- [ ] (from planning, 2026-11-24) If M7-04 is done, ship `libdatascript` (shared and static) and `datascript.h` with each release. Otherwise leave this item for whoever finishes M7-04.
 
 ## Follow-ups

@@ -19,6 +19,7 @@ comments verbatim.
 - [ ] (from planning, 2026-11-22) If M3-03 is done, add `textDocument/formatting` to the language server (M3-03 left it for after this task), with an LSP test.
 - [ ] (from M1-24) When a pipeline is multi-line, `from <source>` stays on the first line, with operators on the following lines: `from orders⏎| where …`, never `from⏎orders`.
 - [ ] (from M2-19) Never add or remove a trailing `,` in comma-separated lists (preserve an existing trailing `,` verbatim, since D-059 makes trailing commas optional and the formatter is whitespace-only); treat a trailing `,` as a magic trailing comma that formats its list multi-line (never collapsing it onto one line) and keeps the `,` attached to the last item's line before `)`, `;`, `by`, or the next `|`.
+- [ ] (from planning, 2026-11-24) If M2-23 (`describe`), M2-25 (`output`) or M2-26 (writer calls such as `write_csv('x.csv', delimiter = ';')`) is done, format them, with formatter golden cases. (Whichever lands after this task formats its own syntax.)
 
 ## Formatting rules
 
