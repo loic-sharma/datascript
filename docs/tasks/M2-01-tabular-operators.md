@@ -22,5 +22,13 @@ Add the simpler ○ operators and sources from LANGUAGE.md: `lookup`, `as`, `sam
 - [ ] (from M3-02) Teach completion the new operators in `datascript_compiler::ide::complete` (`classify`): the right side of `lookup` is a table position like `join`'s, and each operator's clauses need their keywords and column contexts. Add a case per operator to `crates/datascript-compiler/src/ide/tests.rs`, and an `operator_doc` line each (`ide/mod.rs`).
 - [ ] (from M2-13) Add the new operators (`lookup`, `as`, `sample`, `project-reorder`) and generators (`datatable`, `range`, `print`) to the TextMate grammar in `editors/vscode/syntaxes/datascript.tmLanguage.json`; the Rust test that checks the grammar against the lexer (D-053) should cover them.
 - [ ] (from M2-19) Accept optional trailing commas in every new comma-separated list (`datatable(...) [...]` schema and value lists, `print` items, `project-reorder` columns, `lookup ... on` keys) by parsing them with `list()` (or matching terminator logic).
+- [ ] (from KQL review, 2026-11) Add `union withsource = <col>`: a column naming which input each row
+      came from. For file sources, decide whether it holds the table name, the path, or the file a
+      glob matched (useful for `from 'logs/*.parquet' | union …`), and record that in DECISIONS.md.
+      Note that returning per-file glob names affects `Scan`/lowering in
+      `crates/datascript-datafusion/src/lower.rs` (which merges uniform-schema globs into one
+      multi-path `ListingTable`), not just `Union`. Also cover `withsource` in completion
+      (`ide/complete.rs`) and the TextMate grammar (`datascript.tmLanguage.json`, alongside
+      `kind(?=\s*=)`). If this is too much for M2-01, move it to its own task.
 
 ## Follow-ups

@@ -91,4 +91,20 @@ split it by document into new tasks.
 - [ ] Every item is fixed or marked as already correct.
 - [ ] No broken relative links in `docs/`.
 
+## Carried over
+- [ ] (from KQL review, 2026-11) Mark the remaining KQL divergences `≠ KQL` in LANGUAGE.md. Check
+  each against KQL's docs before marking it:
+  - §4: three-valued logic on `!=` with null (`where x != 5` drops rows where `x` is null; KQL is
+    believed to keep them, so verify). This overlaps the §3.2 item above.
+  - §5/§7: `string` is nullable (`string(null)`, empty CSV cells read as null, `tostring(null)` is
+    null); KQL strings are never null and `tostring` of null gives `""`.
+  - §7: `floor(x)` takes one argument; KQL's `floor(x, size)` is an alias for `bin`.
+  - §1/§5/§7: microsecond precision vs. KQL's 100 ns ticks (`1tick` is `0us`, `endof*` ends at
+    `.999999`).
+  - §1/§4.1/§5: integer literals and integer arithmetic are 64-bit `long` (D-021); KQL uses 32-bit
+    `int` for small literals and keeps `int + int` as `int`.
+  - §1/§4: prefix `not x` without parentheses, `1_000_000` digit separators, and no `0x` hex literals.
+  - The KQL aliases we drop on purpose: `filter` (→ `where`), `iif` (→ `iff`), `todouble`
+    (→ `toreal`), and the join kinds `anti`, `semi`, `leftantisemi`, `rightantisemi`.
+
 ## Follow-ups

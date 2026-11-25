@@ -25,4 +25,8 @@ Make `decimal` and `guid` real types. In M1 they exist only as typed nulls (`dec
 - [ ] Golden cases over a Parquet file with decimal and uuid columns.
 - [ ] Unit tests for every operator row with `decimal` operands.
 
+## Carried over
+- [ ] (from M2-20) If M2-20 has landed, apply its always-null conversion error to `todecimal` and
+      `toguid` (e.g. `toguid(42)`, `todecimal(datetime(...))`) instead of accepting `ANY`.
+
 ## Follow-ups

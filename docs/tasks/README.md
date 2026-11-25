@@ -97,6 +97,8 @@ Two shared files are touched by many tasks:
 | [M2-17](M2-17-sumif-overflow-message.md) | `sumif` overflow names `sum` instead of `sumif` | M2-15 | done |
 | [M2-18](M2-18-calendar-year-range-min.md) | `calendar::year_range` panics on `i64::MIN` year | M2-15 | done |
 | [M2-19](M2-19-trailing-commas.md) | Trailing commas in lists | M1-13 | done |
+| [M2-20](M2-20-conversion-diagnostics.md) | Conversions that can never succeed | M1-13 | todo |
+| [M2-21](M2-21-division-by-zero-guard-help.md) | `DS4003` help: guard the divisor per row | M1-13 | todo |
 
 ## M3 — Editor experience
 
@@ -134,7 +136,7 @@ Two shared files are touched by many tasks:
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
-| [M6-01](M6-01-reference-docs.md) | Language reference and docs site | M2-08, M5-03, M2-13 | todo |
+| [M6-01](M6-01-reference-docs.md) | Language reference and docs site | M2-08, M5-03, M2-13, M6-04 | todo |
 | [M6-02](M6-02-packaging.md) | Packaging and releases | M1-13, M2-13, M3-04, M4-02, M5-02 | todo |
 | [M6-03](M6-03-sql-backend.md) | Second backend: SQL emitter | M1-13 | done |
 | [M6-04](M6-04-core-docs-refresh.md) | Bring the core docs in line with the code | M2-13, M2-14 | todo |

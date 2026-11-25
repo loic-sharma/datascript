@@ -139,6 +139,7 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS0270–DS0279, DS2280–DS2299, DS4055–DS4059 | M2-06 function library |
 | DS0280–DS0289, DS1080–DS1084, DS2300–DS2309, DS3050–DS3059 | M2-09 reader schema overrides |
 | DS2310–DS2319 | M2-10 `decimal` and `guid` |
+| DS2320–DS2329 | M2-20 conversions that can never succeed |
 | DS3060–DS3064 | M2-12 runtime read errors (none expected; DS3008 is reused) |
 | DS3065–DS3069, DS4060–DS4064 | M4-01 local web UI server (Q-007's "results truncated" info diagnostic; DS3007 above) |
 
