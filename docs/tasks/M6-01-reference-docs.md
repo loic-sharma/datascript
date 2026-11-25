@@ -24,7 +24,7 @@ functions generated from the catalog), the error index from M2-08, and an embedd
       (not `innerunique`) and `join ... on key` merges the key column (D-019), and `tostring(null)`
       and `extract()` with no match give null instead of `""`. Then cover `sort` direction (`asc`
       by default: warning `DS2103` with a fix, but runs and reverses order if ignored), and the
-      ones that give an error with a fix or help (`from` at a query head, `let` shadowing, dropped
+      ones that give an error with a fix or help (a pipeline that starts with a table name and no `from`, `DS0150`; `let` shadowing; dropped
       aliases). Build it from the `≠ KQL` marks in LANGUAGE.md (M6-04).
 
 ## Follow-ups

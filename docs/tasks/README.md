@@ -98,6 +98,7 @@ Two shared files are touched by many tasks:
 | [M2-18](M2-18-calendar-year-range-min.md) | `calendar::year_range` panics on `i64::MIN` year | M2-15 | done |
 | [M2-19](M2-19-trailing-commas.md) | Trailing commas in lists | M1-13 | done |
 | [M2-20](M2-20-conversion-diagnostics.md) | Conversions that can never succeed | M1-13 | todo |
+| [M2-21](M2-21-division-by-zero-guard-help.md) | `DS4003` help: guard the divisor per row | M1-13 | todo |
 
 ## M3 — Editor experience
 

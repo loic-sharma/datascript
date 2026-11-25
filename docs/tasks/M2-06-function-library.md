@@ -23,7 +23,10 @@ Not this task's: `split`, `make_list` and `make_set` belong to M2-03 (they need 
       `iif(...)` a tailored error with a machine-applicable fix to `iff` via `FOREIGN_NAMES` in
       `crates/datascript-compiler/src/catalog.rs` (reusing `DS1004`, as `todouble` → `toreal` and
       `if` → `iff` do). `iif` stays in `PREDICATE_FUNCTIONS` (`targeted.rs`) so `iif(x = 1, …)`
-      still gets the `==` fix.
+      still gets the `==` fix. Check first what `iif(...)` gives today: it is one edit from `iff`,
+      so the "similar name" help may already offer the fix, and this only changes the wording.
+      Update the comments on `FOREIGN_NAMES` and `UnknownFunction::equivalent`, which say KQL
+      names need no entry (D-014); `todouble` already contradicts them.
 - [ ] (from KQL review, 2026-11) `floor(x, size)` with two arguments (KQL's alias for `bin`): give a
       tailored `DS2002` help suggesting `bin(x, size)` in `ArityError::diagnostic`
       (`crates/datascript-compiler/src/catalog.rs`, matching the existing `count(x)` pattern)

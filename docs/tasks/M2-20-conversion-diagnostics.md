@@ -2,7 +2,7 @@
 
 **Status:** todo
 **Depends on:** M1-13
-**Crates:** `datascript-diagnostics`, `datascript-compiler`, `datascript-datafusion`, `datascript-tests`
+**Crates:** `datascript-diagnostics`, `datascript-compiler`, `datascript-tests`
 **Diagnostic codes:** DS2320–DS2329 (types) (D-018)
 
 ## Goal
@@ -13,6 +13,9 @@ Today every conversion function accepts `ANY` (`conversion()` in
 is checked, and point users at what works.
 
 This came out of a review of DataScript against KQL (November 2026).
+
+M2-06 also edits `builtins.rs` and `catalog.rs`. If both tasks are in progress at once, expect
+merge conflicts there; land one first and rebase the other.
 
 ## Scope
 - [ ] List every pair of input type and conversion function where the result is always null (for
@@ -37,12 +40,6 @@ This came out of a review of DataScript against KQL (November 2026).
   8) must not trigger the error.
 - [ ] If M2-10 has already landed, apply the same rule to `todecimal` and `toguid`; otherwise leave
   the `(from M2-20)` handoff in `docs/tasks/M2-10-decimal-guid.md`.
-- [ ] Broaden the `DS4003` division-by-zero help (`crates/datascript-datafusion/src/errors.rs`,
-  both the integer `/` + `%` branch and the `timespan` branch) to mention guarding per row with
-  `iff(b == 0, null, a / b)` (or phrasing that also fits `%`), so rows with a zero divisor can be
-  kept, and update the 4 existing `ds4003_*_by_zero*.dstest` cases. **Only after** a `mode: run`
-  golden test shows the guard really stops `DS4003` (DataFusion may evaluate both branches of
-  `CASE`). If it doesn't, write that down under Follow-ups instead.
 - [ ] Update existing golden tests that currently expect `null` for always-null pairs
   (`tests/cases/functions/conversion/{tolong,toreal,todatetime,totimespan}.dstest`), update
   LANGUAGE.md §7 (conversion functions) to say these calls are errors, and update the stale
