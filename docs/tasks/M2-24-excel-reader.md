@@ -22,7 +22,10 @@ Excel workbooks, as DuckDB's excel extension does. Writing workbooks is M2-28's.
   `FileFormat`, and none exists for `.xlsx`. Read the sheet with `calamine` into Arrow record
   batches and register them as an in-memory table (a DataFusion `MemTable`) for the scan; the
   schema comes from the same read. Workbooks are small enough that reading a whole sheet is fine;
-  say so in LANGUAGE.md. (A custom `FileFormat` is not needed for this task.)
+  say so in LANGUAGE.md. (A custom `FileFormat` is not needed for this task.) `sources::Resolved`
+  holds only files today, so give it an in-memory case (batches plus schema) that the scan turns
+  into a `MemTable`. M7-05 (in-memory host tables) needs the same case: whichever task lands second
+  reuses the other's.
 - Read bytes through the object store, not `std::fs`, so the same code works on wasm32.
 - Infer each column's type from its cells: `bool`, `long`, `real`, `datetime` (Excel dates),
   otherwise `string`. Mixed columns widen per LANGUAGE.md §4.2, or fall back to `string`.

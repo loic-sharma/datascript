@@ -47,6 +47,10 @@ stale cached schema if it does. Reading back within one program is not supported
 for a path that an earlier `output` in the same program writes gets help saying so and suggesting
 a separate run. Record the decision in DECISIONS.md.
 
+### Hosts
+- If M4-01 is done, its export (Q-007) offers Parquet through the same writer. (M4-01's "Carried
+  over" item covers it if M4-01 lands after this task.)
+
 ## Acceptance criteria
 - [ ] Golden `run` cases writing Parquet from CSV and JSON fixtures, reading each back with the
       M2-25 harness directive and comparing types and values.

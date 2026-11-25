@@ -31,7 +31,8 @@ their contents are fetched by `registerFile`.
   the filesystem only). With the flag off, a URL source is an error from this task's block. If
   M4-01 is not done, its "Carried over" item wires the flag and the `--allow-remote` option.
 - WASM is not this task's: the `object_store` HTTP store is native-only. M5-02's "Carried over"
-  item covers fetching URL sources in the browser.
+  item covers fetching URL sources in the browser. If M5-02 is already done, add that work to
+  M5-03's "Carried over" section (or a new task with an index row) instead.
 - Update LANGUAGE.md §3.1.
 
 ## Acceptance criteria

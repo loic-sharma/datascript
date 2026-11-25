@@ -1,8 +1,8 @@
 # M2-26 — `output`: writer functions and options
 
 **Status:** todo
-**Depends on:** M2-25
-**Crates:** `datascript-syntax`, `datascript-compiler`, `datascript-diagnostics`, `datascript-engine`, `datascript-datafusion`
+**Depends on:** M2-25, M2-27 (`write_parquet` needs its Parquet writer)
+**Crates:** `datascript-syntax`, `datascript-compiler`, `datascript-diagnostics`, `datascript-engine`, `datascript-datafusion`, `datascript-lsp`
 **Diagnostic codes:** DS2330–DS2339 (types) (D-018). Most errors reuse existing codes (below).
 The new ones are for problems no existing code describes, such as options that conflict
 (`overwrite = true, append = true`) or a column-list option on a column whose type the writer
@@ -46,7 +46,7 @@ Reader names win over DuckDB's where a reader option exists.
 | `write_csv` | `delimiter`, `header` (default true), `quote`, `escape`, `null_value` (default empty), `force_quote = (col, …)`, `timestamp_format`, `compression` |
 | `write_parquet` | `compression`, `compression_level`, `row_group_size` |
 | `write_json` | `format = "ndjson" \| "array"` (the `read_json` name; DuckDB's `ARRAY`), `timestamp_format`, `compression` |
-| all | `overwrite` / `append`: one write-mode option, named in this task (DuckDB has `OVERWRITE`, `OVERWRITE_OR_IGNORE`, `APPEND`) |
+| all | `overwrite` / `append`: one write-mode option, named in this task (DuckDB has `OVERWRITE`, `OVERWRITE_OR_IGNORE`, `APPEND`). Appending works only for CSV, TSV and newline-delimited JSON (without a header row when the file already exists); for Parquet and a JSON array it is DS2041 with help |
 
 DataScript has no `date` type (`Date32`/`Date64` widen to `datetime`, LANGUAGE.md §5.1), so there
 is no `date_format`: `timestamp_format` covers every `datetime` column, and uses the same

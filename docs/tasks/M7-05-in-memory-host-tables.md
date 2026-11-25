@@ -2,7 +2,7 @@
 
 **Status:** todo
 **Depends on:** M2-13
-**Crates:** `datascript-engine`, `datascript-datafusion`, `datascript-compiler`, `datascript-sql` (if M6-03 is done)
+**Crates:** `datascript-engine`, `datascript-datafusion`, `datascript-compiler`
 **Diagnostic codes:** none expected (an unknown table is still DS1002)
 
 ## Goal
@@ -22,11 +22,16 @@ Both need this; do it once, first.
   equivalent), `register_source(name, SourceRef)` for the existing file case, and
   `deregister(name)`. Replacing a name is allowed.
 - Thread safety: a `Session` is shared between threads (D-011 makes the engine's futures `Send`;
-  hosts such as `ds ui` share one `Arc<Session>`). Registration must not race with a
+  the language server already shares one `Arc<Session>`, `crates/datascript-lsp/src/server.rs`). Registration must not race with a
   query that is being checked or run; say what a running query sees (the table as it was when the
   run started).
-- The session's schema cache (D-043) and the compiler's `SchemaProvider` must see a new or replaced
-  table at once: invalidate the name on every change.
+- Every cache must see a new or replaced table at once, so invalidate the name on every change in:
+  the session's schema cache (D-043), the compiler's `SchemaProvider`, and `DataFusionEngine`'s own
+  `resolved` map (`crates/datascript-datafusion/src/lib.rs`), keyed by `SourceRef::Table(name)`,
+  which `execute` reuses. A run already in progress keeps the `Arc<Resolved>` it took.
+- `sources::Resolved` holds only files (`files: Vec<SourceFile>` of `ListingTableUrl`s). Give it an
+  in-memory case (batches plus schema) that the scan turns into a `MemTable`. M2-24 (Excel reader)
+  needs the same case: whichever task lands second reuses the other's.
 - In-memory columns go through the same widening as file columns (LANGUAGE.md §5.1, D-012), so a
   pandas `int32` column is `long` and a `Timestamp(ns)` is `datetime`.
 - Host tables are listed with their schemas, for `.tables`-style listings. Offering them in
