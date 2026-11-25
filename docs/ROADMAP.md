@@ -76,5 +76,5 @@ Python package that returns Arrow, pandas and Polars results, and a C API for ev
 
 ## Explicitly later / unscheduled
 
-Query parameters, notebooks, materialized `let`,
+Hive-partitioned directories (Q-006), query parameters, notebooks, materialized `let`,
 additional engines beyond the SQL emitter, and localization of error messages.

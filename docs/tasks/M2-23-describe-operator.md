@@ -1,4 +1,4 @@
-# M2-24 — `describe` operator
+# M2-23 — `describe` operator
 
 **Status:** todo
 **Depends on:** M1-13, M2-13
@@ -30,10 +30,17 @@ row. The docs and hover must say so (see Scope).
   | `approx_unique` | `long` | approximate distinct count (HyperLogLog), so it is cheap on large inputs. Order-independent, so results are deterministic |
   | `min`, `max` | see below | |
   | `avg`, `std` | `real` | numbers only (`avg` of a timespan or datetime: decide, as for `avg`) |
-  | `q25`, `q50`, `q75` | see below | exact, nearest rank, as `percentile` (LANGUAGE.md §7) |
+  | `q25`, `q50`, `q75` | see below | approximate (t-digest, DataFusion's `approx_percentile_cont`), as DuckDB's `SUMMARIZE` |
 
   Cells that make no sense for a column's type (`avg` of a string) are null. On an empty input
   (0 rows), `null_percentage` is null, not `NaN`, and `count` and `approx_unique` are 0.
+- **Why approximate quantiles.** `percentile` is exact and keeps every value in memory
+  (`PercentileAccumulator` in `crates/datascript-datafusion/src/udaf.rs`). Three exact percentiles
+  per column would hold roughly every numeric and datetime value of the input, on exactly the large
+  unfamiliar files people run `describe` on. t-digest uses bounded memory. Its results can vary
+  slightly with how input is partitioned: golden tests either run with one partition or use inputs
+  small enough that t-digest is exact; say which in TESTING.md. Datetime quantiles go through
+  their integer value.
 - DataFusion's `approx_distinct` does not accept every Arrow type (check `Float64`, `Boolean`,
   `Timestamp` and `Duration`); cast such columns to a type it accepts, or compute the count
   another way, and test every DataScript type.
@@ -44,7 +51,7 @@ row. The docs and hover must say so (see Scope).
   (`getschema`'s `ColumnName`, `count`'s `Count`). These are snake_case on purpose, to match
   DuckDB and pandas users' expectations. Record the exception in DECISIONS.md, and add a note to
   LANGUAGE.md so later operators know which convention to follow. `output`'s summary columns
-  (M2-26) follow the same exception; whichever task lands first writes the entry and the other
+  (M2-25) follow the same exception; whichever task lands first writes the entry and the other
   extends it.
 - **Cost.** Lower it as one aggregate pass where possible (an unpivot of per-column aggregates),
   not one query per column. LANGUAGE.md, hover and completion docs say that `describe` reads every

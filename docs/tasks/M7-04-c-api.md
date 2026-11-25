@@ -1,6 +1,9 @@
 # M7-04 — C API
 
-**Status:** todo
+**Status:** blocked: waiting for a consumer. A stable C ABI is a long-term promise, and nothing
+planned uses it yet (Python binds Rust directly, Node uses WASM). Unblock it when a binding for
+another language (Go, R, Java, …) is planned or a user asks, and then check that the surface
+below fits that consumer.
 **Depends on:** M2-11, M2-13, M7-05
 **Crates:** `datascript-capi` (new), `datascript-engine`, `datascript-datafusion`
 **Diagnostic codes:** none (panics at the boundary are DS9001)

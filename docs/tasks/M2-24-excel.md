@@ -1,4 +1,4 @@
-# M2-25 — Excel reader and writer
+# M2-24 — Excel reader and writer
 
 **Status:** todo
 **Depends on:** M1-13, M2-09, M2-13, M2-26
