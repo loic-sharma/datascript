@@ -10,8 +10,7 @@
 workbooks, as DuckDB's excel extension does.
 
 ## Scope
-- `.xlsx` as an output extension (M2-25) and `write_xlsx` in M2-26's writer catalog (and in
-  `datascript-syntax`'s writer list). Options: `sheet` (default `Sheet1`) and `header` (default
+- `.xlsx` as an output extension (M2-25) and `write_xlsx` in M2-26's writer catalog. Options: `sheet` (default `Sheet1`) and `header` (default
   true).
 - Use `rust_xlsxwriter` (pure Rust). Check its license and turn off default features that are not
   needed. Its default timestamp in the workbook's metadata calls `SystemTime::now()`, which

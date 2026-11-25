@@ -103,8 +103,8 @@ Two shared files are touched by many tasks:
 | [M2-23](M2-23-describe-operator.md) | `describe` operator | M1-13, M2-13 | todo |
 | [M2-24](M2-24-excel-reader.md) | Excel reader | M1-13, M2-09, M2-13 | todo |
 | [M2-25](M2-25-output-operator.md) | `output` operator | M1-13, M2-13 | todo |
-| [M2-26](M2-26-writer-functions.md) | `output`: writer functions and options | M2-25, M2-27 | todo |
-| [M2-27](M2-27-output-parquet-safety.md) | `output`: Parquet, self-overwrite check and read-back help | M2-25 | todo |
+| [M2-26](M2-26-writer-functions.md) | `output`: writer functions, options and compression | M2-25, M2-27 | todo |
+| [M2-27](M2-27-output-parquet-safety.md) | `output`: Parquet, self-overwrite check and read-back check | M2-25 | todo |
 | [M2-28](M2-28-excel-writer.md) | Excel writer | M2-24, M2-26 | todo |
 
 ## M3 — Editor experience

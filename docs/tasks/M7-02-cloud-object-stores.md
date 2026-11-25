@@ -24,6 +24,8 @@ cloud object stores, with globs.
   access denied (names bucket and key), bucket not found, region mismatch. Diagnostics never
   contain secrets.
 - Same sandbox policy as M7-01 for `ds ui` and the LSP.
+- `--table` and the cache rules from M7-01 apply to these schemes too (`s3://`, `gs://`, `az://`,
+  `abfss://` are kept as they are, and remote schemas are kept in the REPL).
 - Out of scope: writing to object stores with `output` (M2-25). Not planned yet; do not add it
   here.
 - Update LANGUAGE.md §3.1.

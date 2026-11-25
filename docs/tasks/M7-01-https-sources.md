@@ -20,8 +20,20 @@ their contents are fetched by `registerFile`.
   `SourceRef::for_path` (`crates/datascript-compiler/src/source.rs`) must look only at the URL path.
 - `https://` and plain `http://` are both allowed, as in DuckDB; no credentials are ever sent, and
   the tests use a local `http://` server.
-- Schema caching: a remote schema is fetched once per session; say how the LSP and `ds ui` refresh
-  it (an ETag check, or a `.reload` command).
+- **Schema caching.** A remote schema is fetched once and kept:
+  - Add `allow_remote` to both cache keys, the session's `CacheKey`
+    (`crates/datascript-engine/src/session.rs`) and `DataFusionEngine`'s `SourceKey`
+    (`crates/datascript-datafusion/src/lib.rs`), as `sandbox` already is (D-043).
+  - The REPL clears every schema before each submission (D-048), which would mean an HTTP request
+    per query. Instead it keeps remote schemas; a new `.reload` command clears them. Local schemas
+    behave as today.
+  - The LSP and `ds ui` keep remote schemas for the session; `.reload` (REPL) and restarting are
+    the ways to refresh. ETag checks are not in this task.
+- **`--table` with a URL.** `ds --table orders=https://…` must keep the URL as it is: the CLI
+  makes table paths absolute with `std::path::absolute` (`crates/datascript-cli/src/main.rs`),
+  which would turn it into `<cwd>/https:/…`. Skip that for anything with a scheme.
+- Writing to a URL with `output` is refused by M2-25 (or by this task, if it lands first); this
+  task does not add remote writes.
 - Errors from this task's block: HTTP status (404 with the URL, 401/403 with a note that
   credentials are not supported here), DNS failure, timeout, TLS failure. Never include
   credentials or query-string secrets in a diagnostic.

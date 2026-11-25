@@ -2,7 +2,7 @@
 
 **Status:** todo
 **Depends on:** M1-13, M2-09, M2-13
-**Crates:** `datascript-syntax`, `datascript-compiler`, `datascript-datafusion`, `datascript-fixtures`, `editors/vscode`
+**Crates:** `datascript-syntax`, `datascript-compiler`, `datascript-datafusion`, `datascript-fixtures`
 **Diagnostic codes:** DS3080–DS3084 (D-018)
 
 ## Goal
@@ -15,7 +15,8 @@ Excel workbooks, as DuckDB's excel extension does. Writing workbooks is M2-28's.
   `header` (bool, default true) and `schema` (from M2-09).
 - `datascript-syntax` has its own `pub const READERS` (`crates/datascript-syntax/src/lib.rs`), and
   a test in `datascript-compiler` keeps it in step with `source::READERS`: add `read_xlsx` in both,
-  and to the TextMate grammar in `editors/vscode` if it highlights reader names.
+  so `read_xlsx(…)` at the start of a pipeline gets DS0150 like the other readers. (The TextMate
+  grammar highlights any `name(` as a function, so it needs no change.)
 - Use `calamine` (pure Rust). Check its license and add it with the minimum features.
 - **How it plugs in.** The other formats go through `Reader::listing_options()` and DataFusion's
   `infer_schema` (`crates/datascript-datafusion/src/sources.rs`), which need a DataFusion
@@ -30,6 +31,11 @@ Excel workbooks, as DuckDB's excel extension does. Writing workbooks is M2-28's.
 - Infer each column's type from its cells: `bool`, `long`, `real`, `datetime` (Excel dates),
   otherwise `string`. Mixed columns widen per LANGUAGE.md §4.2, or fall back to `string`.
 - Globs over `.xlsx` merge by column name, as for other formats.
+- `.xlsx.gz` and other compressed workbooks are DS3002, as `.parquet.gz` already is
+  (`format_of_path` in `crates/datascript-compiler/src/source.rs`); an `.xlsx` file is already
+  compressed.
+- Excel error cells (`#N/A`, `#DIV/0!`, `#REF!`, …) read as null. Decide whether to also warn, and
+  write the rule in LANGUAGE.md.
 - Source errors from this task's block: unknown sheet (did-you-mean over sheet names), invalid
   range, password-protected or corrupt workbook. `.xls` and `.xlsb` are DS3002 with help, unless
   calamine reads them for free (then decide, and document it).
@@ -38,7 +44,7 @@ Excel workbooks, as DuckDB's excel extension does. Writing workbooks is M2-28's.
 
 ## Acceptance criteria
 - [ ] Golden `run` cases: default sheet, named sheet, range, no header, a date column, a mixed
-      column, a glob of two workbooks and a `schema` override.
+      column, a glob of two workbooks, error cells and a `schema` override.
 - [ ] Golden error cases for each new code.
 - [ ] `datascript-datafusion` still passes its wasm32 check.
 

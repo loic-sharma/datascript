@@ -25,12 +25,20 @@ before that code runs. It does not parse rows or infer types.
     default (a header row).
   - the quote character, `"` or `'`: `'` only when it wraps fields that contain the delimiter.
 - **When it runs:** for `.csv`, `.tsv` and `read_csv(...)`. An option the user writes always wins,
-  and detection fills in only the options left out. `.tsv` still defaults to `\t` unless the data
-  clearly disagrees (decide, and write it down).
-- **One dialect per source.** Each file of a glob is sniffed, and all must agree. If two files
-  disagree, that is an error from this task's block naming both files and their delimiters, with
-  help to write `read_csv(…, delimiter = …)`. `Resolved` keeps a single `Reader`, so
-  `Resolved::uniform()` and the scan code do not change.
+  and detection fills in only the options left out. For `.tsv` the delimiter is always `\t` (a
+  one-column TSV with commas in its text must not be read as comma-separated); only the header and
+  the quote are sniffed.
+- **One dialect per source.** Each file of a glob is sniffed, and the source gets one dialect, so
+  `Resolved` keeps a single `Reader` and `Resolved::uniform()` and the scan code do not change.
+  Agreement is per attribute:
+  - **Delimiter:** files that give a clear answer must agree. If two disagree, that is an error
+    from this task's block naming both files and their delimiters, with help to write
+    `read_csv(…, delimiter = …)`.
+  - **Header and quote:** the first file (in sorted order) that gives a clear answer decides; the
+    others follow it. A file with no delimiter inside quotes says nothing about the quote, so a
+    glob of single-quoted files is not rejected because one file never needed quoting.
+  - Files with 0 or 1 rows give no answer for any attribute. If no file gives one, the defaults
+    apply (comma, a header row, `"`).
 - **Reading the sample** goes through the object store, not `std::fs`, so the same code works on
   wasm32 (unlike `is_json_array`, which M5-01 already has to fix). Compressed files (`.csv.gz`, …)
   are decompressed before sniffing.
@@ -50,7 +58,10 @@ dialects (needs a reader per file).
 - [ ] Golden `run` cases over new fixtures: semicolon-delimited, pipe-delimited, tab-delimited
       with a `.csv` extension, no header row, single-quoted fields, a gzip-compressed
       semicolon-delimited file, and a glob of two semicolon-delimited files.
-- [ ] A golden `check` case for a glob whose files use different delimiters (this task's error).
+- [ ] A golden `check` case for a glob whose files use different delimiters (this task's error),
+      and a golden `run` case for a glob of single-quoted files where only one file has a quoted
+      delimiter, plus one with a one-row file.
+- [ ] A golden `run` case for a `.tsv` file whose single column contains commas.
 - [ ] Writing `delimiter`, `header` or `quote` turns off detection for that option (golden case).
 - [ ] The sniffer has unit tests over byte slices, including the tie order and a single-column
       file, and `datascript-datafusion` still passes its wasm32 check.

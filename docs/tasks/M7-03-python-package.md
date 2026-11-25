@@ -29,12 +29,22 @@ ds.run("from orders | top 5 by amount desc", tables={"orders": my_dataframe})
   calls, plus top-level `run`/`check` helpers on a default connection. `let`s do **not** persist
   between calls, matching `Session` and the C API: only the REPL keeps them (`ReplSession` in
   `datascript-cli`, D-048). To reuse a result, register it as a table
-  (`con.register("top", result.arrow())`). A script with several queries returns one result
-  per query statement. Streaming: iterate batches without collecting (from `RunStream`, D-055).
+  (`con.register("top", result.arrow())`).
+- **One query or many.** `run(text)` returns one `Result` and raises if the script has more than
+  one query statement, with help pointing at `run_all`. `run_all(text)` returns a list, one
+  `Result` per query statement. No union return type. Streaming: iterate a result's batches
+  without collecting (from `RunStream`, D-055).
 - `check(text)` returns diagnostics as objects (code, severity, message, spans, help). A failed
   `run` raises `DataScriptError` carrying those diagnostics and the rendered text, so the error
   in a notebook looks like the CLI's.
-- Release the GIL while a query runs; Ctrl-C cancels it (dropping the stream, D-055).
+- Release the GIL while a query runs. Python owns `SIGINT`, so Ctrl-C cannot be caught with
+  `tokio::signal::ctrl_c()` as the REPL does: while the query runs, poll
+  `Python::check_signals()` (re-acquiring the GIL briefly every ~100 ms), and on
+  `KeyboardInterrupt` drop the stream to cancel the query (D-055) and re-raise.
+- **`unsafe` lint.** The workspace sets `unsafe_code = "forbid"` (root `Cargo.toml`), and PyO3's
+  macros expand to `unsafe` code. Give `datascript-python` its own lint settings instead of
+  `[lints] workspace = true`, keeping `forbid` for every other crate, and say why in its
+  `Cargo.toml`.
 - Type stubs (`.pyi`), and Jupyter `_repr_html_` for results.
 - **Workspace linking.** PyO3's `extension-module` feature breaks `cargo test --workspace` linking
   on macOS and Linux when it is on by default. Put it behind a cargo feature that only maturin
@@ -44,8 +54,8 @@ ds.run("from orders | top 5 by amount desc", tables={"orders": my_dataframe})
   "Carried over").
 
 ## Acceptance criteria
-- [ ] pytest suite in CI: run, check, host tables from pandas, Polars and pyarrow, several queries,
-      errors with diagnostics, and cancellation.
+- [ ] pytest suite in CI: run, `run_all`, `run` on a script with two queries (raises), check, host
+      tables from pandas, Polars and pyarrow, errors with diagnostics, and Ctrl-C cancellation.
 - [ ] `maturin build` produces wheels for the three platforms in CI (dry run; nothing published).
 - [ ] Docs page with the examples above.
 

@@ -146,8 +146,8 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS0290–DS0294 | M2-23 `describe` operator |
 | DS3080–DS3084 | M2-24 Excel reader |
 | DS0295–DS0299, DS3090–DS3092, DS4065–DS4069 | M2-25 `output` operator |
-| DS2330–DS2339 | M2-26 `output` writer functions and options |
-| DS3093–DS3099 | M2-27 `output`: Parquet, self-overwrite check and read-back help |
+| DS2330–DS2339 | M2-26 `output` writer functions, options and compression |
+| DS3093–DS3099 | M2-27 `output`: Parquet, self-overwrite check and read-back check |
 | DS3085–DS3089 | M2-28 Excel writer |
 | DS3100–DS3119 | M7-01 HTTPS sources |
 | DS3120–DS3139 | M7-02 S3, GCS and Azure sources |

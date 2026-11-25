@@ -2,7 +2,9 @@
 
 **Status:** todo
 **Depends on:** M2-13
-**Crates:** `datascript-engine`, `datascript-datafusion`, `datascript-compiler`
+**Crates:** `datascript-engine`, `datascript-datafusion`, and possibly `datascript-compiler` (the
+session implements the compiler's `SchemaProvider`; check whether clearing its cache needs any
+compiler change, and drop the crate if not)
 **Diagnostic codes:** none expected (an unknown table is still DS1002)
 
 ## Goal
