@@ -28,4 +28,7 @@ Write the final API into ARCHITECTURE.md § WASM constraints and the API contrac
 ## Acceptance criteria
 - [ ] Generated `.d.ts` plus hand-written docs. Vitest tests in Node and in a browser.
 
+## Carried over
+- [ ] (from planning, 2026-11-24) If M2-26 is done, `output` writes into the registered-file store; report written files from `run` (path, format, rows) so the UI can offer a download, with a Vitest test. (If M2-26 lands after this task, M2-26 does it.)
+
 ## Follow-ups
