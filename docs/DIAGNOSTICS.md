@@ -142,6 +142,14 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS2320–DS2329 | M2-20 conversions that can never succeed |
 | DS3060–DS3064 | M2-12 runtime read errors (none expected; DS3008 is reused) |
 | DS3065–DS3069, DS4060–DS4064 | M4-01 local web UI server (Q-007's "results truncated" info diagnostic; DS3007 above) |
+| DS3070–DS3074 | M2-22 CSV sniffing |
+| DS1085–DS1089, DS3075–DS3079 | M2-23 Hive-partitioned directories |
+| DS0290–DS0294 | M2-24 `describe` operator |
+| DS3080–DS3089 | M2-25 Excel reader and writer |
+| DS0295–DS0299, DS2330–DS2339, DS3090–DS3094, DS4065–DS4069 | M2-26 `output` operator |
+| DS3095–DS3099 | M2-27 `output` options |
+| DS3100–DS3119 | M7-01 HTTPS sources |
+| DS3120–DS3139 | M7-02 S3, GCS and Azure sources |
 
 **Retired codes**: DS0127 (D-059), DS2007 (D-020), DS2101 (D-050). List them here when a code is retired.
 
