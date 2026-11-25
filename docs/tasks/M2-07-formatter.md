@@ -123,16 +123,18 @@ comments verbatim.
     exceeds 100 columns, contains comments, or has a trailing `,`.
   - **`summarize`:** Stays on one line if it fits and has no comments or trailing `,` in either
     list; when wrapped:
-    - Aggregates indent **+4 spaces** (+2 under `summarize`), whether or not a `by` clause is
-      present.
+    - Aggregates go **one per line** at **+4 spaces** (+2 under `summarize`), whether or not a `by`
+      clause is present. A wrapped aggregate list never reflows back onto one line, even if all
+      aggregates would fit at +4 (same as list-taking operators, which wrap one item per line).
     - When both aggregates and `by` are present, `by` aligns under `summarize` at **+2 spaces**, and
       `by` keys stay on the `  by ...` line if it fits within 100 columns (with no comments, no
-      trailing `,`, and no multi-line expressions), or wrap to **+4 spaces** (+2 under `by`)
-      otherwise. (Per D-059, `by = expr` is a named aggregate rather than a `by` clause, so
-      `summarize sum(amount), by = count()` has no trailing comma and stays single-line when it
-      fits.)
+      trailing `,`, and no multi-line expressions), or wrap one key per line at **+4 spaces** (+2
+      under `by`) otherwise. (Per D-059, `by = expr` is a named aggregate rather than a `by`
+      clause, so `summarize sum(amount), by = count()` has no trailing comma and stays
+      single-line when it fits.)
     - A `by`-only `summarize` (`| summarize by ...`) exceeding 100 columns, containing comments, or
-      ending with a trailing `,` breaks after `by` with keys at **+2 spaces** (matching `| sort by`).
+      ending with a trailing `,` breaks after `by` with one key per line at **+2 spaces** (matching
+      `| sort by`).
   - **`top N by`:** Stays on one line if it fits; if the sort key exceeds 100 columns, break after
     `by` and indent the sort key +2 spaces (wrapping inside the key expression if it still exceeds
     100 columns).
@@ -181,8 +183,10 @@ comments verbatim.
   - Standalone comments before a pipeline stage stay directly above the following `| <operator>` at
     the same indentation level.
   - Inline `/* ... */` comments mid-expression stay in place separated by a single space from
-    adjacent tokens (`where a /* note */ > 1`) without forcing a line break unless the comment is
-    multi-line.
+    adjacent tokens (`where a /* note */ > 1`) without forcing a line break *within that
+    expression* unless the comment is multi-line. They are still internal comments, so a pipeline
+    containing one formats multi-line (one `| <operator>` per line); only a trailing end-of-line
+    comment leaves a single-line statement on one line.
 - **Syntax errors:** If the lexer or parser produces any **error-severity** diagnostic, refuse to
   format, report the diagnostics, and leave the file untouched. Non-error diagnostics (such as
   warning `DS0004` on a `let`-only script) do not block formatting.
@@ -226,9 +230,7 @@ keeping `from <source>` on line 1:
 
 Before:
 ```ds
-from
-  orders
-  | where   amount>100   and  status=='paid'|project orderId ,customerId,amount,timestamp|sort by timestamp desc|take   10
+from   orders | where   amount>100   and  status=='paid'|project orderId ,customerId,amount,timestamp|sort by timestamp desc|take   10
 ```
 
 After:
@@ -784,7 +786,8 @@ from 'orders_2023.parquet' | union 'orders_2024.parquet', 'orders_2025.parquet'
 ```
 
 When a `union` stage exceeds 100 columns, a single parenthesized pipeline hugs `| union (`
-(single-item hugging) and multiple targets wrap one per line at +2 indent:
+(single-item hugging) and multiple targets wrap one per line at +2 indent. Each wrapped target is
+then re-measured at its new indentation, so a parenthesized pipeline that fits there stays inline:
 
 Before:
 ```ds
@@ -807,11 +810,7 @@ from 'orders_2023.parquet'
 | where amount > 0
 | union
   'orders_2024.parquet',
-  (
-    from 'orders_2025.parquet'
-    | where amount > 0 and status == "paid"
-    | project-away notes
-  )
+  (from 'orders_2025.parquet' | where amount > 0 and status == "paid" | project-away notes)
 ```
 
 Parenthesized pipelines at the head of a query follow the same outermost-first rule (short stays
@@ -1026,9 +1025,10 @@ from 'orders.csv' // raw export
 
 #### Inline block comments and comments inside multi-line constructs
 
-Inline `/* ... */` comments stay in place with a single space on each side without forcing line
-breaks. Any comment inside a list, subquery, `summarize`, or `case(...)` forces multi-line layout
-and stays attached to its item (with `summarize` using +4/+2/+4 indentation):
+Inline `/* ... */` comments stay in place with a single space on each side without breaking the
+expression they sit in, though as internal comments they keep the pipeline multi-line. Any comment
+inside a list, subquery, `summarize`, or `case(...)` forces multi-line layout and stays attached
+to its item (with `summarize` using +4/+2/+4 indentation):
 
 Before:
 ```ds
@@ -1078,6 +1078,22 @@ from orders
     revenue = sum(net)
   by
     tier // grouping key
+```
+
+An inline block comment in a pipeline written on one line still expands the pipeline, because it is
+an internal comment rather than a trailing end-of-line comment; the comment's own expression is not
+broken:
+
+Before:
+```ds
+from orders | where amount /* exclude zero */ > 0 | take 5
+```
+
+After:
+```ds
+from orders
+| where amount /* exclude zero */ > 0
+| take 5
 ```
 
 #### Collapsing excessive blank lines vs removing stray blank lines
