@@ -670,6 +670,38 @@ fn signature_help_positional_and_multi_signature() {
         Some(1)
     );
 
+    // `repeat.min > 0` wraparound and `trailing` (`case`, `strcat`).
+    let help = signature_at("from 'orders.csv' | extend s = case(amount > 1, 'a', amount > 0, ‸)")
+        .unwrap();
+    assert_eq!(help.active_argument, 3);
+    assert_eq!(
+        help.signatures[help.active_signature].active_parameter,
+        Some(1)
+    );
+    let help =
+        signature_at("from 'orders.csv' | extend s = case(amount > 1, 'a', am‸ount > 0, 'b', 'c')")
+            .unwrap();
+    assert_eq!(help.active_argument, 2);
+    assert_eq!(
+        help.signatures[help.active_signature].active_parameter,
+        Some(0)
+    );
+    let help =
+        signature_at("from 'orders.csv' | extend s = case(amount > 1, 'a', amount > 0, 'b', '‸c')")
+            .unwrap();
+    assert_eq!(help.active_argument, 4);
+    assert_eq!(
+        help.signatures[help.active_signature].active_parameter,
+        Some(2)
+    );
+    let help =
+        signature_at("from 'orders.csv' | extend s = strcat(orderId, customerId, ‸)").unwrap();
+    assert_eq!(help.active_argument, 2);
+    assert_eq!(
+        help.signatures[help.active_signature].active_parameter,
+        Some(0)
+    );
+
     // Multi-signature builtins: `sumif` and `percentile`.
     let help = signature_at("from 'orders.csv' | summarize sumif(‸)").unwrap();
     assert_eq!(help.signatures.len(), 2);
@@ -762,6 +794,23 @@ fn join_on_left_and_right_completion_and_hover() {
         ["id", "customerId", "name", "['full name']"]
     );
     assert_eq!((c.start, c.end), (71, 73));
+
+    // Completion and hover still resolve `$right.` when editing a multi-key join before `,`.
+    let c = completions_with(
+        "from 'orders.csv' | join 'customers.csv' on $left.customerId == $right.‸, $left.orderId == $right.id",
+        &JoinTables,
+    );
+    assert_eq!(
+        labels_of(&c, CompletionKind::Column),
+        ["id", "customerId", "name", "['full name']"]
+    );
+    assert_eq!(
+        hover_join(
+            "from 'orders.csv' | join 'customers.csv' on $left.customerId == $right., $left.orderId == $right.i‸d"
+        )
+        .as_deref(),
+        Some("```ds\nid: string\n```\ncolumn")
+    );
 
     // Parenthesized pipeline and tabular `let` on the right side.
     let c = completions_with(

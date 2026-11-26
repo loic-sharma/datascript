@@ -125,6 +125,9 @@ fn active_param_index(sig: &Signature, active: usize, n: usize) -> Option<usize>
             (index < sig.required.len() + sig.trailing.len() + sig.optional.len()).then_some(index)
         }
         Some(repeat) => {
+            if repeat.params.is_empty() {
+                return None;
+            }
             let repeat_shown = repeat.min * repeat.params.len();
             let trailing_start = n - sig.trailing.len();
             if active >= trailing_start {

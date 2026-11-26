@@ -350,6 +350,17 @@ impl<'a> Binder<'a> {
                 | Operator::Render(_) => columns.clone(),
                 Operator::Count(_) => Some(Self::count_columns()),
                 Operator::GetSchema(_) => Some(Self::getschema_columns()),
+                Operator::Join(join) => {
+                    // Still record the right table's stage schema so `$right.` completion and
+                    // hover work while editing `on` (e.g. `$right., ...`), without cascading
+                    // semantic errors onto a syntactically broken `join`.
+                    if let Some(right) = join.right() {
+                        let saved = self.diagnostics.len();
+                        self.bind_source(&right);
+                        self.diagnostics.truncate(saved);
+                    }
+                    None
+                }
                 _ => None,
             };
             return (Op::Error, after);

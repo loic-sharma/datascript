@@ -384,12 +384,15 @@ fn long_line_wide_char_straddling_window_start() {
     let d = Diagnostic::error(codes::DS1001, "unknown column `target`")
         .primary(span, "no column named `target` here");
     let out = plain(&d, &sources);
-    let lines: Vec<&str> = out.lines().collect();
-    let source = lines[3];
-    let marker = lines[4];
-    let target_col = datascript_diagnostics::text_width(&source[..source.find("target").unwrap()]);
-    let caret_col = datascript_diagnostics::text_width(&marker[..marker.find('^').unwrap()]);
-    assert_eq!(caret_col, target_col, "carets shifted:\n{out}");
-    assert_eq!(marker.matches('^').count(), "target".len(), "{out}");
+    for rendered in [&out, &terminal(&d, &sources)] {
+        let lines: Vec<&str> = rendered.lines().collect();
+        let source = lines[3];
+        let marker = lines[4];
+        let target_col =
+            datascript_diagnostics::text_width(&source[..source.find("target").unwrap()]);
+        let caret_col = datascript_diagnostics::text_width(&marker[..marker.find('^').unwrap()]);
+        assert_eq!(caret_col, target_col, "carets shifted:\n{rendered}");
+        assert_eq!(marker.matches('^').count(), "target".len(), "{rendered}");
+    }
     insta::assert_snapshot!("long_line_wide_straddle_plain", out);
 }
