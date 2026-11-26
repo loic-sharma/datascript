@@ -322,3 +322,174 @@ fn ds2103_fix_silences_the_warning() {
     );
     assert_eq!(codes_of(&fixed), Vec::new());
 }
+
+/// Did-you-mean edits quote names that contain spaces or are reserved words.
+#[test]
+fn did_you_mean_edits_quote_names() {
+    struct WeirdNames;
+    impl SchemaProvider for WeirdNames {
+        fn schema_of(&self, source: &SourceRef) -> SchemaLookup {
+            match source {
+                SourceRef::Path(path) if path == "t.csv" => {
+                    SchemaLookup::Ready(Arc::new(Schema::new(vec![
+                        Field::new("order date", DataType::Utf8, true),
+                        Field::new("null", DataType::Int64, true),
+                        Field::new("id", DataType::Int64, true),
+                    ])))
+                }
+                _ => SchemaLookup::Failed(SourceError::NotFound { nearby: Vec::new() }),
+            }
+        }
+    }
+
+    let apply_fix = |text: &str, expected_code: datascript_diagnostics::Code, want_edit: &str| {
+        let analysis = check(
+            &SourceFile::new("q.ds", text),
+            FileId(0),
+            &WeirdNames,
+            &Capabilities::full(),
+        );
+        let d = analysis
+            .diagnostics
+            .iter()
+            .find(|d| d.code == expected_code)
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected {expected_code} for `{text}`, got {:?}",
+                    analysis.diagnostics
+                )
+            });
+        let suggestion = d
+            .help
+            .iter()
+            .find_map(|h| h.suggestion.as_ref())
+            .unwrap_or_else(|| panic!("expected suggestion on {d:?}"));
+        assert_eq!(suggestion.edits.len(), 1);
+        assert_eq!(suggestion.edits[0].replacement, want_edit, "for `{text}`");
+        let mut fixed = text.to_string();
+        fixed.replace_range(
+            suggestion.edits[0].span.range(),
+            &suggestion.edits[0].replacement,
+        );
+        let rechecked = check(
+            &SourceFile::new("q.ds", &fixed),
+            FileId(0),
+            &WeirdNames,
+            &Capabilities::full(),
+        );
+        assert!(
+            !rechecked.has_errors(),
+            "fixed query `{fixed}` still has errors: {:?}",
+            rechecked.diagnostics
+        );
+    };
+
+    // Binder::unknown_column
+    apply_fix(
+        "from 't.csv' | project order_date",
+        codes::DS1001,
+        "['order date']",
+    );
+    apply_fix("from 't.csv' | project nul", codes::DS1001, "['null']");
+
+    // Binder::unknown_name
+    apply_fix(
+        "let ['my val'] = 1;\nlet x = my_val;\nfrom 't.csv'",
+        codes::DS1002,
+        "['my val']",
+    );
+    apply_fix(
+        "let ['null'] = 1;\nlet x = nul;\nfrom 't.csv'",
+        codes::DS1002,
+        "['null']",
+    );
+
+    // Binder::missing_key (join ... on key)
+    apply_fix(
+        "from 't.csv' | join 't.csv' on order_date",
+        codes::DS1001,
+        "['order date']",
+    );
+    apply_fix(
+        "from 't.csv' | join 't.csv' on nul",
+        codes::DS1001,
+        "['null']",
+    );
+
+    // Binder::missing_column (join ... on $left.a == $right.b)
+    apply_fix(
+        "from 't.csv' | join 't.csv' on $left.order_date == $right.['order date']",
+        codes::DS1001,
+        "['order date']",
+    );
+    apply_fix(
+        "from 't.csv' | join 't.csv' on $left.['null'] == $right.nul",
+        codes::DS1001,
+        "['null']",
+    );
+
+    // Binder::unknown_table
+    apply_fix(
+        "let ['my table'] = from 't.csv';\nfrom my_table",
+        codes::DS1002,
+        "['my table']",
+    );
+    apply_fix(
+        "let ['true'] = from 't.csv';\nfrom tru",
+        codes::DS1002,
+        "['true']",
+    );
+}
+
+/// `Analysis::stage_schemas` preserves Arrow-only types instead of turning them into `Null`.
+#[test]
+fn stage_schemas_preserve_arrow_only_types() {
+    struct Nested;
+    impl SchemaProvider for Nested {
+        fn schema_of(&self, _: &SourceRef) -> SchemaLookup {
+            let item = Arc::new(Field::new("item", DataType::Int64, true));
+            SchemaLookup::Ready(Arc::new(Schema::new(vec![
+                Field::new("id", DataType::Int64, true),
+                Field::new("tags", DataType::List(item), true),
+            ])))
+        }
+    }
+    let list_type = DataType::List(Arc::new(Field::new("item", DataType::Int64, true)));
+    let text = "from 'x.csv' | project id, tags | project-rename t = tags";
+    let analysis = check(
+        &SourceFile::new("q", text),
+        FileId(0),
+        &Nested,
+        &Capabilities::full(),
+    );
+    assert!(
+        analysis.diagnostics.is_empty(),
+        "{:?}",
+        analysis.diagnostics
+    );
+    assert_eq!(analysis.stage_schemas.len(), 3);
+    assert_eq!(
+        analysis.stage_schemas[0]
+            .schema
+            .field_with_name("tags")
+            .unwrap()
+            .data_type(),
+        &list_type
+    );
+    assert_eq!(
+        analysis.stage_schemas[1]
+            .schema
+            .field_with_name("tags")
+            .unwrap()
+            .data_type(),
+        &list_type
+    );
+    assert_eq!(
+        analysis.stage_schemas[2]
+            .schema
+            .field_with_name("t")
+            .unwrap()
+            .data_type(),
+        &list_type
+    );
+}

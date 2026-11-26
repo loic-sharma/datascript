@@ -371,3 +371,28 @@ fn json_snapshot() {
     let (d, sources) = cannot_add();
     insta::assert_snapshot!(render_json(&[d], &sources));
 }
+
+#[test]
+fn long_line_wide_char_straddling_window_start() {
+    let mut sources = SourceMap::new();
+    // Each `李` is 2 display columns, starting at odd columns 1, 3, ..., 89.
+    // `target` starts at column 94, so window.start = 94 - 40 = 54, which falls in the middle
+    // of the `李` occupying columns 53..55.
+    let text = format!("a{} + target + {}\n", "李".repeat(45), "b".repeat(60));
+    let f = sources.add("query.ds", text.as_str());
+    let span = find(&sources, f, "target", 0);
+    let d = Diagnostic::error(codes::DS1001, "unknown column `target`")
+        .primary(span, "no column named `target` here");
+    let out = plain(&d, &sources);
+    for rendered in [&out, &terminal(&d, &sources)] {
+        let lines: Vec<&str> = rendered.lines().collect();
+        let source = lines[3];
+        let marker = lines[4];
+        let target_col =
+            datascript_diagnostics::text_width(&source[..source.find("target").unwrap()]);
+        let caret_col = datascript_diagnostics::text_width(&marker[..marker.find('^').unwrap()]);
+        assert_eq!(caret_col, target_col, "carets shifted:\n{rendered}");
+        assert_eq!(marker.matches('^').count(), "target".len(), "{rendered}");
+    }
+    insta::assert_snapshot!("long_line_wide_straddle_plain", out);
+}

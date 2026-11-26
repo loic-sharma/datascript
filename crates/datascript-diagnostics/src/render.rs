@@ -521,7 +521,8 @@ fn char_width(c: char) -> usize {
 }
 
 /// The characters of `text` (tabs already expanded) in display columns `start..end`. A wide
-/// character that straddles the start is left out, one that straddles the end is kept.
+/// character that straddles `start` is replaced by a space so later columns stay aligned with
+/// their carets; one that straddles `end` is kept.
 fn slice_columns(text: &str, start: usize, end: usize) -> String {
     let mut column = 0;
     let mut out = String::new();
@@ -529,10 +530,15 @@ fn slice_columns(text: &str, start: usize, end: usize) -> String {
         if column >= end {
             break;
         }
+        let width = char_width(c);
         if column >= start {
             out.push(c);
+        } else if column + width > start {
+            for _ in start..end.min(column + width) {
+                out.push(' ');
+            }
         }
-        column += char_width(c);
+        column += width;
     }
     out
 }

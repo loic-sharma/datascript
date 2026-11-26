@@ -105,12 +105,7 @@ fn info(name: &str, doc: &str, sig: &Signature, active: usize, written: usize) -
     let max = sig.max_args();
     let arity = (written.max(active + 1)..=max.unwrap_or(written.max(active + 1) + 8))
         .find(|&n| sig.accepts_arity(n));
-    let active_parameter = arity.and_then(|n| {
-        let param = sig.param_for(active, n);
-        displayed_params(sig)
-            .iter()
-            .position(|p| p.name == param.name)
-    });
+    let active_parameter = arity.and_then(|n| active_param_index(sig, active, n));
     SignatureInfo {
         label,
         documentation: doc.to_owned(),
@@ -119,11 +114,51 @@ fn info(name: &str, doc: &str, sig: &Signature, active: usize, written: usize) -
     }
 }
 
-/// The parameters in the order [`Signature::display`] shows them, a repeated group once.
+/// The index in [`displayed_params`] that argument `active` binds to in a call of arity `n`.
+fn active_param_index(sig: &Signature, active: usize, n: usize) -> Option<usize> {
+    if active < sig.required.len() {
+        return Some(active);
+    }
+    match &sig.repeat {
+        None => {
+            let index = sig.required.len() + sig.trailing.len() + (active - sig.required.len());
+            (index < sig.required.len() + sig.trailing.len() + sig.optional.len()).then_some(index)
+        }
+        Some(repeat) => {
+            if repeat.params.is_empty() {
+                return None;
+            }
+            let repeat_shown = repeat.min * repeat.params.len();
+            let trailing_start = n - sig.trailing.len();
+            if active >= trailing_start {
+                Some(sig.required.len() + repeat_shown + (active - trailing_start))
+            } else {
+                let in_repeat = active - sig.required.len();
+                if repeat.min > 0 {
+                    let shown_pos = if in_repeat < repeat_shown {
+                        in_repeat
+                    } else {
+                        (repeat.min - 1) * repeat.params.len() + (in_repeat % repeat.params.len())
+                    };
+                    Some(sig.required.len() + shown_pos)
+                } else {
+                    // When `min == 0`, the repeated group is shown only as `...` after the
+                    // required parameters (e.g. `coalesce(value: T, value: T, ...)`).
+                    let base = sig.required.len().checked_sub(repeat.params.len())?;
+                    Some(base + (in_repeat % repeat.params.len()))
+                }
+            }
+        }
+    }
+}
+
+/// The parameters in the order [`Signature::display`] shows them.
 fn displayed_params(sig: &Signature) -> Vec<&Param> {
     let mut out: Vec<&Param> = sig.required.iter().collect();
     if let Some(repeat) = &sig.repeat {
-        out.extend(&repeat.params);
+        for _ in 0..repeat.min {
+            out.extend(&repeat.params);
+        }
     }
     out.extend(&sig.trailing);
     out.extend(&sig.optional);

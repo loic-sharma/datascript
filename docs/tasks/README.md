@@ -109,7 +109,7 @@ Two shared files are touched by many tasks:
 | [M2-29](M2-29-engine-datafusion-integration-tests.md) | Engine and DataFusion integration tests | M2-15 | todo |
 | [M2-30](M2-30-compiler-harness-ci-test-gaps.md) | Golden harness, CI and testing-docs gaps | M2-32 | todo |
 | [M2-31](M2-31-cli-repl-test-improvements.md) | CLI and REPL bug fixes and test hygiene | M2-16, M3-07 | todo |
-| [M2-32](M2-32-compiler-ide-bug-fixes.md) | Compiler, IDE and diagnostics bug fixes from the test audit | — | todo |
+| [M2-32](M2-32-compiler-ide-bug-fixes.md) | Compiler, IDE and diagnostics bug fixes from the test audit | — | done |
 
 ## M3 — Editor experience
 

@@ -6,6 +6,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use datascript_diagnostics::codes::{DS1001, DS1005, DS1032, DS2003, DS2030};
 use datascript_diagnostics::{Diagnostic, Span, Suggestion, did_you_mean};
 use datascript_syntax::ast::{self, AstNode, SortDirection};
+use datascript_syntax::display_name;
 
 use super::{Agg, Binder, Cols, Cx};
 use crate::Type;
@@ -661,7 +662,7 @@ impl Binder<'_> {
         if let Some(best) = suggestions.single() {
             d = d.help_with(
                 format!("a column with a similar name exists: `{best}`"),
-                Suggestion::replace(span, best),
+                Suggestion::replace(span, display_name(best)),
             );
         }
         let note = if names.is_empty() {
