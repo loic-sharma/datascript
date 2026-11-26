@@ -181,8 +181,8 @@ Within M2, M2-19 edits `list()` in `datascript-syntax` (`grammar.rs`) and should
 with M2-01, M2-03, M2-04 or M2-05 (prefer landing M2-19 first).
 
 M2-29, M2-31, M2-32 and M3-10 can run in parallel: they touch `datascript-datafusion`/
-`datascript-engine` tests; `datascript-cli`; `datascript-compiler`/`datascript-diagnostics`; and
-`datascript-lsp`/`lsp_run.rs`/`editors/vscode`. M2-30 waits for M2-32, because verifying compiler
-fixes in the golden harness fails on M2-32's unquoted did-you-mean edits. M2-31 and M3-10 both
-edit `crates/datascript-cli` (`main.rs` and `Cargo.toml` respectively); coordinate if both run at
-once.
+`datascript-engine` tests; `datascript-cli`; `datascript-compiler`/`datascript-diagnostics` (and
+one test in `datascript-syntax`); and `datascript-lsp`/`lsp_run.rs`/`editors/vscode`. M2-30 waits
+for M2-32, because verifying compiler fixes in the golden harness fails on M2-32's unquoted
+did-you-mean edits. M2-31 and M3-10 both edit `crates/datascript-cli` (`main.rs` and `Cargo.toml`
+respectively); coordinate if both run at once.

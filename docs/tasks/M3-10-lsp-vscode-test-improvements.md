@@ -34,8 +34,11 @@ claims, Windows coverage, and a guard-order bug in `runStatement()`.
 - [ ] `datascript/run` turns a panic into `DS9001` without taking the server down.
 
 ### Stdio parity (`crates/datascript-cli/tests/lsp_run.rs`)
-- [ ] Replace the Unix-only `uri_of` with `Uri::from_file_path` and drop
-      `#[cfg_attr(windows, ignore)]`, so Windows CI runs it.
+- [ ] Replace the Unix-only `uri_of` with `tower_lsp_server::ls_types::Uri::from_file_path` and
+      drop `#[cfg_attr(windows, ignore)]`, so Windows CI runs it. `datascript-cli` does not depend
+      on `tower-lsp-server` and `datascript-lsp` does not re-export `Uri`: add
+      `tower-lsp-server.workspace = true` to `[dev-dependencies]` in
+      `crates/datascript-cli/Cargo.toml`.
 - [ ] Pipe `ds lsp` stderr and assert it is empty; end with `shutdown` + `exit` and assert the
       process exits on its own.
 

@@ -2,7 +2,7 @@
 
 **Status:** todo
 **Depends on:** —
-**Crates:** `datascript-compiler`, `datascript-diagnostics`, `datascript-syntax`
+**Crates:** `datascript-compiler`, `datascript-diagnostics`, `datascript-syntax` (`tests/textmate_tokens.rs` only)
 **Diagnostic codes:** none (fixes to existing behaviour only; D-018).
 
 ## Goal
@@ -25,9 +25,10 @@ regression test that fails before the fix.
       finds `active_parameter` by parameter *name*, and every `coalesce` parameter is named
       `value`. Match by position. Test `coalesce` and one or two other multi-signature builtins
       (`sumif`, `percentile`).
-- [ ] **`$right.` inside `join ... on` completes left-side columns.** `ide::complete` passes
-      `doc.input_of(op)` for the whole `on` expression. After `$right.` offer the right table's
-      columns; after `$left.` the left side's.
+- [ ] **`$right.` inside `join ... on` resolves against the left side.** `ide::complete` and
+      `ide::hover` both use `doc.input_of(op)` for the whole `on` expression. After `$right.`,
+      completion should offer the right table's columns and hover should describe the right
+      table's column; `$left.` uses the left side.
 - [ ] **Wide characters shift carets in long-line windows.** `slice_columns` in
       `datascript-diagnostics/src/render.rs` drops a 2-column character that straddles
       `window.start` without padding, so everything after it moves one column left of its caret.

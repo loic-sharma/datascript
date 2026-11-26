@@ -19,8 +19,11 @@ edits.
 
 ### Golden harness (`crates/datascript-tests`)
 - [ ] **Verify compiler fixes.** In `PipelineDriver::check`, apply `MachineApplicable`
-      suggestions with `apply_suggestions`, re-run `check`, and require that the result parses
-      and no longer has the diagnostic, as `PipelineDriver::syntax` already does.
+      suggestions with `apply_suggestions` and re-run `check` on the result. Fail the case
+      (`DriverError::Failed`) if the fixed query has parse errors or still has a diagnostic with
+      the same code at the fixed location. Other diagnostics may remain (recovery cases have
+      several errors). This is an assertion only: unlike `PipelineDriver::syntax`, it adds nothing
+      to the expected output, so existing `mode: check` files do not change.
 - [ ] **Code coverage matrix.** A test that scans `tests/cases/**/*.dstest` and fails if a
       `CodeStatus::Active` code in `codes::REGISTRY` appears in none of them, except an explicit
       allowlist with a reason per code (`DS4002`, `DS5001`, `DS9001`).

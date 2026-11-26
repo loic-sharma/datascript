@@ -12,7 +12,7 @@ cross-format coverage of edge types. Add focused integration suites that run the
 a small set of golden `mode: run` cases for branches the lowering owns.
 
 The sandbox (`DS3007`) bugs and tests found by the same audit belong to
-[M4-01](M4-01-local-ui-server.md), which owns the sandbox and `DS3007`'s promotion.
+[M4-01](M4-01-server-api.md), which owns the sandbox and `DS3007`'s promotion.
 
 ## Scope
 
@@ -32,8 +32,11 @@ Add `tempfile` to `[dev-dependencies]` and build the suite on `tempfile::TempDir
 - [ ] **Multi-partition parity.** A join, a `summarize` and a `sort` with a tie-breaker give the
       same results with `target_partitions: 4` as with `1`.
 - [ ] **Generated-file edge cases** (generated in the `TempDir`, not checked in): runtime `DS3008`
-      past `DEFAULT_INFER_ROWS` for CSV and NDJSON, and one compressed JSON source
-      (`.ndjson.gz`).
+      past `DEFAULT_INFER_ROWS` for CSV and NDJSON, and one compressed JSON source: a tiny
+      `.ndjson.gz` checked into `tests/data/compressed/` (there is no `flate2` dependency to
+      generate one). Gate it with `#[cfg(feature = "compression")]`, because M2-30 runs this crate's
+      tests with `--no-default-features`; under `#[cfg(not(feature = "compression"))]`, assert the
+      `DS3008` "this build cannot read compressed files" error instead.
 
 ### Output parity suite (`crates/datascript-engine/tests/output_parity.rs`)
 - [ ] Drive `printer::stream_results` over a shared edge-type dataset and check every `Format`
@@ -46,8 +49,9 @@ Add `tempfile` to `[dev-dependencies]` and build the suite on `tempfile::TempDir
 - [ ] 0-row results in every format (a 0-batch Arrow file still has the schema) and a 0-column
       result.
 - [ ] `write_csv_header` + `write_csv_rows` over several batches is byte-identical to `write_csv`.
-- [ ] `printer::write_table`: a runtime error during `count_rest` after the truncated table is
-      printed, the singular `1 more row` footer, and no footer at exactly `max_rows`.
+- [ ] Table output, through `printer::stream_results` with `Format::Table` (`write_table` is
+      private): a runtime error during `count_rest` after the truncated table is printed, the
+      singular `1 more row` footer, and no footer at exactly `max_rows`.
 
 ### Golden `mode: run` cases (`tests/cases/`)
 - [ ] Null join keys do not match (inner, outer, semi, anti) and an empty side for each kind.
