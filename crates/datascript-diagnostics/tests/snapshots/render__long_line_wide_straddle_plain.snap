@@ -1,0 +1,9 @@
+---
+source: crates/datascript-diagnostics/tests/render.rs
+expression: out
+---
+error[DS1001]: unknown column `target`
+  --> query.ds:1:50
+  |
+1 | ... 李李李李李李李李李李李李李李李李李李 + target + bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb...
+  |                                            ^^^^^^ no column named `target` here

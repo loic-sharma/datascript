@@ -87,11 +87,15 @@ fn render(files: &[PathBuf]) -> (String, BTreeSet<SyntaxKind>) {
     (json, seen)
 }
 
+fn bless_enabled_for(value: Option<&std::ffi::OsStr>) -> bool {
+    value.is_some_and(|v| !v.is_empty() && v != "0")
+}
+
 #[test]
 fn grammar_fixture_tokens_are_up_to_date() {
     let (json, _) = render(&fixtures());
     let path = fixture_dir().join("tokens.json");
-    if std::env::var_os("DS_BLESS").is_some() {
+    if bless_enabled_for(std::env::var_os("DS_BLESS").as_deref()) {
         std::fs::write(&path, &json).unwrap();
         return;
     }
@@ -134,4 +138,14 @@ fn segments_count_utf16_and_split_lines() {
             (1, 4, 5, IDENT)
         ]
     );
+}
+
+#[test]
+fn ds_bless_empty_and_zero_are_off() {
+    use std::ffi::OsStr;
+    assert!(!bless_enabled_for(None));
+    assert!(!bless_enabled_for(Some(OsStr::new(""))));
+    assert!(!bless_enabled_for(Some(OsStr::new("0"))));
+    assert!(bless_enabled_for(Some(OsStr::new("1"))));
+    assert!(bless_enabled_for(Some(OsStr::new("true"))));
 }

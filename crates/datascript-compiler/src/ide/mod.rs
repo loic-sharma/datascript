@@ -13,6 +13,7 @@ use std::ops::Range;
 
 use arrow_schema::SchemaRef;
 use datascript_diagnostics::FileId;
+use datascript_syntax::ast::{self, AstNode};
 use datascript_syntax::{SyntaxKind, SyntaxNode, SyntaxToken};
 
 use crate::Analysis;
@@ -165,6 +166,13 @@ impl<'a> Doc<'a> {
             prev = p.prev_sibling();
         }
         self.output_of(&prev?)
+    }
+
+    /// The columns of the right table of a `join` operator.
+    pub fn join_right_of(&self, op: &SyntaxNode) -> Option<Vec<Col>> {
+        let join = ast::JoinOp::cast(op.clone())?;
+        let right = join.right()?;
+        self.output_of(right.syntax())
     }
 
     fn schema_at(&self, r: Range<usize>) -> Option<SchemaRef> {

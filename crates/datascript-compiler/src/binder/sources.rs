@@ -22,6 +22,7 @@ use datascript_diagnostics::codes::{
 };
 use datascript_diagnostics::{Applicability, Diagnostic, Span, Suggestion, TextEdit, did_you_mean};
 use datascript_syntax::ast::{self, AstNode};
+use datascript_syntax::display_name;
 
 use super::{Agg, Binder, Cols, Cx, LetEntry, StageSchema, schema_of};
 use crate::Type;
@@ -757,7 +758,7 @@ impl Binder<'_> {
         if let Some(best) = suggestions.single() {
             d = d.help_with(
                 format!("a table with a similar name exists: `{best}`"),
-                Suggestion::replace(span, best),
+                Suggestion::replace(span, display_name(best)),
             );
         } else if !suggestions.is_empty() {
             let list: Vec<String> = suggestions

@@ -1,6 +1,7 @@
 //! Hover: what the name under the cursor is.
 
 use datascript_diagnostics::SourceFile;
+use datascript_syntax::ast::{self, AstNode};
 use datascript_syntax::{SyntaxKind, SyntaxNode, display_name};
 
 use super::{
@@ -84,6 +85,17 @@ pub fn hover(src: &SourceFile, analysis: &Analysis, offset: usize) -> Option<Hov
             }) {
                 return let_hover(&doc, &name, Some(&parent)).map(at);
             }
+            // `$left.col` or `$right.col` in `join ... on`: resolve against that side only.
+            if let Some(op) = operator_of(&token)
+                && let Some(side_cols) = join_side_columns(&doc, &op, &parent)
+            {
+                let col = side_cols?.into_iter().find(|c| c.name == name)?;
+                return Some(at(format!(
+                    "```ds\n{}: {}\n```\ncolumn",
+                    display_name(&col.name),
+                    col.ty
+                )));
+            }
             // A column, or else a scalar `let`.
             if let Some(op) = operator_of(&token)
                 && let Some(col) = doc
@@ -115,6 +127,30 @@ pub fn hover(src: &SourceFile, analysis: &Analysis, offset: usize) -> Option<Hov
             let _ = stmt;
             let_hover(&doc, &name, None).map(at)
         }
+        _ => None,
+    }
+}
+
+/// If `name_ref` is the field of `$left.<field>` or `$right.<field>` inside `op` (a `JOIN_OP`),
+/// returns `Some(columns)` for that side; otherwise `None`.
+fn join_side_columns(
+    doc: &Doc<'_>,
+    op: &SyntaxNode,
+    name_ref: &SyntaxNode,
+) -> Option<Option<Vec<Col>>> {
+    if op.kind() != SyntaxKind::JOIN_OP {
+        return None;
+    }
+    let field = ast::FieldExpr::cast(name_ref.parent()?)?;
+    if field.field()?.syntax() != name_ref {
+        return None;
+    }
+    let ast::Expr::NameRef(base) = field.base()? else {
+        return None;
+    };
+    match base.token()?.kind() {
+        SyntaxKind::DOLLAR_LEFT => Some(doc.input_of(op)),
+        SyntaxKind::DOLLAR_RIGHT => Some(doc.join_right_of(op)),
         _ => None,
     }
 }

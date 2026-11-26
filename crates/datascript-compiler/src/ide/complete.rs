@@ -683,6 +683,23 @@ fn join_context(
         .find(|t| t.kind() == SyntaxKind::IDENT && t.text() == "on");
     match on {
         Some(on) if range(&on).start <= range(prev).start => {
+            if prev.kind() == SyntaxKind::DOT {
+                return match prev
+                    .prev_token()
+                    .and_then(skip_trivia_back)
+                    .map(|t| t.kind())
+                {
+                    Some(SyntaxKind::DOLLAR_LEFT) => Context::Columns {
+                        columns: doc.input_of(op),
+                        star: false,
+                    },
+                    Some(SyntaxKind::DOLLAR_RIGHT) => Context::Columns {
+                        columns: doc.join_right_of(op),
+                        star: false,
+                    },
+                    _ => Context::Nothing,
+                };
+            }
             if ends_expression(prev) {
                 Context::AfterExpression {
                     keywords: vec![],

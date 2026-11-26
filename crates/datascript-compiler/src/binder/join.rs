@@ -4,8 +4,8 @@ use std::collections::HashSet;
 
 use datascript_diagnostics::codes::{DS1001, DS1007, DS1030, DS2003, DS4001};
 use datascript_diagnostics::{Diagnostic, Span, Suggestion, did_you_mean};
-use datascript_syntax::SyntaxKind;
 use datascript_syntax::ast::{self, AstNode};
+use datascript_syntax::{SyntaxKind, display_name};
 
 use super::Binder;
 use super::ops::{paren_pipeline, unique_name};
@@ -266,7 +266,7 @@ impl Binder<'_> {
         if let Some(best) = did_you_mean(name, shared.iter().copied()).single() {
             d = d.help_with(
                 format!("a column both tables have has a similar name: `{best}`"),
-                Suggestion::replace(span, best),
+                Suggestion::replace(span, display_name(best)),
             );
         }
         let note = if shared.is_empty() {

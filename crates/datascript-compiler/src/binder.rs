@@ -21,7 +21,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
-use arrow_schema::{Schema, SchemaRef};
+use arrow_schema::{Field, Schema, SchemaRef};
 use datascript_diagnostics::codes::{
     DS0003, DS1001, DS1002, DS1003, DS1004, DS1006, DS1031, DS2001, DS2004, DS2005, DS2008, DS2010,
     DS2011, DS2012, DS2050, DS4001, DS4004,
@@ -30,7 +30,7 @@ use datascript_diagnostics::{
     Applicability, Diagnostic, FileId, Span, Suggestion, TextEdit, did_you_mean,
 };
 use datascript_syntax::ast::{self, AstNode, LiteralKind, Operator, PrefixOp, Stmt};
-use datascript_syntax::{SyntaxKind, SyntaxNode, literal};
+use datascript_syntax::{SyntaxKind, SyntaxNode, display_name, literal};
 
 use crate::Type;
 use crate::arg_values::{self, DatetimePart};
@@ -1244,7 +1244,7 @@ impl<'a> Binder<'a> {
             };
             d = d.help_with(
                 format!("{what} with a similar name exists: `{best}`"),
-                Suggestion::replace(span, best),
+                Suggestion::replace(span, display_name(best)),
             );
         } else if !suggestions.is_empty() {
             let list: Vec<String> = suggestions
@@ -1273,7 +1273,7 @@ impl<'a> Binder<'a> {
         if let Some(best) = suggestions.single() {
             d = d.help_with(
                 format!("a `let` with a similar name exists: `{best}`"),
-                Suggestion::replace(span, best),
+                Suggestion::replace(span, display_name(best)),
             );
         } else if !suggestions.is_empty() {
             let list: Vec<String> = suggestions
@@ -1470,11 +1470,15 @@ fn convert(expr: Expr, ty: Type) -> Expr {
     }
 }
 
+/// The Arrow schema of `columns`; a column with no DataScript type keeps its Arrow type.
 fn schema_of(columns: &[Column]) -> SchemaRef {
     Arc::new(Schema::new(
         columns
             .iter()
-            .map(|c| to_arrow(&c.name, c.ty))
+            .map(|c| match &c.arrow_only {
+                Some(arrow) => Field::new(&c.name, arrow.clone(), true),
+                None => to_arrow(&c.name, c.ty),
+            })
             .collect::<Vec<_>>(),
     ))
 }

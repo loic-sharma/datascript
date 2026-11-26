@@ -607,3 +607,224 @@ fn completions_after_trailing_commas() {
         &["amount", "series", "title"],
     );
 }
+
+#[test]
+fn arrow_only_column_in_completion_and_hover() {
+    struct Nested;
+    impl SchemaProvider for Nested {
+        fn schema_of(&self, _: &SourceRef) -> SchemaLookup {
+            let item = Arc::new(Field::new("item", DataType::Int64, true));
+            SchemaLookup::Ready(Arc::new(Schema::new(vec![
+                Field::new("id", DataType::Int64, true),
+                Field::new("tags", DataType::List(item), true),
+            ])))
+        }
+    }
+    let list_type = DataType::List(Arc::new(Field::new("item", DataType::Int64, true))).to_string();
+
+    let c = completions_with("from 'x.csv' | project ‸", &Nested);
+    let tags = c.items.iter().find(|i| i.label == "tags").unwrap();
+    assert_eq!(tags.detail.as_deref(), Some(list_type.as_str()));
+
+    let c = completions_with(
+        "from 'x.csv' | project id, tags | project-rename t = ‸",
+        &Nested,
+    );
+    let tags = c.items.iter().find(|i| i.label == "tags").unwrap();
+    assert_eq!(tags.detail.as_deref(), Some(list_type.as_str()));
+
+    let (src, offset) = split("from 'x.csv' | project ta‸gs");
+    let analysis = analyze(&src, &Nested);
+    assert_eq!(
+        hover(&src, &analysis, offset).map(|h| h.markdown),
+        Some(format!("```ds\ntags: {list_type}\n```\ncolumn"))
+    );
+}
+
+#[test]
+fn signature_help_positional_and_multi_signature() {
+    // `coalesce` repeats parameters all named `value`: active_parameter must track position.
+    let help = signature_at("from 'orders.csv' | extend x = coalesce(‸)").unwrap();
+    assert_eq!(help.active_argument, 0);
+    let sig = &help.signatures[help.active_signature];
+    assert_eq!(sig.parameters.len(), 2);
+    assert_eq!(sig.active_parameter, Some(0));
+    let p0 = sig.parameters[0];
+    let p1 = sig.parameters[1];
+    assert_eq!(&sig.label[p0.0..p0.1], "value: T");
+    assert_eq!(&sig.label[p1.0..p1.1], "value: T");
+    assert!(p1.0 > p0.1);
+
+    let help = signature_at("from 'orders.csv' | extend x = coalesce(orderId, ‸)").unwrap();
+    assert_eq!(help.active_argument, 1);
+    assert_eq!(
+        help.signatures[help.active_signature].active_parameter,
+        Some(1)
+    );
+
+    let help =
+        signature_at("from 'orders.csv' | extend x = coalesce(orderId, customerId, ‸)").unwrap();
+    assert_eq!(help.active_argument, 2);
+    assert_eq!(
+        help.signatures[help.active_signature].active_parameter,
+        Some(1)
+    );
+
+    // Multi-signature builtins: `sumif` and `percentile`.
+    let help = signature_at("from 'orders.csv' | summarize sumif(‸)").unwrap();
+    assert_eq!(help.signatures.len(), 2);
+    assert_eq!(help.active_argument, 0);
+    for sig in &help.signatures {
+        assert_eq!(sig.active_parameter, Some(0));
+    }
+
+    let help = signature_at("from 'orders.csv' | summarize sumif(amount, ‸)").unwrap();
+    assert_eq!(help.active_argument, 1);
+    for sig in &help.signatures {
+        assert_eq!(sig.active_parameter, Some(1));
+        let p = sig.parameters[1];
+        assert_eq!(&sig.label[p.0..p.1], "predicate: bool");
+    }
+
+    let help = signature_at("from 'orders.csv' | summarize sumif(amount, amount > 0, ‸)").unwrap();
+    assert_eq!(help.active_argument, 2);
+    for sig in &help.signatures {
+        assert_eq!(sig.active_parameter, None);
+    }
+
+    let help = signature_at("from 'orders.csv' | summarize percentile(‸)").unwrap();
+    assert_eq!(help.signatures.len(), 3);
+    assert_eq!(help.active_argument, 0);
+    for sig in &help.signatures {
+        assert_eq!(sig.active_parameter, Some(0));
+    }
+
+    let help = signature_at("from 'orders.csv' | summarize percentile(amount, ‸)").unwrap();
+    assert_eq!(help.active_argument, 1);
+    for sig in &help.signatures {
+        assert_eq!(sig.active_parameter, Some(1));
+        let p = sig.parameters[1];
+        assert_eq!(&sig.label[p.0..p.1], "percentage: number");
+    }
+
+    let help = signature_at("from 'orders.csv' | summarize percentile(amount, 95, ‸)").unwrap();
+    assert_eq!(help.active_argument, 2);
+    for sig in &help.signatures {
+        assert_eq!(sig.active_parameter, None);
+    }
+}
+
+#[test]
+fn join_on_left_and_right_completion_and_hover() {
+    struct JoinTables;
+    impl SchemaProvider for JoinTables {
+        fn schema_of(&self, source: &SourceRef) -> SchemaLookup {
+            match source.path() {
+                Some("orders.csv") => SchemaLookup::Ready(Arc::new(Schema::new(vec![
+                    Field::new("orderId", DataType::Utf8, true),
+                    Field::new("customerId", DataType::Utf8, true),
+                    Field::new("amount", DataType::Float64, true),
+                ]))),
+                Some("customers.csv") => SchemaLookup::Ready(Arc::new(Schema::new(vec![
+                    Field::new("id", DataType::Utf8, true),
+                    Field::new("customerId", DataType::Int64, true),
+                    Field::new("name", DataType::Utf8, true),
+                    Field::new("full name", DataType::Utf8, true),
+                ]))),
+                _ => SchemaLookup::Failed(SourceError::NotFound { nearby: Vec::new() }),
+            }
+        }
+    }
+
+    let hover_join = |marked: &str| {
+        let (src, offset) = split(marked);
+        let analysis = analyze(&src, &JoinTables);
+        hover(&src, &analysis, offset).map(|h| h.markdown)
+    };
+
+    // Completion after `$right.` offers only the right table's columns.
+    let c = completions_with(
+        "from 'orders.csv' | join 'customers.csv' on $left.customerId == $right.‸",
+        &JoinTables,
+    );
+    assert_eq!(
+        labels_of(&c, CompletionKind::Column),
+        ["id", "customerId", "name", "['full name']"]
+    );
+    assert_eq!(c.items.len(), 4, "only columns after `$right.`");
+
+    let c = completions_with(
+        "from 'orders.csv' | join 'customers.csv' on $left.customerId == $right.na‸",
+        &JoinTables,
+    );
+    assert_eq!(
+        labels_of(&c, CompletionKind::Column),
+        ["id", "customerId", "name", "['full name']"]
+    );
+    assert_eq!((c.start, c.end), (71, 73));
+
+    // Parenthesized pipeline and tabular `let` on the right side.
+    let c = completions_with(
+        "from 'orders.csv' | join (from 'customers.csv' | project cid = id, name) on $left.customerId == $right.‸",
+        &JoinTables,
+    );
+    assert_eq!(labels_of(&c, CompletionKind::Column), ["cid", "name"]);
+
+    let c = completions_with(
+        "let c = from 'customers.csv' | project cid = id;\nfrom 'orders.csv' | join c on $left.customerId == $right.‸",
+        &JoinTables,
+    );
+    assert_eq!(labels_of(&c, CompletionKind::Column), ["cid"]);
+
+    // Completion after `$left.` offers only the left table's columns.
+    let c = completions_with(
+        "from 'orders.csv' | join 'customers.csv' on $left.‸",
+        &JoinTables,
+    );
+    assert_eq!(
+        labels_of(&c, CompletionKind::Column),
+        ["orderId", "customerId", "amount"]
+    );
+    assert_eq!(c.items.len(), 3, "only columns after `$left.`");
+
+    // Hover resolves `$right.` against the right table and `$left.` against the left table.
+    assert_eq!(
+        hover_join("from 'orders.csv' | join 'customers.csv' on $left.customerId == $right.na‸me")
+            .as_deref(),
+        Some("```ds\nname: string\n```\ncolumn")
+    );
+    assert_eq!(
+        hover_join(
+            "from 'orders.csv' | join 'customers.csv' on $left.customerId == $right.['full name'‸]"
+        )
+        .as_deref(),
+        Some("```ds\n['full name']: string\n```\ncolumn")
+    );
+    assert_eq!(
+        hover_join(
+            "from 'orders.csv' | join 'customers.csv' on $left.customerId == $right.customer‸Id"
+        )
+        .as_deref(),
+        Some("```ds\ncustomerId: long\n```\ncolumn")
+    );
+    assert_eq!(
+        hover_join(
+            "from 'orders.csv' | join 'customers.csv' on $left.customer‸Id == $right.customerId"
+        )
+        .as_deref(),
+        Some("```ds\ncustomerId: string\n```\ncolumn")
+    );
+    // A left-only column or a scalar `let` must not resolve after `$right.`.
+    assert_eq!(
+        hover_join(
+            "from 'orders.csv' | join 'customers.csv' on $left.customerId == $right.order‸Id"
+        ),
+        None
+    );
+    assert_eq!(
+        hover_join(
+            "let x = 1;\nfrom 'orders.csv' | join 'customers.csv' on $left.customerId == $right.x‸"
+        ),
+        None
+    );
+}
