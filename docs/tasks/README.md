@@ -106,6 +106,9 @@ Two shared files are touched by many tasks:
 | [M2-26](M2-26-writer-functions.md) | `output`: writer functions, options and compression | M2-25, M2-27 | todo |
 | [M2-27](M2-27-output-parquet-safety.md) | `output`: Parquet, self-overwrite check and read-back check | M2-25 | todo |
 | [M2-28](M2-28-excel-writer.md) | Excel writer | M2-24, M2-26 | todo |
+| [M2-29](M2-29-engine-datafusion-integration-tests.md) | Engine and DataFusion integration tests | M2-15 | todo |
+| [M2-30](M2-30-compiler-harness-ci-test-gaps.md) | Compiler, diagnostics, golden harness, and CI test gaps | M2-15 | todo |
+| [M2-31](M2-31-cli-repl-test-improvements.md) | CLI and REPL test improvements and bug fixes | M2-16, M3-07 | todo |
 
 ## M3 — Editor experience
 
@@ -120,6 +123,7 @@ Two shared files are touched by many tasks:
 | [M3-07](M3-07-repl-column-completion.md) | REPL column completion | M3-02 | done |
 | [M3-08](M3-08-lsp-test-gaps.md) | LSP integration test gaps | M3-05 | done |
 | [M3-09](M3-09-vscode-e2e-gaps.md) | VS Code extension E2E test gaps | M3-05 | done |
+| [M3-10](M3-10-lsp-vscode-test-improvements.md) | LSP and VS Code test improvements | M3-08, M3-09 | todo |
 
 ## M4 — Local web UI
 
@@ -174,3 +178,10 @@ M7-04 is unblocked, the two can run in parallel.
 
 Within M2, M2-19 edits `list()` in `datascript-syntax` (`grammar.rs`) and should not run in parallel
 with M2-01, M2-03, M2-04 or M2-05 (prefer landing M2-19 first).
+
+M2-29, M2-30, M2-31 and M3-10 can run in parallel across their own areas (`datascript-datafusion`/
+`datascript-engine` and `codes.rs` for `DS3007`; `datascript-compiler`/`datascript-syntax`/
+`datascript-diagnostics`/`datascript-tests`/CI; `datascript-cli` `cli.rs`/`repl.rs`; and
+`datascript-lsp`/`lsp_run.rs`/`editors/vscode`). Coordinate only on `DS3007` in M2-30's golden
+active-code allowlist when M2-29 promotes `DS3007` to `Active`, and on `crates/datascript-cli/Cargo.toml`
+if M3-10 adds a dev-dependency.
