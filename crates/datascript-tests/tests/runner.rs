@@ -107,7 +107,25 @@ fn non_run_modes_never_apply_any_order_sorting() {
     )
     .unwrap();
     let prepared = prepare(check_case, &root, &drivers, false);
-    assert!((prepared.run)().is_err());
+    let err = (prepared.run)().unwrap_err();
+    assert!(
+        err.contains("output does not match\n") && err.contains("+b\n a\n-b\n"),
+        "expected a strict row-order diff without sorting, got:\n{err}"
+    );
+    assert!(
+        !err.contains("rows sorted"),
+        "mode: check should never sort rows, got:\n{err}"
+    );
+
+    // A `mode: check` case matching the exact row order (`b`, `a`) passes.
+    let check_exact = root.join("check_exact.dstest");
+    fs::write(
+        &check_exact,
+        "mode: check\n---- query\nx\n---- expected\nx\nstring\n------\nb\na\n",
+    )
+    .unwrap();
+    let prepared = prepare(check_exact, &root, &drivers, false);
+    (prepared.run)().unwrap();
 
     // In `mode: run`, table rows ARE sorted when order is `any`.
     let run_case = root.join("run.dstest");

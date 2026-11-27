@@ -51,7 +51,7 @@ pub fn normalize_paths(output: &str, test_dir: &Path, repo_root: &Path) -> Strin
                     Some(c) if !c.is_alphanumeric() && c != '_' && c != '-' && c != '.' => {}
                     Some(_) => continue,
                 }
-                let windows_path = prefix.contains('\\') || after.starts_with('\\');
+                let windows_path = prefix.contains('\\');
                 let prev_quote = out.chars().last().filter(|c| matches!(c, '`' | '\'' | '"'));
                 out.push_str(token);
                 rest = after;
@@ -298,10 +298,10 @@ mod tests {
     fn unix_paths_preserve_escapes_after_path() {
         let repo = Path::new("/home/repo");
         let test = Path::new("/home/repo/tests/cases");
-        let out = r#"cannot read /home/repo/tests/cases/a.csv\nhelp: check /home/repo/b.csv\tnow"#;
+        let out = r#"cannot read /home/repo/tests/cases/a.csv\nhelp: check /home/repo/b.csv\tnow or /home/repo\nhelp:"#;
         assert_eq!(
             normalize_paths(out, test, repo),
-            r#"cannot read <test>/a.csv\nhelp: check <repo>/b.csv\tnow"#
+            r#"cannot read <test>/a.csv\nhelp: check <repo>/b.csv\tnow or <repo>\nhelp:"#
         );
 
         // An unclosed leading quote on Windows must not rewrite unrelated paths later on the line.

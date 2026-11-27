@@ -92,6 +92,20 @@ fn map_range_with_edits(mapped_edits: &[MappedEdit], orig: Range<u32>) -> Range<
     new_start..new_end
 }
 
+/// Maps an original offset to the position immediately before any insertion at that offset.
+fn map_offset_before_insertion(mapped_edits: &[MappedEdit], offset: u32) -> u32 {
+    let mut delta: i64 = 0;
+    for e in mapped_edits {
+        if e.orig_start < e.orig_end && e.orig_start <= offset && offset < e.orig_end {
+            return e.new_start;
+        }
+        if e.orig_end < offset || (e.orig_end == offset && e.orig_start < e.orig_end) {
+            delta += (e.new_end - e.new_start) as i64 - (e.orig_end - e.orig_start) as i64;
+        }
+    }
+    (offset as i64 + delta) as u32
+}
+
 /// Applies the machine-applicable suggestions of `diagnostics` that edit file `file` to `text`.
 ///
 /// Suggestions are taken in order. One whose edits overlap an edit already taken is skipped as a
@@ -137,9 +151,14 @@ pub(crate) fn apply_suggestions_detailed(
             if edits.is_empty() {
                 continue;
             }
-            let overlaps = edits
+            let self_overlaps = edits
                 .iter()
-                .any(|new| taken.iter().any(|old| overlap(old.edit, new)));
+                .enumerate()
+                .any(|(i, a)| edits[i + 1..].iter().any(|b| overlap(a, b)));
+            let overlaps = self_overlaps
+                || edits
+                    .iter()
+                    .any(|new| taken.iter().any(|old| overlap(old.edit, new)));
             if !overlaps {
                 applied_this = true;
                 let fix_index = raw_fixes.len();
@@ -202,6 +221,13 @@ pub(crate) fn apply_suggestions_detailed(
         .map(|raw| {
             let mut fixed_ranges = Vec::new();
             if let Some(primary) = raw.primary.clone() {
+                if primary.start == primary.end {
+                    // For a zero-width primary (e.g. a missing token at offset N with an
+                    // insertion at N), record the position before the insertion as well as after
+                    // it so a re-check error still reported at N..N is caught.
+                    let before = map_offset_before_insertion(&mapped_edits, primary.start);
+                    fixed_ranges.push(before..before);
+                }
                 fixed_ranges.push(map_range_with_edits(&mapped_edits, primary));
             }
             AppliedFix {
@@ -384,6 +410,53 @@ mod tests {
         assert!(
             !applied.matches_remaining(fixed_file, &adjacent),
             "empty deletion range must not match an adjacent non-empty diagnostic"
+        );
+    }
+
+    #[test]
+    fn zero_width_primary_with_insertion_matches_at_insertion_start() {
+        // Zero-width primary at offset 10 with an insertion at 10 ("missing `)`").
+        // If re-checking still reports the error at 10..10, `matches_remaining` must catch it.
+        let text = "0123456789tail";
+        let d = Diagnostic::error(codes::DS0112, "missing `)`")
+            .primary(Span::empty(F, 10), "expected `)` here")
+            .help_with("insert `)`", Suggestion::replace(Span::empty(F, 10), ")"));
+        let applied = apply_suggestions_detailed(text, F, &[d]).unwrap();
+        assert_eq!(applied.text, "0123456789)tail");
+
+        let fixed_file = FileId(1);
+        let still_at_start = Diagnostic::error(codes::DS0112, "still missing `)`")
+            .primary(Span::empty(fixed_file, 10), "expected `)` here");
+        assert!(applied.matches_remaining(fixed_file, &still_at_start));
+
+        let still_at_end = Diagnostic::error(codes::DS0112, "still missing `)`")
+            .primary(Span::empty(fixed_file, 11), "expected `)` here");
+        assert!(applied.matches_remaining(fixed_file, &still_at_end));
+    }
+
+    #[test]
+    fn skips_suggestion_with_internally_overlapping_edits() {
+        // Construct a suggestion directly with two overlapping edits (2..5 and 3..4).
+        let bad = Diagnostic::error(codes::DS0110, "overlapping").help_with(
+            "bad",
+            Suggestion {
+                edits: vec![
+                    TextEdit::new(Span::new(F, 2, 5), "X"),
+                    TextEdit::new(Span::new(F, 3, 4), "Y"),
+                ],
+                applicability: Applicability::MachineApplicable,
+            },
+        );
+        // Alone: returns None without panicking.
+        assert_eq!(
+            apply_suggestions("abcdef", F, std::slice::from_ref(&bad)),
+            None
+        );
+        // Alongside a valid suggestion: only the valid suggestion applies.
+        let good = fix(0, 1, "A");
+        assert_eq!(
+            apply_suggestions("abcdef", F, &[bad, good]).as_deref(),
+            Some("Abcdef")
         );
     }
 }

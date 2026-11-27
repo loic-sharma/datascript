@@ -274,23 +274,21 @@ fn verify_check_fixes(
             .collect();
 
     let fixed_query = Query::from_text("fixed", &applied.text);
+    let is_pre_existing = |d: &Diagnostic| {
+        let span = d
+            .primary
+            .as_ref()
+            .filter(|p| p.span.file == fixed_query.file)
+            .map(|p| p.span.start..p.span.end);
+        pre_existing_unfixed.iter().any(|(code, mapped)| {
+            *code == d.code && pre_existing_spans_match(mapped.as_ref(), span.as_ref())
+        })
+    };
     let reparse = datascript_syntax::parse(&applied.text, fixed_query.file);
     let new_parse_errors: Vec<Diagnostic> = reparse
         .errors
         .into_iter()
-        .filter(|d| {
-            if applied.matches_remaining(fixed_query.file, d) {
-                return true;
-            }
-            let span = d
-                .primary
-                .as_ref()
-                .filter(|p| p.span.file == fixed_query.file)
-                .map(|p| p.span.start..p.span.end);
-            !pre_existing_unfixed.iter().any(|(code, mapped)| {
-                *code == d.code && pre_existing_spans_match(mapped.as_ref(), span.as_ref())
-            })
-        })
+        .filter(|d| !is_pre_existing(d))
         .collect();
     if !new_parse_errors.is_empty() {
         return Err(DriverError::Failed(format!(
@@ -305,7 +303,7 @@ fn verify_check_fixes(
     if let Some(remaining) = rechecked
         .diagnostics
         .iter()
-        .find(|d| applied.matches_remaining(fixed_query.file, d))
+        .find(|d| !is_pre_existing(d) && applied.matches_remaining(fixed_query.file, d))
     {
         return Err(DriverError::Failed(format!(
             "machine-applicable fix did not resolve {} at the fixed location:\n\
@@ -322,6 +320,10 @@ fn verify_check_fixes(
 /// Whether a re-parsed error span matches a pre-existing unfixed error's mapped span (by overlap
 /// or containment, so recovery spans that grow or shrink slightly when nearby tokens change are
 /// still recognized as the same pre-existing error).
+///
+/// Unlike [`crate::fixes::ranges_overlap`] — which rejects touching edges so an empty deletion
+/// range does not falsely blame an adjacent diagnostic — this accepts touching edges for empty
+/// spans so a pre-existing zero-width error right at an edit boundary is still recognized.
 fn pre_existing_spans_match(
     mapped: Option<&std::ops::Range<u32>>,
     current: Option<&std::ops::Range<u32>>,
@@ -573,28 +575,16 @@ mod tests {
 
     #[test]
     fn verify_check_fixes_allows_shifted_pre_existing_parse_error_span() {
-        // Statement 1 has a pre-existing unfixed parse error whose span extends to the next
-        // token (`from t | where (amount > 1` missing `)` before `;`).
-        // A fix that changes text right at the boundary shifts the recovery span slightly.
         let mock = schema::parse("t(amount: long)").unwrap();
         let caps = datascript_compiler::Capabilities::full();
         let run_check = |q: &Query| Ok(datascript_compiler::check(&q.src, q.file, &mock, &caps));
 
-        // `from t | where 1 < amout < 3` -> `amout` (19..24) fixes to `amount` (+1 byte).
-        // `1 < amout < 3` has DS0101 on `<` (25..26) AND DS1001 on `amout`? Actually test a
-        // recovery error whose span changes length when the token inside/next to it is edited:
-        // `from t | where (amout > 1` -> DS0112 on `(` (15..16) or `where 1 <` (EOF).
-        // Better: `from t | where amout =` has DS0101 on `=` (21..22); if a fix replaces `amout`
-        // with `amount` and inserts right at the error boundary, test shifting the error span.
+        // Inserting `=` after `<` makes the pre-existing DS0101 span grow from 26..27 to 26..28.
         let text = "from t | where 1 < amount < 3\n";
         let file = FileId(0);
         let orig_parse = datascript_syntax::parse(text, file);
         assert_eq!(orig_parse.errors.len(), 1);
         let err_span = orig_parse.errors[0].primary.as_ref().unwrap().span;
-        // Replace `<` with `<=` (at the end of `<`, `err_span.end..err_span.end`):
-        // original DS0101 span was `<` (26..27); `map_range(26..27)` is `26..27`, while after
-        // inserting `=` at 27..27 the re-parsed DS0101 span is `<=` (26..28), which overlaps
-        // `26..27` but is NOT equal to it!
         let boundary_fix = Diagnostic::warning(codes::DS2103, "boundary")
             .primary(Span::new(file, 0, 4), "boundary")
             .help_with(
@@ -603,6 +593,33 @@ mod tests {
             );
         verify_check_fixes(text, file, &[boundary_fix], &run_check).expect(
             "pre-existing parse error whose span grew at boundary should still be recognized",
+        );
+    }
+
+    #[test]
+    fn verify_check_fixes_does_not_blame_pre_existing_error_with_same_code() {
+        let mock = schema::parse("t(amount: long)").unwrap();
+        let caps = datascript_compiler::Capabilities::full();
+        let run_check = |q: &Query| Ok(datascript_compiler::check(&q.src, q.file, &mock, &caps));
+
+        // `1 < amount < 3` has a pre-existing unfixed DS0101 on `<` (26..27).
+        // A separate applied fix that also carries DS0101 and touches that region must not cause
+        // the pre-existing unfixed DS0101 to be blamed as a new parse error.
+        let text = "from t | where 1 < amount < 3\n";
+        let file = FileId(0);
+        let orig_parse = datascript_syntax::parse(text, file);
+        assert_eq!(orig_parse.errors.len(), 1);
+        assert_eq!(orig_parse.errors[0].code, codes::DS0101);
+        let err_span = orig_parse.errors[0].primary.as_ref().unwrap().span;
+
+        let same_code_fix = Diagnostic::error(codes::DS0101, "other DS0101")
+            .primary(err_span, "other")
+            .help_with(
+                "insert =",
+                Suggestion::replace(Span::empty(file, err_span.end), "="),
+            );
+        verify_check_fixes(text, file, &[same_code_fix], &run_check).expect(
+            "pre-existing unfixed parse error must not be blamed on another fix with the same code",
         );
     }
 }
