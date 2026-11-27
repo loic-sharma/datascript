@@ -1,5 +1,18 @@
 //! Applying machine-applicable suggestions, so golden tests can check that a fix really fixes
 //! the program (M1-03, M2-30).
+//!
+//! Three span-overlap helpers exist across this module and [`crate::pipeline`], intentionally
+//! differing on how zero-width spans and touching edges are treated:
+//!
+//! - [`overlap`] (edit conflict detection): non-empty spans overlap when `a.start < b.end &&
+//!   b.start < a.end`; two zero-width insertions at the same offset overlap (their order would be
+//!   ambiguous), while an insertion at the start/end of a replacement does not.
+//! - [`ranges_overlap`] (matching a remaining diagnostic against an applied fix): rejects touching
+//!   edges for zero-width spans so an empty deletion point does not falsely match an adjacent
+//!   diagnostic that merely starts or ends there.
+//! - `pipeline::pre_existing_spans_match` (matching an unfixed pre-existing parse error across an
+//!   edit): accepts touching edges for zero-width spans so a pre-existing zero-width error right
+//!   at an edit boundary is still recognized when the edit shifts adjacent text.
 
 use std::ops::Range;
 

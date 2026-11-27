@@ -300,6 +300,9 @@ fn verify_check_fixes(
         )));
     }
     let rechecked = run_check(&fixed_query)?;
+    // Skip errors explained by an unfixed pre-existing parse error. Deliberate blind spot: a fix
+    // that leaves behind the same code overlapping an already-present unfixed parse error is not
+    // flagged here, so the pre-existing error is never falsely blamed on the fix.
     if let Some(remaining) = rechecked
         .diagnostics
         .iter()

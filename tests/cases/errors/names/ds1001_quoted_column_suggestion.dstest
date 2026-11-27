@@ -1,0 +1,24 @@
+# Did-you-mean suggestions quote columns with spaces or reserved-word names so the fix parses.
+mode: check
+schema: orders(['total amount']: real, ['null']: long)
+---- query
+from orders | project ['total amout'];
+from orders | project ['nul']
+---- expected
+error[DS1001]: unknown column `total amout`
+  --> query:1:23
+  |
+1 | from orders | project ['total amout'];
+  |                       ^^^^^^^^^^^^^^^ no column named `total amout` here
+  |
+  = help: a column with a similar name exists: `total amount`
+  = note: columns available at this point: total amount, null
+
+error[DS1001]: unknown column `nul`
+  --> query:2:23
+  |
+2 | from orders | project ['nul']
+  |                       ^^^^^^^ no column named `nul` here
+  |
+  = help: a column with a similar name exists: `null`
+  = note: columns available at this point: total amount, null
