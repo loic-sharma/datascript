@@ -1,6 +1,7 @@
 //! Discovers `.dstest` files and runs each as its own libtest trial.
 
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -9,7 +10,7 @@ use datascript_diagnostics::did_you_mean;
 use libtest_mimic::{Arguments, Failed, Trial};
 
 use crate::bless::bless;
-use crate::case::{Order, TestCase};
+use crate::case::{Mode, Order, TestCase};
 use crate::driver::{CaseInput, Driver, DriverConfig, DriverError, dispatch};
 use crate::output::{canonicalize, diff, normalize_paths};
 
@@ -71,12 +72,17 @@ pub fn repo_root() -> PathBuf {
 pub fn main(drivers: Drivers) -> ExitCode {
     let args = Arguments::from_args();
     let root = repo_root();
-    let trials = trials(
-        &root.join("tests").join("cases"),
-        &root,
-        &drivers,
-        bless_enabled(),
-    );
+    let cases_dir = root.join("tests").join("cases");
+    let trials = match trials(&cases_dir, &root, &drivers, bless_enabled()) {
+        Ok(trials) => trials,
+        Err(e) => {
+            eprintln!(
+                "cannot discover golden tests in {}: {e}",
+                cases_dir.display()
+            );
+            return ExitCode::FAILURE;
+        }
+    };
     libtest_mimic::run(&args, trials).exit_code()
 }
 
@@ -85,30 +91,34 @@ fn bless_enabled() -> bool {
 }
 
 /// Every `.dstest` file under `dir`, sorted.
-pub fn discover(dir: &Path) -> Vec<PathBuf> {
-    fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
-        let Ok(entries) = fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
+pub fn discover(dir: &Path) -> io::Result<Vec<PathBuf>> {
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> io::Result<()> {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
             let path = entry.path();
             if path.is_dir() {
-                walk(&path, out);
+                walk(&path, out)?;
             } else if path.extension().is_some_and(|e| e == "dstest") {
                 out.push(path);
             }
         }
+        Ok(())
     }
     let mut out = Vec::new();
-    walk(dir, &mut out);
+    walk(dir, &mut out)?;
     out.sort();
-    out
+    Ok(out)
 }
 
 /// One trial per case file, named by its path relative to `cases_dir` (so `-- join/` filters
 /// by directory) and tagged with its mode.
-pub fn trials(cases_dir: &Path, repo_root: &Path, drivers: &Drivers, bless: bool) -> Vec<Trial> {
-    discover(cases_dir)
+pub fn trials(
+    cases_dir: &Path,
+    repo_root: &Path,
+    drivers: &Drivers,
+    bless: bool,
+) -> io::Result<Vec<Trial>> {
+    Ok(discover(cases_dir)?
         .into_iter()
         .map(|path| {
             let name = path
@@ -118,7 +128,7 @@ pub fn trials(cases_dir: &Path, repo_root: &Path, drivers: &Drivers, bless: bool
                 .replace('\\', "/");
             trial(name, path, repo_root, drivers, bless)
         })
-        .collect()
+        .collect())
 }
 
 fn trial(name: String, path: PathBuf, repo_root: &Path, drivers: &Drivers, bless: bool) -> Trial {
@@ -244,16 +254,20 @@ fn run_case(
     };
     let test_dir = path.parent().unwrap_or(Path::new("."));
 
-    let order = case.order.unwrap_or_else(|| {
-        let defined = engines
-            .first()
-            .and_then(|d| d.output_order_defined(&case.query));
-        if defined == Some(true) {
-            Order::Strict
-        } else {
-            Order::Any
-        }
-    });
+    let order = if case.mode == Mode::Run {
+        case.order.unwrap_or_else(|| {
+            let defined = engines
+                .first()
+                .and_then(|d| d.output_order_defined(&case.query));
+            if defined == Some(true) {
+                Order::Strict
+            } else {
+                Order::Any
+            }
+        })
+    } else {
+        Order::Strict
+    };
 
     let mut outputs = Vec::new();
     for driver in engines {

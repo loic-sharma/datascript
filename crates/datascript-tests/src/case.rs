@@ -325,11 +325,29 @@ impl Parser {
                 }
             }
         };
-        let tables = match header("tables") {
+        if mode == Mode::Syntax {
+            for key in ["schema", "tables", "now"] {
+                if let Some(v) = header(key) {
+                    return Err(err(
+                        v.line,
+                        format!("`{key}` is not used in `mode: syntax` cases"),
+                    ));
+                }
+            }
+        }
+        let tables_header = header("tables");
+        let schema_header = header("schema");
+        if let (Some(t), Some(s)) = (tables_header, schema_header) {
+            return Err(err(
+                t.line.max(s.line),
+                "`schema` and `tables` cannot be used together (`schema` reads no files)",
+            ));
+        }
+        let tables = match tables_header {
             None => Vec::new(),
             Some(v) => parse_tables(&v.value).map_err(|m| err(v.line, m))?,
         };
-        let schema = match header("schema") {
+        let schema = match schema_header {
             None => None,
             Some(v) => Some(schema::parse(&v.value).map_err(|m| err(v.line, m))?),
         };
@@ -787,6 +805,22 @@ mod tests {
         assert_eq!(
             parse_err("schema: t(a: lng)\n---- query\nx\n"),
             "line 1: `schema`: unknown type `lng` for column `a` (did you mean `long`?)"
+        );
+        assert_eq!(
+            parse_err("schema: t(a: long)\ntables: t=a.csv\n---- query\nx\n"),
+            "line 2: `schema` and `tables` cannot be used together (`schema` reads no files)"
+        );
+        assert_eq!(
+            parse_err("mode: syntax\nschema: t(a: long)\n---- query\nx\n"),
+            "line 2: `schema` is not used in `mode: syntax` cases"
+        );
+        assert_eq!(
+            parse_err("mode: syntax\ntables: t=a.csv\n---- query\nx\n"),
+            "line 2: `tables` is not used in `mode: syntax` cases"
+        );
+        assert_eq!(
+            parse_err("mode: syntax\nnow: 2024-01-01T00:00:00Z\n---- query\nx\n"),
+            "line 2: `now` is not used in `mode: syntax` cases"
         );
     }
 

@@ -58,6 +58,7 @@ fn discovers_recursively_and_sorted() {
         fs::write(root.join(p), "").unwrap();
     }
     let found: Vec<_> = discover(&root)
+        .unwrap()
         .into_iter()
         .map(|p| {
             p.strip_prefix(&root)
@@ -67,6 +68,55 @@ fn discovers_recursively_and_sorted() {
         })
         .collect();
     assert_eq!(found, ["a.dstest", "b.dstest", "nested/deeper/c.dstest"]);
+}
+
+#[test]
+fn discover_propagates_read_dir_errors() {
+    let missing = scratch("discover_missing").join("does_not_exist");
+    let err = discover(&missing).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+}
+
+#[test]
+fn non_run_modes_never_apply_any_order_sorting() {
+    struct TableEcho;
+    impl Driver for TableEcho {
+        fn engine(&self) -> &str {
+            "datafusion"
+        }
+        fn supports(&self, mode: Mode) -> bool {
+            matches!(mode, Mode::Check | Mode::Run)
+        }
+        fn check(&self, _input: &CaseInput<'_>) -> DriverResult {
+            Ok("x\nstring\n------\nb\na\n".to_string())
+        }
+        fn run(&self, _input: &CaseInput<'_>) -> DriverResult {
+            Ok("x\nstring\n------\nb\na\n".to_string())
+        }
+    }
+
+    let root = scratch("order_mode");
+    let drivers = Drivers::new(DriverConfig::default()).with(TableEcho);
+
+    // In `mode: check` (even with `order: any`), lines are NOT reordered as table rows.
+    let check_case = root.join("check.dstest");
+    fs::write(
+        &check_case,
+        "mode: check\norder: any\n---- query\nx\n---- expected\nx\nstring\n------\na\nb\n",
+    )
+    .unwrap();
+    let prepared = prepare(check_case, &root, &drivers, false);
+    assert!((prepared.run)().is_err());
+
+    // In `mode: run` with `order: any`, table rows ARE sorted.
+    let run_case = root.join("run.dstest");
+    fs::write(
+        &run_case,
+        "mode: run\norder: any\n---- query\nx\n---- expected\nx\nstring\n------\na\nb\n",
+    )
+    .unwrap();
+    let prepared = prepare(run_case, &root, &drivers, false);
+    (prepared.run)().unwrap();
 }
 
 #[test]
