@@ -9,10 +9,10 @@ use std::sync::Arc;
 use datascript_diagnostics::did_you_mean;
 use libtest_mimic::{Arguments, Failed, Trial};
 
-use crate::bless::bless;
+use crate::bless::bless_with_renders;
 use crate::case::{Mode, Order, TestCase};
 use crate::driver::{CaseInput, Driver, DriverConfig, DriverError, dispatch};
-use crate::output::{canonicalize, diff, normalize_paths};
+use crate::output::{canonicalize_with_renders, diff, normalize_paths};
 
 /// The drivers available to the harness, one per engine name.
 #[derive(Clone)]
@@ -293,8 +293,16 @@ fn run_case(
         ));
     }
 
+    let table_renders = if case.mode == Mode::Run {
+        engines.first().and_then(|d| d.query_renders(&case.query))
+    } else {
+        None
+    };
+
     if bless_mode {
-        if let Some(new_text) = bless(text, case, &outputs, order) {
+        if let Some(new_text) =
+            bless_with_renders(text, case, &outputs, order, table_renders.as_deref())
+        {
             fs::write(path, new_text)
                 .map_err(|e| format!("{display}: cannot write blessed file: {e}"))?;
         }
@@ -316,11 +324,14 @@ fn run_case(
             continue;
         };
         let (want, got) = (
-            canonicalize(&expected.body, order),
-            canonicalize(output, order),
+            canonicalize_with_renders(&expected.body, order, table_renders.as_deref()),
+            canonicalize_with_renders(output, order, table_renders.as_deref()),
         );
         if want != got {
-            let reordered = |s: &str| canonicalize(s, Order::Strict) != canonicalize(s, order);
+            let reordered = |s: &str| {
+                canonicalize_with_renders(s, Order::Strict, table_renders.as_deref())
+                    != canonicalize_with_renders(s, order, table_renders.as_deref())
+            };
             let note = if reordered(&expected.body) || reordered(output) {
                 " (rows sorted, `order: any`)"
             } else {

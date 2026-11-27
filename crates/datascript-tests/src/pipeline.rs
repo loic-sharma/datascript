@@ -221,13 +221,18 @@ impl Driver for PipelineDriver {
     fn output_order_defined(&self, query: &str) -> Option<bool> {
         Some(output_order_defined(query))
     }
+
+    fn query_renders(&self, query: &str) -> Option<Vec<bool>> {
+        Some(query_renders(query))
+    }
 }
 
 /// Verifies that applying all `MachineApplicable` suggestions from `check` produces a query with
 /// no new parse errors and resolves each fixed diagnostic at its fixed location (M2-30).
 ///
-/// Pre-existing parse errors that had no `MachineApplicable` suggestion (such as an unfixable
-/// syntax error in another statement of a recovery test) may remain at their mapped locations.
+/// Pre-existing parse errors whose fix was not applied (because they had no `MachineApplicable`
+/// suggestion or because their suggestion overlapped an earlier applied fix) may remain at their
+/// mapped locations.
 fn verify_check_fixes(
     text: &str,
     file: FileId,
@@ -237,17 +242,26 @@ fn verify_check_fixes(
     let Some(applied) = apply_suggestions_detailed(text, file, diagnostics) else {
         return Ok(());
     };
+    let mut applied_diags: Vec<&Diagnostic> = applied
+        .applied_indices
+        .iter()
+        .map(|&i| &diagnostics[i])
+        .collect();
     let orig_parse = datascript_syntax::parse(text, file);
     let pre_existing_unfixed: Vec<(datascript_diagnostics::Code, Option<std::ops::Range<u32>>)> =
         orig_parse
             .errors
             .iter()
-            .filter(|d| {
-                !d.help.iter().any(|h| {
-                    h.suggestion.as_ref().is_some_and(|s| {
-                        s.applicability == datascript_diagnostics::Applicability::MachineApplicable
-                    })
-                })
+            .filter(|orig| {
+                // If this parse error had a suggestion actually applied, it must not remain.
+                if let Some(pos) = applied_diags.iter().position(|d| {
+                    d.code == orig.code && d.primary == orig.primary && d.message == orig.message
+                }) {
+                    applied_diags.swap_remove(pos);
+                    false
+                } else {
+                    true
+                }
             })
             .map(|d| {
                 let span = d
@@ -273,7 +287,9 @@ fn verify_check_fixes(
                 .as_ref()
                 .filter(|p| p.span.file == fixed_query.file)
                 .map(|p| p.span.start..p.span.end);
-            !pre_existing_unfixed.contains(&(d.code, span))
+            !pre_existing_unfixed.iter().any(|(code, mapped)| {
+                *code == d.code && pre_existing_spans_match(mapped.as_ref(), span.as_ref())
+            })
         })
         .collect();
     if !new_parse_errors.is_empty() {
@@ -301,6 +317,28 @@ fn verify_check_fixes(
         )));
     }
     Ok(())
+}
+
+/// Whether a re-parsed error span matches a pre-existing unfixed error's mapped span (by overlap
+/// or containment, so recovery spans that grow or shrink slightly when nearby tokens change are
+/// still recognized as the same pre-existing error).
+fn pre_existing_spans_match(
+    mapped: Option<&std::ops::Range<u32>>,
+    current: Option<&std::ops::Range<u32>>,
+) -> bool {
+    match (mapped, current) {
+        (None, None) => true,
+        (Some(a), Some(b)) => {
+            if a.start == a.end {
+                b.start <= a.start && a.start <= b.end
+            } else if b.start == b.end {
+                a.start <= b.start && b.start <= a.end
+            } else {
+                a.start < b.end && b.start < a.end
+            }
+        }
+        _ => false,
+    }
 }
 
 fn indent_lines(text: &str) -> String {
@@ -339,6 +377,21 @@ fn query_schemas(hir: &datascript_compiler::hir::Hir) -> String {
         }
     }
     out
+}
+
+fn query_renders(query: &str) -> Vec<bool> {
+    let parse = datascript_syntax::parse(query, FileId(0));
+    parse
+        .program()
+        .statements()
+        .filter_map(|stmt| match stmt {
+            Stmt::Let(_) => None,
+            Stmt::Query(pipeline) => Some(matches!(
+                pipeline.operators().last(),
+                Some(Operator::Render(_))
+            )),
+        })
+        .collect()
 }
 
 /// Whether every query statement's row order is defined (LANGUAGE.md §3.4): its last `sort` or
@@ -485,5 +538,71 @@ mod tests {
             panic!("expected DriverError::Failed, got {err:?}");
         };
         assert!(msg.contains("did not resolve DS1001"), "{msg}");
+    }
+
+    #[test]
+    fn verify_check_fixes_allows_skipped_overlapping_parse_fix() {
+        // `from t | where a = 1` produces a real parse error (DS0110) with a MachineApplicable
+        // fix (`=` -> `==`). When an earlier applied suggestion overlaps its edit, DS0110's fix
+        // is skipped, so DS0110 remains after reparsing and must not be reported as a *new*
+        // parse error.
+        let mock = schema::parse("t(a: long)").unwrap();
+        let caps = datascript_compiler::Capabilities::full();
+        let run_check = |q: &Query| Ok(datascript_compiler::check(&q.src, q.file, &mock, &caps));
+
+        let text = "from t | where a = 1\n";
+        let file = FileId(0);
+        let orig_parse = datascript_syntax::parse(text, file);
+        assert_eq!(orig_parse.errors.len(), 1);
+        assert_eq!(orig_parse.errors[0].code, codes::DS0110);
+        let eq_span = orig_parse.errors[0].primary.as_ref().unwrap().span;
+
+        // First diagnostic overlaps `eq_span` with a no-op edit, causing DS0110's fix to be
+        // skipped by `apply_suggestions_detailed`.
+        let earlier = Diagnostic::warning(codes::DS2103, "earlier overlapping fix")
+            .primary(Span::new(file, 0, 4), "earlier")
+            .help_with("overlap", Suggestion::replace(eq_span, "="));
+        verify_check_fixes(
+            text,
+            file,
+            &[earlier, orig_parse.errors[0].clone()],
+            &run_check,
+        )
+        .expect("skipped overlapping parse fix should not fail as a new parse error");
+    }
+
+    #[test]
+    fn verify_check_fixes_allows_shifted_pre_existing_parse_error_span() {
+        // Statement 1 has a pre-existing unfixed parse error whose span extends to the next
+        // token (`from t | where (amount > 1` missing `)` before `;`).
+        // A fix that changes text right at the boundary shifts the recovery span slightly.
+        let mock = schema::parse("t(amount: long)").unwrap();
+        let caps = datascript_compiler::Capabilities::full();
+        let run_check = |q: &Query| Ok(datascript_compiler::check(&q.src, q.file, &mock, &caps));
+
+        // `from t | where 1 < amout < 3` -> `amout` (19..24) fixes to `amount` (+1 byte).
+        // `1 < amout < 3` has DS0101 on `<` (25..26) AND DS1001 on `amout`? Actually test a
+        // recovery error whose span changes length when the token inside/next to it is edited:
+        // `from t | where (amout > 1` -> DS0112 on `(` (15..16) or `where 1 <` (EOF).
+        // Better: `from t | where amout =` has DS0101 on `=` (21..22); if a fix replaces `amout`
+        // with `amount` and inserts right at the error boundary, test shifting the error span.
+        let text = "from t | where 1 < amount < 3\n";
+        let file = FileId(0);
+        let orig_parse = datascript_syntax::parse(text, file);
+        assert_eq!(orig_parse.errors.len(), 1);
+        let err_span = orig_parse.errors[0].primary.as_ref().unwrap().span;
+        // Replace `<` with `<=` (at the end of `<`, `err_span.end..err_span.end`):
+        // original DS0101 span was `<` (26..27); `map_range(26..27)` is `26..27`, while after
+        // inserting `=` at 27..27 the re-parsed DS0101 span is `<=` (26..28), which overlaps
+        // `26..27` but is NOT equal to it!
+        let boundary_fix = Diagnostic::warning(codes::DS2103, "boundary")
+            .primary(Span::new(file, 0, 4), "boundary")
+            .help_with(
+                "insert =",
+                Suggestion::replace(Span::empty(file, err_span.end), "="),
+            );
+        verify_check_fixes(text, file, &[boundary_fix], &run_check).expect(
+            "pre-existing parse error whose span grew at boundary should still be recognized",
+        );
     }
 }

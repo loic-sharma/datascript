@@ -5,7 +5,7 @@
 //! blessing twice changes nothing the second time.
 
 use crate::case::{Order, TestCase};
-use crate::output::canonicalize;
+use crate::output::canonicalize_with_renders;
 
 /// Returns the new file text after blessing `outputs` (one per engine, in the order of the
 /// case's `engine:` header), or `None` when every expected section already matches.
@@ -19,8 +19,23 @@ pub fn bless(
     outputs: &[(String, String)],
     order: Order,
 ) -> Option<String> {
+    bless_with_renders(text, case, outputs, order, None)
+}
+
+/// Like [`bless`], passing per-table `render` flags so `Order::Any` distinguishes chart footers
+/// from data rows structurally.
+pub fn bless_with_renders(
+    text: &str,
+    case: &TestCase,
+    outputs: &[(String, String)],
+    order: Order,
+    table_renders: Option<&[bool]>,
+) -> Option<String> {
     let eol = if text.contains("\r\n") { "\r\n" } else { "\n" };
-    let same = |a: &str, b: &str| canonicalize(a, order) == canonicalize(b, order);
+    let same = |a: &str, b: &str| {
+        canonicalize_with_renders(a, order, table_renders)
+            == canonicalize_with_renders(b, order, table_renders)
+    };
     let shared = case.expected.iter().find(|s| s.engine.is_none());
 
     // The shared section: keep it if it matches the first engine, else replace it.

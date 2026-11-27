@@ -98,17 +98,18 @@ fn non_run_modes_never_apply_any_order_sorting() {
     let root = scratch("order_mode");
     let drivers = Drivers::new(DriverConfig::default()).with(TableEcho);
 
-    // In `mode: check` (even with `order: any`), lines are NOT reordered as table rows.
+    // In `mode: check` (where `output_order_defined` returns `None`, which would default to
+    // `Order::Any` in `mode: run`), lines are NOT reordered as table rows.
     let check_case = root.join("check.dstest");
     fs::write(
         &check_case,
-        "mode: check\norder: any\n---- query\nx\n---- expected\nx\nstring\n------\na\nb\n",
+        "mode: check\n---- query\nx\n---- expected\nx\nstring\n------\na\nb\n",
     )
     .unwrap();
     let prepared = prepare(check_case, &root, &drivers, false);
     assert!((prepared.run)().is_err());
 
-    // In `mode: run` with `order: any`, table rows ARE sorted.
+    // In `mode: run`, table rows ARE sorted when order is `any`.
     let run_case = root.join("run.dstest");
     fs::write(
         &run_case,
@@ -116,6 +117,33 @@ fn non_run_modes_never_apply_any_order_sorting() {
     )
     .unwrap();
     let prepared = prepare(run_case, &root, &drivers, false);
+    (prepared.run)().unwrap();
+}
+
+#[test]
+fn any_order_sorts_render_like_data_cell_regardless_of_row_order() {
+    let root = scratch("render_cell_order");
+    fs::write(root.join("data.csv"), "msg\nzeta\nrender: table\n").unwrap();
+    let drivers = Drivers::current();
+
+    // Without `render`, `render: table` is a data cell and sorts even when it arrives last.
+    let no_render = root.join("no_render.dstest");
+    fs::write(
+        &no_render,
+        "mode: run\norder: any\n---- query\nfrom 'data.csv'\n---- expected\nmsg\nstring\n-------------\nrender: table\nzeta\n",
+    )
+    .unwrap();
+    let prepared = prepare(no_render, &root, &drivers, false);
+    (prepared.run)().unwrap();
+
+    // With `| render table`, the footer stays pinned while the `render: table` data cell sorts.
+    let with_render = root.join("with_render.dstest");
+    fs::write(
+        &with_render,
+        "mode: run\norder: any\n---- query\nfrom 'data.csv' | render table\n---- expected\nmsg\nstring\n-------------\nrender: table\nzeta\nrender: table\n",
+    )
+    .unwrap();
+    let prepared = prepare(with_render, &root, &drivers, false);
     (prepared.run)().unwrap();
 }
 

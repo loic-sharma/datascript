@@ -13,6 +13,9 @@ pub(crate) struct AppliedFixes {
     pub(crate) text: String,
     /// One entry per diagnostic whose machine-applicable suggestion was applied.
     pub(crate) applied: Vec<AppliedFix>,
+    /// Indices into the `diagnostics` slice passed to [`apply_suggestions_detailed`] whose
+    /// suggestion was actually applied (not skipped due to overlap).
+    pub(crate) applied_indices: Vec<usize>,
     mapped_edits: Vec<MappedEdit>,
 }
 
@@ -116,8 +119,10 @@ pub(crate) fn apply_suggestions_detailed(
 
     let mut taken: Vec<TakenEdit<'_>> = Vec::new();
     let mut raw_fixes: Vec<RawFix> = Vec::new();
+    let mut applied_indices: Vec<usize> = Vec::new();
 
-    for diagnostic in diagnostics {
+    for (diag_index, diagnostic) in diagnostics.iter().enumerate() {
+        let mut applied_this = false;
         let suggestions = diagnostic
             .help
             .iter()
@@ -136,6 +141,7 @@ pub(crate) fn apply_suggestions_detailed(
                 .iter()
                 .any(|new| taken.iter().any(|old| overlap(old.edit, new)));
             if !overlaps {
+                applied_this = true;
                 let fix_index = raw_fixes.len();
                 let primary = diagnostic
                     .primary
@@ -155,6 +161,9 @@ pub(crate) fn apply_suggestions_detailed(
                     });
                 }
             }
+        }
+        if applied_this {
+            applied_indices.push(diag_index);
         }
     }
     if taken.is_empty() {
@@ -212,6 +221,7 @@ pub(crate) fn apply_suggestions_detailed(
     Some(AppliedFixes {
         text: out,
         applied,
+        applied_indices,
         mapped_edits,
     })
 }
@@ -226,13 +236,16 @@ fn overlap(a: &TextEdit, b: &TextEdit) -> bool {
     a.start < b.end && b.start < a.end
 }
 
-fn ranges_overlap(a: Range<u32>, b: Range<u32>) -> bool {
-    if a.start == a.end {
-        b.start <= a.start && a.start <= b.end
-    } else if b.start == b.end {
-        a.start <= b.start && b.start <= a.end
+fn ranges_overlap(fixed: Range<u32>, diag: Range<u32>) -> bool {
+    if fixed.start == fixed.end {
+        // An empty fixed range (e.g. a deletion) only matches an empty diagnostic at the exact
+        // same offset or a diagnostic strictly spanning across it, never an adjacent diagnostic
+        // that merely starts or ends at the deletion point.
+        diag == fixed || (diag.start < fixed.start && fixed.start < diag.end)
+    } else if diag.start == diag.end {
+        fixed.start < diag.start && diag.start < fixed.end
     } else {
-        a.start < b.end && b.start < a.end
+        fixed.start < diag.end && diag.start < fixed.end
     }
 }
 
@@ -351,5 +364,26 @@ mod tests {
         let still_missing = Diagnostic::warning(codes::DS2103, "missing direction")
             .primary(Span::new(fixed_file, 17, 18), "no direction");
         assert!(applied.matches_remaining(fixed_file, &still_missing));
+    }
+
+    #[test]
+    fn deletion_fix_does_not_match_adjacent_diagnostic() {
+        // Delete `from ` (0..5 -> "") right before `badcol` (5..11), which shifts to 0..6.
+        // An unrelated same-code diagnostic at 0..6 right next to the deletion point 0..0
+        // must NOT match the deleted fix.
+        let text = "from badcol";
+        let deleted = Diagnostic::error(codes::DS0152, "unexpected `from`")
+            .primary(Span::new(F, 0, 5), "remove this")
+            .help_with("remove", Suggestion::replace(Span::new(F, 0, 5), ""));
+        let applied = apply_suggestions_detailed(text, F, &[deleted]).unwrap();
+        assert_eq!(applied.text, "badcol");
+
+        let fixed_file = FileId(1);
+        let adjacent = Diagnostic::error(codes::DS0152, "another error right next to it")
+            .primary(Span::new(fixed_file, 0, 6), "adjacent");
+        assert!(
+            !applied.matches_remaining(fixed_file, &adjacent),
+            "empty deletion range must not match an adjacent non-empty diagnostic"
+        );
     }
 }

@@ -283,6 +283,9 @@ impl Parser {
         };
         let order = match header("order") {
             None => None,
+            Some(v) if mode != Mode::Run => {
+                return Err(err(v.line, "`order` is only for `mode: run` cases"));
+            }
             Some(v) => Some(match v.value.as_str() {
                 "strict" => Order::Strict,
                 "any" => Order::Any,
@@ -688,12 +691,12 @@ mod tests {
 
     #[test]
     fn full_case() {
-        let text = "# Line one.\n#Line two.\nmode: check\norder: any\nnow: 2024-01-02T03:04:05.5Z\n\
+        let text = "# Line one.\n#Line two.\nmode: run\norder: any\nnow: 2024-01-02T03:04:05.5Z\n\
                     engine: datafusion, sql-duckdb\ntables: t=../data/a.csv, u = b.csv\nskip: M1-02\n\
                     ---- query\nt | take 1\n\n\n---- expected\nout\n---- expected[sql-duckdb]\nother\n";
         let case = TestCase::parse(text).unwrap();
         assert_eq!(case.description, ["Line one.", "Line two."]);
-        assert_eq!(case.mode, Mode::Check);
+        assert_eq!(case.mode, Mode::Run);
         assert_eq!(case.order, Some(Order::Any));
         assert_eq!(case.now_micros, 1_704_164_645_500_000);
         assert_eq!(case.engines.value, ["datafusion", "sql-duckdb"]);
@@ -821,6 +824,18 @@ mod tests {
         assert_eq!(
             parse_err("mode: syntax\nnow: 2024-01-01T00:00:00Z\n---- query\nx\n"),
             "line 2: `now` is not used in `mode: syntax` cases"
+        );
+        assert_eq!(
+            parse_err("mode: check\norder: any\n---- query\nx\n"),
+            "line 2: `order` is only for `mode: run` cases"
+        );
+        assert_eq!(
+            parse_err("mode: explain\norder: strict\n---- query\nx\n"),
+            "line 2: `order` is only for `mode: run` cases"
+        );
+        assert_eq!(
+            parse_err("mode: syntax\norder: any\n---- query\nx\n"),
+            "line 2: `order` is only for `mode: run` cases"
         );
     }
 

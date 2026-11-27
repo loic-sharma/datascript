@@ -63,7 +63,7 @@ error[DS1001]: unknown column `amout`
 | Key | Values | Default | Meaning |
 |---|---|---|---|
 | `mode` | `syntax`, `check`, `explain`, `run` | `run` | How far the pipeline goes. `syntax` dumps the CST, `explain` prints the logical plan |
-| `order` | `strict`, `any` | `strict` if every query's output order is defined by LANGUAGE.md §3.4 (its last `sort` or `top` is followed only by order-preserving operators such as `take`, `where`, `project`, `extend`, `render`), else `any` | `any` sorts result rows before comparing (D-017) |
+| `order` | `strict`, `any` | `strict` if every query's output order is defined by LANGUAGE.md §3.4 (its last `sort` or `top` is followed only by order-preserving operators such as `take`, `where`, `project`, `extend`, `render`), else `any` | `run` cases only: `any` sorts result rows before comparing (D-017) |
 | `now` | ISO datetime | `2024-06-01T00:00:00Z` | Fixed clock for `now()`/`ago()` |
 | `engine` | `datafusion`, … | `datafusion` | Backend under test. A comma-separated list runs the case on each (see "Several engines") |
 | `tables` | `name=path, ...` | | Host-registered tables (simulates `--table`/drag-drop) |

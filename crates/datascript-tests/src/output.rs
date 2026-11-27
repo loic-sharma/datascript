@@ -51,14 +51,24 @@ pub fn normalize_paths(output: &str, test_dir: &Path, repo_root: &Path) -> Strin
                     Some(c) if !c.is_alphanumeric() && c != '_' && c != '-' && c != '.' => {}
                     Some(_) => continue,
                 }
-                let quote = out.chars().last().filter(|c| matches!(c, '`' | '\'' | '"'));
+                let windows_path = prefix.contains('\\') || after.starts_with('\\');
+                let prev_quote = out.chars().last().filter(|c| matches!(c, '`' | '\'' | '"'));
                 out.push_str(token);
                 rest = after;
-                if rest.starts_with(['/', '\\']) {
-                    // Turn every `\` in the rewritten `<test>/...` or `<repo>/...` path into `/`.
+                if windows_path && rest.starts_with(['/', '\\']) {
+                    // Only treat a leading quote as delimiting spaces in the path when the quote
+                    // is closed on the same line.
+                    let closing_quote = prev_quote.filter(|&q| {
+                        rest.split(['\n', '\r'])
+                            .next()
+                            .is_some_and(|line| line.contains(q))
+                    });
+                    // Turn every `\` in the rewritten Windows `<test>/...` or `<repo>/...` path
+                    // into `/`. Unix paths never rewrite backslashes, so escapes like `\n` after
+                    // a path are preserved.
                     let mut consumed = 0;
                     for (idx, c) in rest.char_indices() {
-                        let stop = match quote {
+                        let stop = match closing_quote {
                             Some(q) => c == q || c == '\n' || c == '\r',
                             None => {
                                 c.is_whitespace()
@@ -86,10 +96,21 @@ pub fn normalize_paths(output: &str, test_dir: &Path, repo_root: &Path) -> Strin
 /// Prepares text for comparison: line endings and trailing blank lines are normalized, and with
 /// `Order::Any` the data rows of every result table are sorted.
 pub fn canonicalize(text: &str, order: Order) -> String {
+    canonicalize_with_renders(text, order, None)
+}
+
+/// Like [`canonicalize`], using `table_renders` (one `bool` per query table, saying whether that
+/// query ends with a `render` operator) to decide structurally whether a table's final `render:`
+/// line is a chart footer rather than a data row.
+pub fn canonicalize_with_renders(
+    text: &str,
+    order: Order,
+    table_renders: Option<&[bool]>,
+) -> String {
     let text = normalize_body(text);
     match order {
         Order::Strict => text,
-        Order::Any => sort_table_rows(&text),
+        Order::Any => sort_table_rows(&text, table_renders),
     }
 }
 
@@ -160,23 +181,41 @@ fn is_render_summary(line: &str) -> bool {
 /// Sorts the data rows that follow each table separator, up to the end of the table.
 ///
 /// A table ends at EOF or at a blank line followed by another table; a final `render:` summary
-/// line stays after the sorted rows. Blank cells in 1-column tables and data cells starting with
-/// `render:` stay part of the table's rows.
-fn sort_table_rows(text: &str) -> String {
+/// line stays after the sorted rows when the query has a `render` operator (from `table_renders`,
+/// or by shape when `table_renders` is `None`). Blank cells in 1-column tables and data cells
+/// starting with `render:` stay part of the table's rows.
+fn sort_table_rows(text: &str, table_renders: Option<&[bool]>) -> String {
     let lines: Vec<&str> = text.split('\n').collect();
     let mut out: Vec<&str> = Vec::with_capacity(lines.len());
+    let mut table_index = 0usize;
     let mut i = 0;
     while i < lines.len() {
         let line = lines[i];
+        let at_block_start = i == 0 || lines[i - 1].is_empty();
         out.push(line);
         i += 1;
+        if at_block_start
+            && line == "(no columns)"
+            && (i == lines.len() || lines[i].is_empty() || lines[i].starts_with("render: "))
+        {
+            table_index += 1;
+            continue;
+        }
         // The separator is the third line of a table: header, types, separator.
         if out.len() >= 3 && is_table_header(out[out.len() - 3], out[out.len() - 2], line) {
+            let has_render = table_renders.and_then(|flags| flags.get(table_index).copied());
+            table_index += 1;
             let start = i;
             while i < lines.len() && !(lines[i].is_empty() && starts_new_table(&lines[i + 1..])) {
                 i += 1;
             }
-            let (rows_end, render_line) = if i > start && is_render_summary(lines[i - 1]) {
+            let is_footer = i > start
+                && match has_render {
+                    Some(true) => lines[i - 1].starts_with("render: "),
+                    Some(false) => false,
+                    None => is_render_summary(lines[i - 1]),
+                };
+            let (rows_end, render_line) = if is_footer {
                 (i - 1, Some(lines[i - 1]))
             } else {
                 (i, None)
@@ -256,6 +295,26 @@ mod tests {
     }
 
     #[test]
+    fn unix_paths_preserve_escapes_after_path() {
+        let repo = Path::new("/home/repo");
+        let test = Path::new("/home/repo/tests/cases");
+        let out = r#"cannot read /home/repo/tests/cases/a.csv\nhelp: check /home/repo/b.csv\tnow"#;
+        assert_eq!(
+            normalize_paths(out, test, repo),
+            r#"cannot read <test>/a.csv\nhelp: check <repo>/b.csv\tnow"#
+        );
+
+        // An unclosed leading quote on Windows must not rewrite unrelated paths later on the line.
+        let win_repo = Path::new(r"C:\work\repo");
+        let win_test = Path::new(r"C:\work\repo\tests\cases");
+        let unclosed = r"open 'C:\work\repo\sub\a.csv and C:\other\keep\b.csv";
+        assert_eq!(
+            normalize_paths(unclosed, win_test, win_repo),
+            r"open '<repo>/sub/a.csv and C:\other\keep\b.csv"
+        );
+    }
+
+    #[test]
     fn any_order_sorts_only_table_rows() {
         let text = "warning: w\n\na | b\nlong | long\n--+--\n3 | 1\n1 | 2\nrender: table\n\nx\nstring\n-\nz\ny\n";
         assert_eq!(
@@ -307,6 +366,32 @@ mod tests {
         assert_eq!(
             canonicalize(with_footer, Order::Any),
             "msg\nstring\n-------------\nalpha\nrender: table\nrender: table"
+        );
+
+        // When the query has no `render` operator (`Some(&[false])`), a data cell equal to
+        // `render: table` is sorted identically regardless of whether it arrives first or last.
+        let last = "msg\nstring\n-------------\nzeta\nrender: table\n";
+        let first = "msg\nstring\n-------------\nrender: table\nzeta\n";
+        assert_eq!(
+            canonicalize_with_renders(last, Order::Any, Some(&[false])),
+            canonicalize_with_renders(first, Order::Any, Some(&[false])),
+        );
+        assert_eq!(
+            canonicalize_with_renders(last, Order::Any, Some(&[false])),
+            "msg\nstring\n-------------\nrender: table\nzeta"
+        );
+
+        // When the query DOES end with `render` (`Some(&[true])`), the final `render:` line is
+        // pinned as the footer while a data row `render: table` still sorts with `zeta`.
+        let with_render_a = "msg\nstring\n-------------\nzeta\nrender: table\nrender: table\n";
+        let with_render_b = "msg\nstring\n-------------\nrender: table\nzeta\nrender: table\n";
+        assert_eq!(
+            canonicalize_with_renders(with_render_a, Order::Any, Some(&[true])),
+            canonicalize_with_renders(with_render_b, Order::Any, Some(&[true])),
+        );
+        assert_eq!(
+            canonicalize_with_renders(with_render_a, Order::Any, Some(&[true])),
+            "msg\nstring\n-------------\nrender: table\nzeta\nrender: table"
         );
     }
 
