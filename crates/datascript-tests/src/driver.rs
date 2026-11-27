@@ -113,6 +113,13 @@ pub trait Driver: Send + Sync {
     fn output_order_defined(&self, _query: &str) -> Option<bool> {
         None
     }
+
+    /// For each query statement in `query`, whether its pipeline ends with `render` (and therefore
+    /// produces a `render:` footer line in `mode: run`). `None` if the driver cannot inspect the
+    /// query.
+    fn query_renders(&self, _query: &str) -> Option<Vec<bool>> {
+        None
+    }
 }
 
 /// Calls the driver method for `mode`.

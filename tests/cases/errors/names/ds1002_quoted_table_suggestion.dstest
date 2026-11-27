@@ -1,0 +1,14 @@
+# Did-you-mean suggestions quote a reserved-word table name so the fix parses.
+mode: check
+schema: null(id: long)
+---- query
+from nul
+---- expected
+error[DS1002]: unknown table `nul`
+  --> query:1:6
+  |
+1 | from nul
+  |      ^^^ no table with this name
+  |
+  = help: a table with a similar name exists: `null`
+  = note: a table name is a tabular `let` or a table registered by the host; to read a file, write its path as a string: `from 'orders.csv'`

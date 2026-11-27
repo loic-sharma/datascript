@@ -283,6 +283,9 @@ impl Parser {
         };
         let order = match header("order") {
             None => None,
+            Some(v) if mode != Mode::Run => {
+                return Err(err(v.line, "`order` is only for `mode: run` cases"));
+            }
             Some(v) => Some(match v.value.as_str() {
                 "strict" => Order::Strict,
                 "any" => Order::Any,
@@ -325,11 +328,29 @@ impl Parser {
                 }
             }
         };
-        let tables = match header("tables") {
+        if mode == Mode::Syntax {
+            for key in ["schema", "tables", "now"] {
+                if let Some(v) = header(key) {
+                    return Err(err(
+                        v.line,
+                        format!("`{key}` is not used in `mode: syntax` cases"),
+                    ));
+                }
+            }
+        }
+        let tables_header = header("tables");
+        let schema_header = header("schema");
+        if let (Some(t), Some(s)) = (tables_header, schema_header) {
+            return Err(err(
+                t.line.max(s.line),
+                "`schema` and `tables` cannot be used together (`schema` reads no files)",
+            ));
+        }
+        let tables = match tables_header {
             None => Vec::new(),
             Some(v) => parse_tables(&v.value).map_err(|m| err(v.line, m))?,
         };
-        let schema = match header("schema") {
+        let schema = match schema_header {
             None => None,
             Some(v) => Some(schema::parse(&v.value).map_err(|m| err(v.line, m))?),
         };
@@ -670,12 +691,12 @@ mod tests {
 
     #[test]
     fn full_case() {
-        let text = "# Line one.\n#Line two.\nmode: check\norder: any\nnow: 2024-01-02T03:04:05.5Z\n\
+        let text = "# Line one.\n#Line two.\nmode: run\norder: any\nnow: 2024-01-02T03:04:05.5Z\n\
                     engine: datafusion, sql-duckdb\ntables: t=../data/a.csv, u = b.csv\nskip: M1-02\n\
                     ---- query\nt | take 1\n\n\n---- expected\nout\n---- expected[sql-duckdb]\nother\n";
         let case = TestCase::parse(text).unwrap();
         assert_eq!(case.description, ["Line one.", "Line two."]);
-        assert_eq!(case.mode, Mode::Check);
+        assert_eq!(case.mode, Mode::Run);
         assert_eq!(case.order, Some(Order::Any));
         assert_eq!(case.now_micros, 1_704_164_645_500_000);
         assert_eq!(case.engines.value, ["datafusion", "sql-duckdb"]);
@@ -787,6 +808,34 @@ mod tests {
         assert_eq!(
             parse_err("schema: t(a: lng)\n---- query\nx\n"),
             "line 1: `schema`: unknown type `lng` for column `a` (did you mean `long`?)"
+        );
+        assert_eq!(
+            parse_err("schema: t(a: long)\ntables: t=a.csv\n---- query\nx\n"),
+            "line 2: `schema` and `tables` cannot be used together (`schema` reads no files)"
+        );
+        assert_eq!(
+            parse_err("mode: syntax\nschema: t(a: long)\n---- query\nx\n"),
+            "line 2: `schema` is not used in `mode: syntax` cases"
+        );
+        assert_eq!(
+            parse_err("mode: syntax\ntables: t=a.csv\n---- query\nx\n"),
+            "line 2: `tables` is not used in `mode: syntax` cases"
+        );
+        assert_eq!(
+            parse_err("mode: syntax\nnow: 2024-01-01T00:00:00Z\n---- query\nx\n"),
+            "line 2: `now` is not used in `mode: syntax` cases"
+        );
+        assert_eq!(
+            parse_err("mode: check\norder: any\n---- query\nx\n"),
+            "line 2: `order` is only for `mode: run` cases"
+        );
+        assert_eq!(
+            parse_err("mode: explain\norder: strict\n---- query\nx\n"),
+            "line 2: `order` is only for `mode: run` cases"
+        );
+        assert_eq!(
+            parse_err("mode: syntax\norder: any\n---- query\nx\n"),
+            "line 2: `order` is only for `mode: run` cases"
         );
     }
 

@@ -1,6 +1,6 @@
 # M2-30 — Golden harness, CI and testing-docs gaps
 
-**Status:** todo
+**Status:** done — Verified `MachineApplicable` fixes in `PipelineDriver::check`, added an active diagnostic code coverage matrix test, scoped `Order::Any` to `mode: run` and fixed `sort_table_rows`, propagated `discover()` errors and rejected conflicting/irrelevant headers, normalized all backslashes in rewritten paths, added the `--no-default-features` `datascript-datafusion` CI step, and updated `docs/TESTING.md`.
 **Depends on:** M2-32
 **Crates:** `datascript-tests` (plus `.github/workflows/ci.yml` and `docs/TESTING.md`)
 **Diagnostic codes:** none (D-018).
@@ -18,28 +18,28 @@ edits.
 ## Scope
 
 ### Golden harness (`crates/datascript-tests`)
-- [ ] **Verify compiler fixes.** In `PipelineDriver::check`, apply `MachineApplicable`
+- [x] **Verify compiler fixes.** In `PipelineDriver::check`, apply `MachineApplicable`
       suggestions with `apply_suggestions` and re-run `check` on the result. Fail the case
       (`DriverError::Failed`) if the fixed query has parse errors or still has a diagnostic with
       the same code at the fixed location. Other diagnostics may remain (recovery cases have
       several errors). This is an assertion only: unlike `PipelineDriver::syntax`, it adds nothing
       to the expected output, so existing `mode: check` files do not change.
-- [ ] **Code coverage matrix.** A test that scans `tests/cases/**/*.dstest` and fails if a
+- [x] **Code coverage matrix.** A test that scans `tests/cases/**/*.dstest` and fails if a
       `CodeStatus::Active` code in `codes::REGISTRY` appears in none of them, except an explicit
       allowlist with a reason per code (`DS4002`, `DS5001`, `DS9001`).
-- [ ] **Order and sorting.** Apply `Order::Any` canonicalization only to `mode: run`, so other
+- [x] **Order and sorting.** Apply `Order::Any` canonicalization only to `mode: run`, so other
       outputs with dash lines are not reordered. Fix `sort_table_rows` so a blank cell in a
       1-column table, or a cell starting with `render:`, does not end the rows early.
-- [ ] **Fail fast.** `discover()` propagates `read_dir` errors instead of passing with 0 trials,
+- [x] **Fail fast.** `discover()` propagates `read_dir` errors instead of passing with 0 trials,
       and conflicting or irrelevant headers are rejected (`schema:` with `tables:`;
       `schema:`/`tables:`/`now:` in `syntax` mode).
-- [ ] **Windows paths.** `normalize_paths` turns every `\` in rewritten `<test>/…` and `<repo>/…`
+- [x] **Windows paths.** `normalize_paths` turns every `\` in rewritten `<test>/…` and `<repo>/…`
       paths into `/`, not just the first.
 
 ### CI and docs
-- [ ] CI runs `cargo test -p datascript-datafusion --no-default-features`, so the build without
+- [x] CI runs `cargo test -p datascript-datafusion --no-default-features`, so the build without
       `compression` is tested natively.
-- [ ] `docs/TESTING.md`: add the missing layers to the "Test layers" table (CLI, REPL, stdio LSP,
+- [x] `docs/TESTING.md`: add the missing layers to the "Test layers" table (CLI, REPL, stdio LSP,
       lexer and parser proptests, diagnostic snapshots), and describe `show: schema` as
       `query_schemas` prints it (`query N columns:` headers, `(error)` types).
 
@@ -49,10 +49,10 @@ edits.
 - Tests for unreachable internal `plan.rs` `DS9001` guards.
 
 ## Acceptance criteria
-- [ ] `PipelineDriver::check` verifies `MachineApplicable` fixes on every golden `check` case, and
+- [x] `PipelineDriver::check` verifies `MachineApplicable` fixes on every golden `check` case, and
       the coverage matrix passes.
-- [ ] Each harness fix has a unit test in `datascript-tests`.
-- [ ] `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
+- [x] Each harness fix has a unit test in `datascript-tests`.
+- [x] `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
       `cargo test --workspace` and `cargo test -p datascript-datafusion --no-default-features`
       pass.
 

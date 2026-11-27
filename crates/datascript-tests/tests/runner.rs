@@ -58,6 +58,7 @@ fn discovers_recursively_and_sorted() {
         fs::write(root.join(p), "").unwrap();
     }
     let found: Vec<_> = discover(&root)
+        .unwrap()
         .into_iter()
         .map(|p| {
             p.strip_prefix(&root)
@@ -67,6 +68,101 @@ fn discovers_recursively_and_sorted() {
         })
         .collect();
     assert_eq!(found, ["a.dstest", "b.dstest", "nested/deeper/c.dstest"]);
+}
+
+#[test]
+fn discover_propagates_read_dir_errors() {
+    let missing = scratch("discover_missing").join("does_not_exist");
+    let err = discover(&missing).unwrap_err();
+    assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+}
+
+#[test]
+fn non_run_modes_never_apply_any_order_sorting() {
+    struct TableEcho;
+    impl Driver for TableEcho {
+        fn engine(&self) -> &str {
+            "datafusion"
+        }
+        fn supports(&self, mode: Mode) -> bool {
+            matches!(mode, Mode::Check | Mode::Run)
+        }
+        fn check(&self, _input: &CaseInput<'_>) -> DriverResult {
+            Ok("x\nstring\n------\nb\na\n".to_string())
+        }
+        fn run(&self, _input: &CaseInput<'_>) -> DriverResult {
+            Ok("x\nstring\n------\nb\na\n".to_string())
+        }
+    }
+
+    let root = scratch("order_mode");
+    let drivers = Drivers::new(DriverConfig::default()).with(TableEcho);
+
+    // In `mode: check` (where `output_order_defined` returns `None`, which would default to
+    // `Order::Any` in `mode: run`), lines are NOT reordered as table rows.
+    let check_case = root.join("check.dstest");
+    fs::write(
+        &check_case,
+        "mode: check\n---- query\nx\n---- expected\nx\nstring\n------\na\nb\n",
+    )
+    .unwrap();
+    let prepared = prepare(check_case, &root, &drivers, false);
+    let err = (prepared.run)().unwrap_err();
+    assert!(
+        err.contains("output does not match\n") && err.contains("+b\n a\n-b\n"),
+        "expected a strict row-order diff without sorting, got:\n{err}"
+    );
+    assert!(
+        !err.contains("rows sorted"),
+        "mode: check should never sort rows, got:\n{err}"
+    );
+
+    // A `mode: check` case matching the exact row order (`b`, `a`) passes.
+    let check_exact = root.join("check_exact.dstest");
+    fs::write(
+        &check_exact,
+        "mode: check\n---- query\nx\n---- expected\nx\nstring\n------\nb\na\n",
+    )
+    .unwrap();
+    let prepared = prepare(check_exact, &root, &drivers, false);
+    (prepared.run)().unwrap();
+
+    // In `mode: run`, table rows ARE sorted when order is `any`.
+    let run_case = root.join("run.dstest");
+    fs::write(
+        &run_case,
+        "mode: run\norder: any\n---- query\nx\n---- expected\nx\nstring\n------\na\nb\n",
+    )
+    .unwrap();
+    let prepared = prepare(run_case, &root, &drivers, false);
+    (prepared.run)().unwrap();
+}
+
+#[test]
+fn any_order_sorts_render_like_data_cell_regardless_of_row_order() {
+    let root = scratch("render_cell_order");
+    fs::write(root.join("data.csv"), "msg\nzeta\nrender: table\n").unwrap();
+    let drivers = Drivers::current();
+
+    // Without `render`, `render: table` is a data cell and sorts even when it arrives last.
+    let no_render = root.join("no_render.dstest");
+    fs::write(
+        &no_render,
+        "mode: run\norder: any\n---- query\nfrom 'data.csv'\n---- expected\nmsg\nstring\n-------------\nrender: table\nzeta\n",
+    )
+    .unwrap();
+    let prepared = prepare(no_render, &root, &drivers, false);
+    (prepared.run)().unwrap();
+
+    // With `| render table`, the footer stays pinned while the `render: table` data cell sorts.
+    let with_render = root.join("with_render.dstest");
+    fs::write(
+        &with_render,
+        "mode: run\norder: any\n---- query\nfrom 'data.csv' | render table\n---- expected\nmsg\nstring\n-------------\nrender: table\nzeta\nrender: table\n",
+    )
+    .unwrap();
+    let prepared = prepare(with_render, &root, &drivers, false);
+    (prepared.run)().unwrap();
 }
 
 #[test]

@@ -8,10 +8,15 @@ are behaviour, and they are reviewed in diffs like any other output.
 
 | Layer | Where | What |
 |---|---|---|
-| Golden tests | `tests/cases/**/*.dstest`, run by the `datascript-tests` crate | End-to-end: parse → bind → plan → execute, or the diagnostics |
+| Golden tests | `tests/cases/**/*.dstest`, run by the `datascript-tests` crate (`tests/golden.rs`, `tests/code_coverage.rs`) | End-to-end: parse → bind → plan → execute, or the diagnostics; verifies `MachineApplicable` fixes in `check` cases and checks every active diagnostic code is covered |
 | Unit tests | `#[cfg(test)]` in each crate | Lexer edge cases, type rules, small algorithms |
 | Parser snapshots | `tests/cases/syntax/*.dstest` with `mode: syntax` | CST dumps for tricky parses and recovery: one line per node (`KIND@start..end`) or token (`KIND@start..end "text"`), children indented two spaces, trivia included; then the lexical and syntax diagnostics, and, if any has a machine-applicable fix, the query with the fixes applied and the result of parsing it again. Targeted syntax diagnostics live in `tests/cases/errors/syntax/` |
-| LSP tests | `crates/datascript-lsp/tests` (M3) | Request/response scripts against an in-process server |
+| Lexer and parser proptests | `crates/datascript-syntax/tests/lexer_props.rs`, `parser_props.rs` | Property tests checking no panics, lossless round-tripping, valid diagnostic spans on char boundaries, and typed AST walking on arbitrary input |
+| Diagnostic snapshots | `crates/datascript-diagnostics/tests/render.rs`, `tests/snapshots/` | `insta` snapshots of plain, terminal (color and no-color), and JSON diagnostic rendering |
+| CLI tests | `crates/datascript-cli/tests/cli.rs` | `ds check`, `ds run` and `ds explain` end to end: exit codes, output formats, stdin, `--table`, colors and help |
+| REPL tests | `crates/datascript-cli/tests/repl.rs` | `ds` in piped mode: submit rules, persistent `let`s, dot commands and exit status |
+| LSP tests (in-process) | `crates/datascript-lsp/tests/lsp.rs` | Request/response scripts against an in-process server |
+| LSP tests (stdio) | `crates/datascript-cli/tests/lsp_run.rs` | `ds lsp` binary over stdio JSON-RPC, checking `datascript/run` output parity with `ds run` |
 | Grammar tests | `editors/vscode/test/grammar` (`npm run test:grammar`) | The TextMate grammar against the lexer's tokens for the fixture files, in `tokens.json` (written by `datascript-syntax/tests/textmate_tokens.rs`, `DS_BLESS=1` to update), plus operator-name cases (D-053) |
 | Extension tests | `editors/vscode/test/e2e` (`npm run test:e2e`) | The extension in a real VS Code with `target/debug/ds`, once trusted and once in Restricted Mode |
 | Web/WASM tests | `web/` (Vitest + Playwright, M4/M5) | UI flows and runtime parity with the CLI |
@@ -58,13 +63,13 @@ error[DS1001]: unknown column `amout`
 | Key | Values | Default | Meaning |
 |---|---|---|---|
 | `mode` | `syntax`, `check`, `explain`, `run` | `run` | How far the pipeline goes. `syntax` dumps the CST, `explain` prints the logical plan |
-| `order` | `strict`, `any` | `strict` if every query's output order is defined by LANGUAGE.md §3.4 (its last `sort` or `top` is followed only by order-preserving operators such as `take`, `where`, `project`, `extend`, `render`), else `any` | `any` sorts result rows before comparing (D-017) |
+| `order` | `strict`, `any` | `strict` if every query's output order is defined by LANGUAGE.md §3.4 (its last `sort` or `top` is followed only by order-preserving operators such as `take`, `where`, `project`, `extend`, `render`), else `any` | `run` cases only: `any` sorts result rows before comparing (D-017) |
 | `now` | ISO datetime | `2024-06-01T00:00:00Z` | Fixed clock for `now()`/`ago()` |
 | `engine` | `datafusion`, … | `datafusion` | Backend under test. A comma-separated list runs the case on each (see "Several engines") |
 | `tables` | `name=path, ...` | | Host-registered tables (simulates `--table`/drag-drop) |
 | `schema` | `name(col: type, ...); ...` | | Schemas for a mock `SchemaProvider`, for `check`/`explain` cases before a real backend exists (M1-05). With `schema`, no files are read |
 | `without` | `function <name>, join <kind>, format <name>, ...` | | With `schema` only: the mock engine supports everything except these (a restricted `Capabilities`), to test `DS4001` (M1-17) |
-| `show` | `schema` | | `check` cases only: after the diagnostics, print each query's output columns (`name: type`, one per line; `unknown` when an error hides them). Used to test operator schemas (M1-16) |
+| `show` | `schema` | | `check` cases only: after the diagnostics, print each query's output schema under a `query N columns:` header (1-based) with `  name: type` indented two spaces (`(error)` for a column whose type is an error), or `query N columns: unknown` when an error or pending source hides the columns. Used to test operator schemas (M1-16) |
 | `skip` | reason | | Skip with a reason (e.g. known bug, links a task) |
 | `eol` | `lf`, `crlf` | `lf` | Line endings of the query. `.dstest` files are always stored with LF (`.gitattributes`), so `crlf` converts every query line ending to `\r\n` before running |
 
