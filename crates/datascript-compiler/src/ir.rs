@@ -104,6 +104,8 @@ pub enum PlanNode {
     },
     /// Appends the rows of each input, in order. Every input has the node's schema.
     Union { inputs: Vec<Plan> },
+    /// Summarizes every input column with one row of statistics, in input-column order.
+    Describe { input: Box<Plan> },
 }
 
 /// One key of a [`PlanNode::Sort`] or [`PlanNode::TopN`].
@@ -423,6 +425,7 @@ fn write_plan(out: &mut String, plan: &Plan, depth: usize) {
             writeln!(out, "{indent}Join: {kind} on {}", on.join(", "))
         }
         PlanNode::Union { .. } => writeln!(out, "{indent}Union"),
+        PlanNode::Describe { .. } => writeln!(out, "{indent}Describe"),
     };
     for input in plan.inputs() {
         write_plan(out, input, depth + 1);
@@ -491,7 +494,8 @@ impl Plan {
             | PlanNode::Sort { input, .. }
             | PlanNode::Limit { input, .. }
             | PlanNode::TopN { input, .. }
-            | PlanNode::Distinct { input } => vec![input],
+            | PlanNode::Distinct { input }
+            | PlanNode::Describe { input } => vec![input],
             PlanNode::Join { left, right, .. } => vec![left, right],
             PlanNode::Union { inputs } => inputs.iter().collect(),
         }

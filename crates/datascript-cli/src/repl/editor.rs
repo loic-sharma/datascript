@@ -19,7 +19,7 @@ use reedline::{
     default_emacs_keybindings,
 };
 
-use super::session::{COMMANDS, CompletionContext};
+use super::session::{COMMANDS, CompletionContext, MetaOutcome};
 use super::{Printer, ReplSession, Step, input};
 use crate::args::{ColorChoice, TableArg};
 
@@ -81,14 +81,18 @@ pub fn run(
 /// notices Ctrl-C even while a query computes. Ctrl-C drops the work, which cancels any running
 /// query, and returns to the prompt; saved lets are kept (D-048).
 async fn submit(repl: &mut ReplSession, printer: &Printer, text: &str) -> Step {
-    if input::is_meta(text) {
+    let prepared = if input::is_meta(text) {
         let outcome = tokio::select! {
             outcome = repl.meta(text) => outcome,
             _ = tokio::signal::ctrl_c() => return cancelled(),
         };
-        return printer.meta(repl, outcome);
-    }
-    let prepared = repl.prepare(text);
+        match outcome {
+            MetaOutcome::Run(prepared) => prepared,
+            outcome => return printer.meta(repl, outcome),
+        }
+    } else {
+        repl.prepare(text)
+    };
     let Some(analysis) = interruptible(repl.check_task(&prepared)).await else {
         return cancelled();
     };
@@ -330,8 +334,8 @@ fn complete_meta(
         .expect("trimmed starts with '.'");
     let cmd_end = cmd_start + cmd.len();
     match cmd {
-        ".schema" => {
-            // Check `.schema <arg>` as `from <arg>`, matching `ReplSession::schema`.
+        ".schema" | ".describe" => {
+            // Check `.schema <arg>` / `.describe <arg>` as `from <arg>`, matching `ReplSession`.
             let synthetic = format!("from{}", &line[cmd_end..]);
             let synth_pos = 4 + (pos - cmd_end);
             let mut items = complete_query(context, runtime, &synthetic, synth_pos);
@@ -954,6 +958,7 @@ mod tests {
         assert!(!checked.failed(), "{:?}", checked.diagnostics);
 
         assert_eq!(values(&repl, &rt, ".sc"), [".schema"]);
+        assert_eq!(values(&repl, &rt, ".de"), [".describe"]);
         assert_eq!(values(&repl, &rt, ".").len(), COMMANDS.len());
         let line = ".schema ord";
         let items = suggestions_at(&repl, &rt, line, line.len());
@@ -965,6 +970,21 @@ mod tests {
         assert_eq!(values(&repl, &rt, ".schema b"), ["big"]);
         assert_eq!(
             values(&repl, &rt, ".schema 'tests/data/ord"),
+            ["orders.csv", "orders.parquet"]
+        );
+        let desc_line = ".describe ord";
+        let desc_items = suggestions_at(&repl, &rt, desc_line, desc_line.len());
+        assert_eq!(
+            desc_items
+                .iter()
+                .map(|s| s.value.as_str())
+                .collect::<Vec<_>>(),
+            ["orders"]
+        );
+        assert_eq!(desc_items[0].span, reedline::Span::new(10, 13));
+        assert_eq!(values(&repl, &rt, ".describe b"), ["big"]);
+        assert_eq!(
+            values(&repl, &rt, ".describe 'tests/data/ord"),
             ["orders.csv", "orders.parquet"]
         );
         assert_eq!(values(&repl, &rt, ".format c"), ["csv"]);

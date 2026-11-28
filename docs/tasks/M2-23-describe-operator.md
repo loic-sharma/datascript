@@ -1,6 +1,6 @@
 # M2-23 — `describe` operator
 
-**Status:** todo
+**Status:** done — `describe` operator (syntax + `DS0290`, HIR/binder/`Capabilities::describe`/`PlanNode::Describe`, single-pass DataFusion aggregate + unpivot with HyperLogLog and t-digest quantiles, IDE completion/hover/semantic tokens, REPL `.describe`, `all_types.parquet` fixture, golden/integration/REPL tests, and LANGUAGE.md / DECISIONS.md D-062).
 **Depends on:** M1-13, M2-13
 **Crates:** `datascript-syntax`, `datascript-compiler`, `datascript-datafusion`, `datascript-cli`, `datascript-lsp`, `datascript-tests`
 **Diagnostic codes:** DS0290–DS0294 (syntax) (D-018). No type errors are expected: arguments are a
@@ -75,17 +75,21 @@ row. The docs and hover must say so (see Scope).
   "Carried over" item covers it.
 
 ## Acceptance criteria
-- [ ] Golden `run` cases over `orders.csv`, a Parquet file with every DataScript type, an empty
+- [x] Golden `run` cases over `orders.csv`, a Parquet file with every DataScript type, an empty
       table and a table with an all-null column.
-- [ ] Error cases: arguments given (`describe x`) and `describe` after `render`.
-- [ ] A test that `approx_unique` gives the same value across runs and `target_partitions`
+- [x] Error cases: arguments given (`describe x`) and `describe` after `render`.
+- [x] A test that `approx_unique` gives the same value across runs and `target_partitions`
       settings, and how close it is to `dcount` on the fixtures (whether it is exact on small
       inputs depends on the implementation; check, and document what golden cases can rely on).
-- [ ] A REPL test for `.describe`.
+- [x] A REPL test for `.describe`.
 
 ## Carried over
-- [ ] (from planning, 2026-11-24) If M4-04 is done, add a "Describe" action to the web UI's schema
+- [x] (from planning, 2026-11-24) If M4-04 is done, add a "Describe" action to the web UI's schema
       browser that runs `from <file> | describe`. If M4-04 is not done, its "Carried over" item
-      covers this instead.
+      covers this instead. *(M4-04 is still `todo`; its Carried over item covers this.)*
 
 ## Follow-ups
+- Informational: M2-07 (`ds fmt`) and M4-04 (web UI schema browser) are still `todo` and already
+  carry their items for formatting `describe` and adding the "Describe" action.
+- Informational: `describe a, b` (column subset) stays out of scope (`DS0290` suggests
+  `project a, b | describe`).

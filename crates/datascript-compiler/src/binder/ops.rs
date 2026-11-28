@@ -623,7 +623,7 @@ impl Binder<'_> {
         d
     }
 
-    // --- count, getschema ---
+    // --- count, getschema, describe ---
 
     pub(super) fn count_columns() -> Vec<Column> {
         vec![Column {
@@ -639,6 +639,31 @@ impl Binder<'_> {
             ("ColumnName", Type::String),
             ("ColumnOrdinal", Type::Long),
             ("DataType", Type::String),
+        ]
+        .into_iter()
+        .map(|(name, ty)| Column {
+            name: name.to_string(),
+            ty,
+            read_from: None,
+            arrow_only: None,
+        })
+        .collect()
+    }
+
+    pub(super) fn describe_columns() -> Vec<Column> {
+        [
+            ("column_name", Type::String),
+            ("column_type", Type::String),
+            ("count", Type::Long),
+            ("null_percentage", Type::Real),
+            ("approx_unique", Type::Long),
+            ("min", Type::String),
+            ("max", Type::String),
+            ("avg", Type::Real),
+            ("std", Type::Real),
+            ("q25", Type::String),
+            ("q50", Type::String),
+            ("q75", Type::String),
         ]
         .into_iter()
         .map(|(name, ty)| Column {

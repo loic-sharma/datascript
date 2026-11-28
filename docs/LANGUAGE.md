@@ -251,7 +251,7 @@ is neither a `let` nor a host table is `DS1002`.
 
 ### 3.2 Operators
 
-M1 operators are marked ●, M2 operators ○.
+Implemented operators are marked ●, planned M2 operators ○.
 
 | Operator | Syntax | Notes |
 |---|---|---|
@@ -269,7 +269,8 @@ M1 operators are marked ●, M2 operators ○.
 | ● `join` | `join kind = inner (right) on key` or `on $left.a == $right.b` | Kinds: `inner` (default), `leftouter`, `rightouter`, `fullouter`, `leftsemi`, `leftanti`, `rightsemi`, `rightanti`. ≠ KQL: no `innerunique` (`DS0124`), and the default is `inner`. Unknown kinds are `DS0123`. A null key matches nothing, not even another null (SQL equality, §4): inner and semi joins drop rows with a null key, outer joins keep them unmatched, and anti joins keep them. Decision D-004 |
 | ● `union` | `union t2, t3` | By column name, columns in order of first appearance. Missing columns become null. Type conflicts widen per §4.2 or give `DS2003` |
 | ● `render` | `render timechart [with (title = "...")]` | Must be last (`DS0120`), and only in a query statement (`DS5008`). Passes its input columns through. See §6 |
-| ● `getschema` | `getschema` | Returns the table `ColumnName: string, ColumnOrdinal: long, DataType: string`. Ordinals start at 0; a column with no DataScript type shows its Arrow type (D-042) |
+| ● `getschema` | `getschema` | Returns the table `ColumnName: string, ColumnOrdinal: long, DataType: string`. Ordinals start at 0; a column with no DataScript type shows its Arrow type (D-042). Reads metadata only, never data |
+| ● `describe` | `describe` | ≠ KQL (D-062). Summarizes every input column in input-column order: `column_name: string, column_type: string, count: long, null_percentage: real, approx_unique: long, min: string, max: string, avg: real, std: real, q25: string, q50: string, q75: string`. Reads every row; use `getschema` for column names and types without reading data. Takes no arguments (`DS0290`). Columns with no DataScript type (`DS2008`) report only `count` and `null_percentage` |
 | ○ `lookup` | `lookup (dim) on key` | |
 | ○ `mv-expand` | `mv-expand tags` | Needs `dynamic` |
 | ○ `parse` | `parse msg with "user=" user " id=" id:long` | |
@@ -311,11 +312,17 @@ do not accept a trailing `,`.
   column's name (`ts`). Other expressions get `Column1`, ….
 - Duplicate explicit names (`name = ...` or a bare column) are `DS1005`. Generated and derived
   names skip every name already taken in the operator, so explicit names keep theirs (D-040).
+- **Generated column naming convention** (D-062): KQL-origin operators and unnamed expressions use
+  PascalCase (`Count`, `ColumnName`, `ColumnOrdinal`, `DataType`, `Column1`). DataScript-only
+  summary operators inspired by DuckDB and pandas (`describe`, and later `output`) use
+  `snake_case` (`column_name`, `null_percentage`, `approx_unique`, …). New operators follow the
+  convention of the family they belong to.
 
 ### 3.4 Row order
 
-- Only `sort` and `top` define row order. `where`, `project*`, `extend`, `take` and `render`
-  preserve it. `summarize`, `distinct`, `join`, `union` and `count` do not.
+- Only `sort`, `top` and `describe` define row order (`describe` emits one row per input column in
+  input-column order). `where`, `project*`, `extend`, `take` and `render` preserve it.
+  `summarize`, `distinct`, `join`, `union` and `count` do not.
 - `sort` is **not guaranteed stable**: rows with equal keys come out in any order. Add tie-breaking
   keys when order matters (the test fixtures contain ties on purpose).
 - Null placement default (as in KQL): `asc` puts nulls first, `desc` puts nulls last. `nulls first`
@@ -633,7 +640,8 @@ source         = string_lit | ident | reader_call | "(" tabular_expr ")" ;
 generator      = range_gen | datatable_gen | print_gen ;                (* M2 *)
 right_table    = string_lit | ident | "(" tabular_expr ")" ;
 operator       = where_op | project_op | extend_op | summarize_op | sort_op | top_op
-               | take_op | count_op | distinct_op | join_op | union_op | render_op | ... ;
+               | take_op | count_op | distinct_op | join_op | union_op | render_op
+               | "getschema" | "describe" | ... ;
 where_op       = "where" scalar_expr ;
 project_op     = "project" proj_item { "," proj_item } [ "," ] ;
 proj_item      = [ ident "=" ] scalar_expr ;

@@ -840,6 +840,24 @@ impl Parser<'_> {
         self.errors.push(d);
     }
 
+    /// DS0290: `describe` given arguments (`describe x`, `describe a, b`).
+    pub(super) fn describe_arguments(&mut self, arg_pos: usize, start: u32, end: u32) {
+        let span = self.span(start, end);
+        let help = match self.snippet(start, end) {
+            Some(args) if self.plain_column_list(arg_pos) => format!(
+                "remove `{args}` to summarize every column, or select columns first with \
+                 `project`: `project {args} | describe`"
+            ),
+            _ => "remove the arguments to summarize every column, or select columns first with \
+                  `project` before `describe`"
+                .to_string(),
+        };
+        let d = Diagnostic::error(codes::DS0290, "`describe` takes no arguments")
+            .primary(span, "not accepted here")
+            .help(help);
+        self.errors.push(d);
+    }
+
     /// DS0121: `sort` or `top` with no `by`. `at` is the token index where `by` belongs, and
     /// `rest` the source range of what follows it (the sort keys), if anything.
     pub(super) fn missing_by(

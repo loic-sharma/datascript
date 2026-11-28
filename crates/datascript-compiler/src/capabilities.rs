@@ -154,6 +154,8 @@ pub struct Capabilities {
     pub join_kinds: BTreeSet<JoinKind>,
     /// Readable source formats.
     pub formats: BTreeSet<SourceFormat>,
+    /// Whether the `describe` operator is implemented.
+    pub describe: bool,
     /// Rules of LANGUAGE.md the backend does not follow.
     pub deviations: BTreeSet<Deviation>,
 }
@@ -166,6 +168,7 @@ impl Capabilities {
             functions: FunctionSupport::All,
             join_kinds: JoinKind::ALL.into_iter().collect(),
             formats: SourceFormat::ALL.into_iter().collect(),
+            describe: true,
             deviations: BTreeSet::new(),
         }
     }
@@ -188,6 +191,11 @@ impl Capabilities {
     /// Whether this format can be read.
     pub fn supports_format(&self, format: SourceFormat) -> bool {
         self.formats.contains(&format)
+    }
+
+    /// Whether the `describe` operator is implemented.
+    pub fn supports_describe(&self) -> bool {
+        self.describe
     }
 }
 
@@ -229,12 +237,14 @@ mod tests {
             functions: FunctionSupport::Only(["strlen".to_string()].into()),
             join_kinds: [JoinKind::Inner].into(),
             formats: [SourceFormat::Csv].into(),
+            describe: false,
             deviations: [Deviation::IntegerOverflowUnchecked].into(),
         };
         assert!(caps.supports_function(catalog, "strlen"));
         assert!(!caps.supports_function(catalog, "tolower"));
         assert!(!caps.supports_join(JoinKind::FullOuter));
         assert!(!caps.supports_format(SourceFormat::Parquet));
+        assert!(!caps.supports_describe());
         let deviation = caps.deviations.iter().next().unwrap();
         assert_eq!(
             deviation.description(),

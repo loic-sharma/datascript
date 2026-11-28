@@ -10,9 +10,9 @@ use std::sync::Arc;
 
 use arrow_array::types::Int32Type;
 use arrow_array::{
-    ArrayRef, BinaryArray, Date32Array, Decimal128Array, DictionaryArray, Float32Array,
-    Float64Array, Int16Array, Int64Array, RecordBatch, StringArray, TimestampMicrosecondArray,
-    TimestampNanosecondArray, UInt32Array, UInt64Array,
+    ArrayRef, BinaryArray, BooleanArray, Date32Array, Decimal128Array, DictionaryArray,
+    DurationMicrosecondArray, Float32Array, Float64Array, Int16Array, Int64Array, RecordBatch,
+    StringArray, TimestampMicrosecondArray, TimestampNanosecondArray, UInt32Array, UInt64Array,
 };
 use parquet::arrow::ArrowWriter;
 use parquet::file::properties::WriterProperties;
@@ -58,6 +58,7 @@ pub fn generate() -> Vec<Fixture> {
     files.extend(edge_files());
     files.extend(reordered_files());
     files.push(fixture("types.parquet", types_parquet()));
+    files.push(fixture("all_types.parquet", all_types_parquet()));
     files.extend(source_files(&orders_csv(&orders)));
     files
 }
@@ -593,6 +594,90 @@ fn types_parquet() -> Vec<u8> {
                 Some(&b""[..]),
                 Some(&b"\xff"[..]),
                 None,
+            ])),
+        ),
+    ];
+    parquet_bytes(columns)
+}
+
+/// 5 rows covering every M1 DataScript type (`bool`, `long`, `real`, `string`, `datetime`,
+/// `timespan`) plus an unsupported Arrow column (`Binary`, DS2008), with nulls and repeated
+/// values for `describe` (M2-23).
+fn all_types_parquet() -> Vec<u8> {
+    let s = unix_seconds;
+    let sec = 1_000_000i64;
+    let columns: Vec<(&str, ArrayRef)> = vec![
+        (
+            "flag",
+            Arc::new(BooleanArray::from(vec![
+                Some(true),
+                Some(false),
+                Some(true),
+                None,
+                Some(false),
+            ])),
+        ),
+        (
+            "whole",
+            Arc::new(Int64Array::from(vec![
+                Some(-10),
+                Some(0),
+                Some(10),
+                Some(20),
+                None,
+            ])),
+        ),
+        (
+            "frac",
+            Arc::new(Float64Array::from(vec![
+                Some(1.5),
+                Some(2.5),
+                Some(2.5),
+                Some(10.0),
+                None,
+            ])),
+        ),
+        (
+            "label",
+            Arc::new(StringArray::from(vec![
+                Some("alpha"),
+                Some("beta"),
+                Some("alpha"),
+                Some("gamma"),
+                None,
+            ])),
+        ),
+        (
+            "when",
+            Arc::new(
+                TimestampMicrosecondArray::from(vec![
+                    Some(s(2024, 1, 1, 0, 0, 0) * sec),
+                    Some(s(2024, 1, 2, 0, 0, 0) * sec),
+                    Some(s(2024, 1, 3, 0, 0, 0) * sec),
+                    Some(s(2024, 1, 4, 0, 0, 0) * sec),
+                    None,
+                ])
+                .with_timezone("UTC"),
+            ),
+        ),
+        (
+            "span",
+            Arc::new(DurationMicrosecondArray::from(vec![
+                Some(-5 * sec),
+                Some(0),
+                Some(90 * 60 * sec),
+                Some(86_400 * sec),
+                None,
+            ])),
+        ),
+        (
+            "raw",
+            Arc::new(BinaryArray::from(vec![
+                Some(&b"\x00\x01"[..]),
+                Some(&b""[..]),
+                Some(&b"\xff"[..]),
+                None,
+                Some(&b"\x00\x01"[..]),
             ])),
         ),
     ];

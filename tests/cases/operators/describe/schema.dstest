@@ -1,0 +1,26 @@
+# `describe` produces 12 snake_case columns; downstream operators see them and not the input
+# columns.
+mode: check
+show: schema
+schema: 'orders.csv'(orderId: string, customerId: string, amount: real, timestamp: datetime)
+---- query
+from 'orders.csv' | describe;
+from 'orders.csv' | describe | where null_percentage > 0 | project column_name, count
+---- expected
+query 1 columns:
+  column_name: string
+  column_type: string
+  count: long
+  null_percentage: real
+  approx_unique: long
+  min: string
+  max: string
+  avg: real
+  std: real
+  q25: string
+  q50: string
+  q75: string
+
+query 2 columns:
+  column_name: string
+  count: long

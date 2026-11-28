@@ -1,0 +1,132 @@
+# `describe` takes no arguments (DS0290), and recovers so later errors in the same pipeline still
+# appear.
+mode: syntax
+---- query
+from 'orders.csv' | describe amount;
+from 'orders.csv' | describe orderId, amount | where count = 1;
+from 'orders.csv' | describe 'orders.csv'
+---- expected
+PROGRAM@0..143
+  PIPELINE@0..35
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    LITERAL@5..17
+      STRING@5..17 "'orders.csv'"
+    WHITESPACE@17..18 " "
+    PIPE@18..19 "|"
+    WHITESPACE@19..20 " "
+    DESCRIBE_OP@20..35
+      IDENT@20..28 "describe"
+      WHITESPACE@28..29 " "
+      ERROR@29..35
+        IDENT@29..35 "amount"
+  SEMICOLON@35..36 ";"
+  WHITESPACE@36..37 "\n"
+  PIPELINE@37..99
+    IDENT@37..41 "from"
+    WHITESPACE@41..42 " "
+    LITERAL@42..54
+      STRING@42..54 "'orders.csv'"
+    WHITESPACE@54..55 " "
+    PIPE@55..56 "|"
+    WHITESPACE@56..57 " "
+    DESCRIBE_OP@57..81
+      IDENT@57..65 "describe"
+      WHITESPACE@65..66 " "
+      ERROR@66..81
+        IDENT@66..73 "orderId"
+        COMMA@73..74 ","
+        WHITESPACE@74..75 " "
+        IDENT@75..81 "amount"
+    WHITESPACE@81..82 " "
+    PIPE@82..83 "|"
+    WHITESPACE@83..84 " "
+    WHERE_OP@84..99
+      IDENT@84..89 "where"
+      WHITESPACE@89..90 " "
+      BIN_EXPR@90..99
+        NAME_REF@90..95
+          IDENT@90..95 "count"
+        WHITESPACE@95..96 " "
+        EQ@96..97 "="
+        WHITESPACE@97..98 " "
+        LITERAL@98..99
+          LONG@98..99 "1"
+  SEMICOLON@99..100 ";"
+  WHITESPACE@100..101 "\n"
+  PIPELINE@101..142
+    IDENT@101..105 "from"
+    WHITESPACE@105..106 " "
+    LITERAL@106..118
+      STRING@106..118 "'orders.csv'"
+    WHITESPACE@118..119 " "
+    PIPE@119..120 "|"
+    WHITESPACE@120..121 " "
+    DESCRIBE_OP@121..142
+      IDENT@121..129 "describe"
+      WHITESPACE@129..130 " "
+      ERROR@130..142
+        STRING@130..142 "'orders.csv'"
+  WHITESPACE@142..143 "\n"
+
+error[DS0290]: `describe` takes no arguments
+  --> query:1:30
+  |
+1 | from 'orders.csv' | describe amount;
+  |                              ^^^^^^ not accepted here
+  |
+  = help: remove `amount` to summarize every column, or select columns first with `project`: `project amount | describe`
+
+error[DS0290]: `describe` takes no arguments
+  --> query:2:30
+  |
+2 | from 'orders.csv' | describe orderId, amount | where count = 1;
+  |                              ^^^^^^^^^^^^^^^ not accepted here
+  |
+  = help: remove `orderId, amount` to summarize every column, or select columns first with `project`: `project orderId, amount | describe`
+
+error[DS0110]: `=` is assignment, not comparison
+  --> query:2:60
+  |
+2 | from 'orders.csv' | describe orderId, amount | where count = 1;
+  |                                                            ^ assignment is not allowed here
+  |
+  = help: use `==` to compare values: `count == 1`
+
+error[DS0290]: `describe` takes no arguments
+  --> query:3:30
+  |
+3 | from 'orders.csv' | describe 'orders.csv'
+  |                              ^^^^^^^^^^^^ not accepted here
+  |
+  = help: remove the arguments to summarize every column, or select columns first with `project` before `describe`
+
+with the machine-applicable fixes applied:
+    from 'orders.csv' | describe amount;
+    from 'orders.csv' | describe orderId, amount | where count == 1;
+    from 'orders.csv' | describe 'orders.csv'
+which still has errors:
+
+error[DS0290]: `describe` takes no arguments
+  --> fixed:1:30
+  |
+1 | from 'orders.csv' | describe amount;
+  |                              ^^^^^^ not accepted here
+  |
+  = help: remove `amount` to summarize every column, or select columns first with `project`: `project amount | describe`
+
+error[DS0290]: `describe` takes no arguments
+  --> fixed:2:30
+  |
+2 | from 'orders.csv' | describe orderId, amount | where count == 1;
+  |                              ^^^^^^^^^^^^^^^ not accepted here
+  |
+  = help: remove `orderId, amount` to summarize every column, or select columns first with `project`: `project orderId, amount | describe`
+
+error[DS0290]: `describe` takes no arguments
+  --> fixed:3:30
+  |
+3 | from 'orders.csv' | describe 'orders.csv'
+  |                              ^^^^^^^^^^^^ not accepted here
+  |
+  = help: remove the arguments to summarize every column, or select columns first with `project` before `describe`

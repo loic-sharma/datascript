@@ -81,11 +81,16 @@ enum Step {
 
 /// Submits one input with no Ctrl-C handling, for piped mode.
 async fn submit(repl: &mut ReplSession, printer: &Printer, text: &str) -> Step {
-    if input::is_meta(text) {
-        let outcome = repl.meta(text).await;
-        return printer.meta(repl, outcome);
-    }
-    let checked = repl.check_input(text).await;
+    let prepared = if input::is_meta(text) {
+        match repl.meta(text).await {
+            MetaOutcome::Run(prepared) => prepared,
+            outcome => return printer.meta(repl, outcome),
+        }
+    } else {
+        repl.prepare(text)
+    };
+    let analysis = repl.check_task(&prepared).await;
+    let checked = repl.commit(prepared, analysis);
     if printer.checked(repl, &checked) {
         return Step::Continue { failed: true };
     }
@@ -137,6 +142,7 @@ impl Printer {
                 eprintln!("{mistake}");
                 Step::Continue { failed: true }
             }
+            MetaOutcome::Run(_) => unreachable!("MetaOutcome::Run is handled in submit"),
             MetaOutcome::Quit => Step::Quit,
         }
     }

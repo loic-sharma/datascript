@@ -1,0 +1,9 @@
+# `describe` lowers to a single `Describe` IR node.
+mode: explain
+schema: 'orders.csv'(orderId: string, amount: real)
+---- query
+from 'orders.csv' | where amount > 0 | describe
+---- expected
+Describe
+  Filter: amount > 0.0
+    Scan: 'orders.csv' (orderId: string, amount: real)

@@ -89,7 +89,7 @@ fn walk_pipeline(pipeline: &Pipeline) {
                 .chain(op.key().and_then(|k| k.expr()))
                 .collect(),
             Operator::Take(op) => op.count().into_iter().collect(),
-            Operator::Count(_) | Operator::GetSchema(_) => Vec::new(),
+            Operator::Count(_) | Operator::GetSchema(_) | Operator::Describe(_) => Vec::new(),
             Operator::Distinct(op) => {
                 let _ = op.star_token();
                 op.columns().collect()
@@ -227,6 +227,7 @@ fn fragment() -> impl Strategy<Value = String> {
         Just("render".to_string()),
         Just("with".to_string()),
         Just("getschema".to_string()),
+        Just("describe".to_string()),
         Just("in".to_string()),
         Just("!in~".to_string()),
         Just("between".to_string()),

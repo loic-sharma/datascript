@@ -590,3 +590,128 @@ fn a_gzipped_ndjson_file_needs_the_compression_feature() {
         "{d:#?}"
     );
 }
+
+#[test]
+fn describe_approx_unique_is_deterministic_across_runs_and_partitions() {
+    use arrow_array::Array;
+    use arrow_array::cast::AsArray;
+    use arrow_array::types::Int64Type;
+
+    let extract_approx_unique = |result: &QueryResult| -> Vec<(String, Option<i64>)> {
+        let mut out = Vec::new();
+        for batch in &result.batches {
+            let names = batch.column(0).as_string::<i32>();
+            let approx = batch.column(4).as_primitive::<Int64Type>();
+            for i in 0..batch.num_rows() {
+                out.push((
+                    names.value(i).to_string(),
+                    (!approx.is_null(i)).then(|| approx.value(i)),
+                ));
+            }
+        }
+        out
+    };
+
+    let fixtures_dir = fixtures();
+    let fixtures_ctx = ctx(&fixtures_dir);
+
+    for query in [
+        "from 'orders.csv' | describe",
+        "from 'all_types.parquet' | describe",
+    ] {
+        // Repeated runs on single partition produce byte-identical tables.
+        let baseline = run_ok(&session(), query, &fixtures_ctx);
+        assert_eq!(baseline, run_ok(&session(), query, &fixtures_ctx));
+
+        let baseline_out = run(&session(), query, &fixtures_ctx);
+        let baseline_uniq = extract_approx_unique(&baseline_out.results[0]);
+
+        // Different `target_partitions` and batch sizes produce the exact same `approx_unique`
+        // counts and keep output rows in input-column order.
+        for partitions in [2, 4] {
+            let cfg = DataFusionConfig {
+                target_partitions: partitions,
+                batch_size: 4,
+            };
+            let out = run(&session_with(cfg), query, &fixtures_ctx);
+            assert!(out.diagnostics.is_empty(), "{:#?}", out.diagnostics);
+            assert_eq!(
+                extract_approx_unique(&out.results[0]),
+                baseline_uniq,
+                "partitions={partitions} for {query}"
+            );
+        }
+    }
+
+    // Compare `approx_unique` with exact `dcount` on `orders.csv` (50 rows).
+    let dcount_out = run(
+        &session(),
+        "from 'orders.csv' | summarize \
+         o = dcount(orderId), c = dcount(customerId), \
+         a = dcount(amount), t = dcount(timestamp)",
+        &fixtures_ctx,
+    );
+    assert!(
+        dcount_out.diagnostics.is_empty(),
+        "{:#?}",
+        dcount_out.diagnostics
+    );
+    let batch = &dcount_out.results[0].batches[0];
+    let exact: Vec<i64> = (0..4)
+        .map(|col| batch.column(col).as_primitive::<Int64Type>().value(0))
+        .collect();
+    assert_eq!(exact, [50, 13, 42, 49]);
+
+    let desc_out = run(&session(), "from 'orders.csv' | describe", &fixtures_ctx);
+    let approx = extract_approx_unique(&desc_out.results[0]);
+    for ((col_name, approx_val), exact_val) in approx.iter().zip(exact.iter()) {
+        let approx_val = approx_val.expect("typed column has approx_unique");
+        assert_eq!(
+            approx_val, *exact_val,
+            "orders.csv `{col_name}`: approx_unique={approx_val} vs dcount={exact_val}"
+        );
+    }
+
+    // Also check a larger synthetic dataset (2,000 rows, 500 distinct values) across partitions.
+    let dir = TempDir::new().unwrap();
+    let mut csv = String::from("id,x\n");
+    for i in 0..2000 {
+        csv.push_str(&format!("{},{}.5\n", i % 500, i % 500));
+    }
+    write(&dir, "many.csv", &csv);
+    let p1 = run(&session(), "from 'many.csv' | describe", &ctx(dir.path()));
+    let p4 = run(
+        &session_with(DataFusionConfig {
+            target_partitions: 4,
+            batch_size: 64,
+        }),
+        "from 'many.csv' | describe",
+        &ctx(dir.path()),
+    );
+    let u1 = extract_approx_unique(&p1.results[0]);
+    let u4 = extract_approx_unique(&p4.results[0]);
+    assert_eq!(u1, u4);
+    for (col_name, val) in u1 {
+        let val = val.unwrap();
+        let err = (val - 500).abs();
+        assert!(
+            err <= 25,
+            "many.csv `{col_name}`: approx_unique={val} too far from 500"
+        );
+    }
+}
+
+#[test]
+fn describe_handles_negative_zero_and_zero_column_and_single_column_inputs() {
+    // `-0.0` and `+0.0` count as 1 distinct float value in `approx_unique`.
+    let dir = TempDir::new().unwrap();
+    write(&dir, "zeros.csv", "x\n0.0\n-0.0\n1.5\n");
+    let out = run(&session(), "from 'zeros.csv' | describe", &ctx(dir.path()));
+    assert!(out.diagnostics.is_empty(), "{:#?}", out.diagnostics);
+    let table = format_table(&out.results[0].schema, &out.results[0].batches);
+    // count=3, null_percentage=0.0, approx_unique=2 (0.0 and 1.5)
+    assert!(
+        table.contains("x           | real        |     3 |             0.0 |             2"),
+        "{table}"
+    );
+}

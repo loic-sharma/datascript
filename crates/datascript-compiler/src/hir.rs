@@ -149,6 +149,8 @@ pub enum Op {
     Union(Vec<Source>),
     /// `getschema`: one row per input column.
     GetSchema,
+    /// `describe`: one row of summary statistics per input column.
+    Describe,
     /// `render`, with every default resolved (LANGUAGE.md §6). Its output columns are its
     /// input columns.
     Render(Box<crate::ir::RenderSpec>),

@@ -65,12 +65,12 @@ error[DS1001]: unknown column `amout`
 | Key | Values | Default | Meaning |
 |---|---|---|---|
 | `mode` | `syntax`, `check`, `explain`, `run` | `run` | How far the pipeline goes. `syntax` dumps the CST, `explain` prints the logical plan |
-| `order` | `strict`, `any` | `strict` if every query's output order is defined by LANGUAGE.md §3.4 (its last `sort` or `top` is followed only by order-preserving operators such as `take`, `where`, `project`, `extend`, `render`), else `any` | `run` cases only: `any` sorts result rows before comparing (D-017) |
+| `order` | `strict`, `any` | `strict` if every query's output order is defined by LANGUAGE.md §3.4 (its last `sort`, `top` or `describe` is followed only by order-preserving operators such as `take`, `where`, `project`, `extend`, `render`), else `any` | `run` cases only: `any` sorts result rows before comparing (D-017) |
 | `now` | ISO datetime | `2024-06-01T00:00:00Z` | Fixed clock for `now()`/`ago()` |
 | `engine` | `datafusion`, … | `datafusion` | Backend under test. A comma-separated list runs the case on each (see "Several engines") |
 | `tables` | `name=path, ...` | | Host-registered tables (simulates `--table`/drag-drop) |
 | `schema` | `name(col: type, ...); ...` | | Schemas for a mock `SchemaProvider`, for `check`/`explain` cases before a real backend exists (M1-05). With `schema`, no files are read |
-| `without` | `function <name>, join <kind>, format <name>, ...` | | With `schema` only: the mock engine supports everything except these (a restricted `Capabilities`), to test `DS4001` (M1-17) |
+| `without` | `function <name>, join <kind>, format <name>, operator <name>, ...` | | With `schema` only: the mock engine supports everything except these (a restricted `Capabilities`), to test `DS4001` (M1-17) |
 | `show` | `schema` | | `check` cases only: after the diagnostics, print each query's output schema under a `query N columns:` header (1-based) with `  name: type` indented two spaces (`(error)` for a column whose type is an error), or `query N columns: unknown` when an error or pending source hides the columns. Used to test operator schemas (M1-16) |
 | `skip` | reason | | Skip with a reason (e.g. known bug, links a task) |
 | `eol` | `lf`, `crlf` | `lf` | Line endings of the query. `.dstest` files are always stored with LF (`.gitattributes`), so `crlf` converts every query line ending to `\r\n` before running |

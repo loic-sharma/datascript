@@ -100,7 +100,7 @@ Two shared files are touched by many tasks:
 | [M2-20](M2-20-conversion-diagnostics.md) | Conversions that can never succeed | M1-13 | todo |
 | [M2-21](M2-21-division-by-zero-guard-help.md) | `DS4003` help: guard the divisor per row | M1-13 | todo |
 | [M2-22](M2-22-csv-sniffing.md) | CSV sniffing | M1-13, M2-13 | todo |
-| [M2-23](M2-23-describe-operator.md) | `describe` operator | M1-13, M2-13 | todo |
+| [M2-23](M2-23-describe-operator.md) | `describe` operator | M1-13, M2-13 | done |
 | [M2-24](M2-24-excel-reader.md) | Excel reader | M1-13, M2-09, M2-13 | todo |
 | [M2-25](M2-25-output-operator.md) | `output` operator | M1-13, M2-13 | todo |
 | [M2-26](M2-26-writer-functions.md) | `output`: writer functions, options and compression | M2-25, M2-27 | todo |

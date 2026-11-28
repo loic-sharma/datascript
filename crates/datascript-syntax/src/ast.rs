@@ -228,6 +228,7 @@ ast_enum!(
         Union(UnionOp),
         Render(RenderOp),
         GetSchema(GetSchemaOp),
+        Describe(DescribeOp),
     }
 );
 
@@ -405,6 +406,12 @@ ast_node!(
     /// `getschema`
     GetSchemaOp,
     GETSCHEMA_OP
+);
+
+ast_node!(
+    /// `describe`
+    DescribeOp,
+    DESCRIBE_OP
 );
 
 ast_node!(

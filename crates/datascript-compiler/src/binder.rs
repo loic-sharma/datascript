@@ -350,6 +350,7 @@ impl<'a> Binder<'a> {
                 | Operator::Render(_) => columns.clone(),
                 Operator::Count(_) => Some(Self::count_columns()),
                 Operator::GetSchema(_) => Some(Self::getschema_columns()),
+                Operator::Describe(_) => Some(Self::describe_columns()),
                 Operator::Join(join) => {
                     // Still record the right table's stage schema so `$right.` completion and
                     // hover work while editing `on` (e.g. `$right., ...`), without cascading
@@ -429,6 +430,16 @@ impl<'a> Binder<'a> {
             Operator::Join(op) => self.bind_join(op, columns),
             Operator::Union(op) => self.bind_union(op, columns),
             Operator::GetSchema(_) => (Op::GetSchema, Some(Self::getschema_columns())),
+            Operator::Describe(op) => {
+                if !self.caps.supports_describe() {
+                    let span = self.span(op);
+                    self.diagnostics.push(
+                        Diagnostic::error(DS4001, "`describe` is not supported by this engine")
+                            .primary(span, "this engine does not implement `describe`"),
+                    );
+                }
+                (Op::Describe, Some(Self::describe_columns()))
+            }
             Operator::Render(op) => self.bind_render(op, columns),
         }
     }

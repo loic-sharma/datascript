@@ -230,6 +230,13 @@ fn plan_stage(input: Planned, stage: &hir::Stage) -> Result<Planned, Diagnostic>
                 .collect();
             Planned::new(PlanNode::Values { rows }, out, span)
         }
+        hir::Op::Describe => Planned::new(
+            PlanNode::Describe {
+                input: boxed(input),
+            },
+            out,
+            span,
+        ),
         // `render` does not change the data; the plan carries its spec (`plan_query`).
         hir::Op::Render(_) => return Ok(input),
         hir::Op::Error => {

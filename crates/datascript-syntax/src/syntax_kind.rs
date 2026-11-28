@@ -192,6 +192,8 @@ syntax_kinds! {
     RENDER_OP,
     /// `getschema`
     GETSCHEMA_OP,
+    /// `describe`
+    DESCRIBE_OP,
 
     /// `[name =] expr`: a projection, aggregate, `by` key, or named argument.
     NAMED_EXPR,

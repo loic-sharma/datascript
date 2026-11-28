@@ -399,10 +399,10 @@ fn query_renders(query: &str) -> Vec<bool> {
         .collect()
 }
 
-/// Whether every query statement's row order is defined (LANGUAGE.md §3.4): its last `sort` or
-/// `top` is followed only by order-preserving operators. A statement without either has no
-/// defined order. Lets are not followed: `s | take 5` with `let s = t | sort ...` counts as
-/// undefined, which is the safe answer (`order: any`).
+/// Whether every query statement's row order is defined (LANGUAGE.md §3.4): its last `sort`,
+/// `top` or `describe` is followed only by order-preserving operators. A statement without any
+/// has no defined order. Lets are not followed: `s | take 5` with `let s = t | sort ...` counts
+/// as undefined, which is the safe answer (`order: any`).
 fn output_order_defined(query: &str) -> bool {
     let parse = datascript_syntax::parse(query, FileId(0));
     parse.program().statements().all(|stmt| match stmt {
@@ -411,7 +411,7 @@ fn output_order_defined(query: &str) -> bool {
             let mut defined = false;
             for op in pipeline.operators() {
                 defined = match op {
-                    Operator::Sort(_) | Operator::Top(_) => true,
+                    Operator::Sort(_) | Operator::Top(_) | Operator::Describe(_) => true,
                     Operator::Where(_)
                     | Operator::Project(_)
                     | Operator::ProjectAway(_)
@@ -460,6 +460,10 @@ mod tests {
             "t | sort by a asc | take 5 | project a"
         ));
         assert!(output_order_defined("t | top 3 by a | render barchart"));
+        assert!(output_order_defined("from t | describe"));
+        assert!(output_order_defined(
+            "from t | describe | project column_name"
+        ));
         assert!(output_order_defined(
             "let x = 1; t | sort by a asc; u | top 1 by b"
         ));

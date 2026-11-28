@@ -1,0 +1,38 @@
+# `describe` after `render` is DS0120, and the fix moves `render` to the end.
+mode: syntax
+---- query
+from 'orders.csv' | render table | describe
+---- expected
+PROGRAM@0..44
+  PIPELINE@0..43
+    IDENT@0..4 "from"
+    WHITESPACE@4..5 " "
+    LITERAL@5..17
+      STRING@5..17 "'orders.csv'"
+    WHITESPACE@17..18 " "
+    PIPE@18..19 "|"
+    WHITESPACE@19..20 " "
+    RENDER_OP@20..32
+      IDENT@20..26 "render"
+      WHITESPACE@26..27 " "
+      IDENT@27..32 "table"
+    WHITESPACE@32..33 " "
+    PIPE@33..34 "|"
+    WHITESPACE@34..35 " "
+    DESCRIBE_OP@35..43
+      IDENT@35..43 "describe"
+  WHITESPACE@43..44 "\n"
+
+error[DS0120]: `render` must be the last operator
+  --> query:1:21
+  |
+1 | from 'orders.csv' | render table | describe
+  |                     ^^^^^^^^^^^^   -------- this operator comes after `render`
+  |                     |
+  |                     the chart is drawn at this point
+  |
+  = help: move `render table` to the end of the query
+
+with the machine-applicable fixes applied:
+    from 'orders.csv' | describe | render table
+which parses without errors

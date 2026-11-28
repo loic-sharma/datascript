@@ -210,6 +210,7 @@ design decision and implemented by the task named in the allocation table.
 | DS0151 | error | `from` with no table after it |
 | DS0152 | error | `from` where it is not written: after `|`, or on the right of `join` or `union` (fix removes it, or turns the `|` into `;` when a new query follows, D-037) |
 | DS0153 | error | SQL clause order: a SQL keyword after the table without `|` (`from t select a`), or `FROM` after the column list (`| project a from t`) |
+| DS0290 | error | `describe` takes no arguments |
 | DS1001 | error | unknown column |
 | DS1002 | error | unknown name (let/table) |
 | DS1003 | error | name already defined |

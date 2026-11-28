@@ -160,7 +160,7 @@ fn method_call_is_a_call_without_callee() {
 
 #[test]
 fn take_count_distinct() {
-    let ops = ops("from t | take 5 | count | distinct * | distinct a, b | getschema");
+    let ops = ops("from t | take 5 | count | distinct * | distinct a, b | getschema | describe");
     let Operator::Take(take) = &ops[0] else {
         panic!()
     };
@@ -175,6 +175,7 @@ fn take_count_distinct() {
     };
     assert_eq!(cols.columns().count(), 2);
     assert!(matches!(ops[4], Operator::GetSchema(_)));
+    assert!(matches!(ops[5], Operator::Describe(_)));
 }
 
 #[test]

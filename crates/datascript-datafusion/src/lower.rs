@@ -257,8 +257,356 @@ impl Lowering {
                 .and_then(|b| b.limit(0, Some(to_usize(*count))))
                 .map_err(fail)?,
             PlanNode::Distinct { .. } => input.distinct().map_err(fail)?,
+            PlanNode::Describe { input: input_plan } => {
+                return self.describe(node, input_plan, input);
+            }
             _ => return Err(internal(span, "a multi-input node in a chain")),
         })
+    }
+
+    /// Lowers `describe` as a single aggregate pass over `input`, then unpivots the 1-row
+    /// aggregate result into one row per input column in input-column order.
+    fn describe(
+        &mut self,
+        node: &Plan,
+        input_plan: &Plan,
+        input: LogicalPlanBuilder,
+    ) -> Result<LogicalPlanBuilder, Diagnostic> {
+        let span = node.span;
+        let fail = |e: DataFusionError| self.errors.diagnostic(span, &e);
+        let fields = input_plan.schema.fields();
+        if fields.is_empty() {
+            let schema = DFSchema::try_from(node.schema.as_ref().clone()).map_err(fail)?;
+            return Ok(LogicalPlanBuilder::from(LogicalPlan::EmptyRelation(
+                EmptyRelation {
+                    produce_one_row: false,
+                    schema: Arc::new(schema),
+                },
+            )));
+        }
+
+        let describe_udf = |name: &'static str, kernel: Kernel, ret: DataType, arg: DfExpr| {
+            udf::udf(name, kernel, ret, span, "`describe`".to_string(), "").call(vec![arg])
+        };
+        let to_str = |arg: DfExpr| describe_udf("tostring", udf::k_tostring, DataType::Utf8, arg);
+
+        // Classify each input column the same way `getschema` does (DS2008 columns have `None`).
+        struct ColMeta {
+            name: String,
+            type_name: String,
+            ty: Option<Type>,
+        }
+        let cols: Vec<ColMeta> = fields
+            .iter()
+            .map(|f| {
+                let ty = match datascript_compiler::arrow::from_arrow(f) {
+                    Ok(t) if !matches!(t, Type::Dynamic | Type::Guid) => Some(t),
+                    _ => None,
+                };
+                let type_name = match ty {
+                    Some(t) => t.to_string(),
+                    None => datascript_compiler::arrow::UnsupportedArrowType {
+                        data_type: f.data_type().clone(),
+                        extension: f.extension_type_name().map(str::to_string),
+                    }
+                    .to_string(),
+                };
+                ColMeta {
+                    name: f.name().clone(),
+                    type_name,
+                    ty,
+                }
+            })
+            .collect();
+
+        // Pass 1: one global aggregate over all input columns.
+        let mut aggs: Vec<DfExpr> = Vec::new();
+        aggs.push(agg::count(lit(1i64)).alias("__ds_total"));
+        for (i, meta) in cols.iter().enumerate() {
+            let (qualifier, df_field) = input.schema().qualified_field(i);
+            let col_expr = DfExpr::Column(Column::from((qualifier, df_field)));
+            aggs.push(agg::count(col_expr.clone()).alias(format!("__ds_cnt_{i}")));
+            match meta.ty {
+                Some(ty @ (Type::Int | Type::Long | Type::Real)) => {
+                    let hll_in = if ty == Type::Real {
+                        describe_udf(
+                            "ds_f64_hll_key",
+                            udf::k_f64_hll_key,
+                            DataType::Int64,
+                            col_expr.clone(),
+                        )
+                    } else {
+                        col_expr.clone()
+                    };
+                    aggs.push(agg::approx_distinct(hll_in).alias(format!("__ds_uniq_{i}")));
+                    aggs.push(agg::min(col_expr.clone()).alias(format!("__ds_min_{i}")));
+                    aggs.push(agg::max(col_expr.clone()).alias(format!("__ds_max_{i}")));
+                    let as_f64 = if ty == Type::Real {
+                        col_expr
+                    } else {
+                        cast(col_expr, DataType::Float64)
+                    };
+                    aggs.push(agg::avg(as_f64.clone()).alias(format!("__ds_avg_{i}")));
+                    aggs.push(agg::stddev(as_f64.clone()).alias(format!("__ds_std_{i}")));
+                    aggs.push(
+                        agg::approx_percentile_cont(
+                            as_f64.clone().sort(true, false),
+                            lit(0.25f64),
+                            None,
+                        )
+                        .alias(format!("__ds_q25_{i}")),
+                    );
+                    aggs.push(
+                        agg::approx_percentile_cont(
+                            as_f64.clone().sort(true, false),
+                            lit(0.50f64),
+                            None,
+                        )
+                        .alias(format!("__ds_q50_{i}")),
+                    );
+                    aggs.push(
+                        agg::approx_percentile_cont(as_f64.sort(true, false), lit(0.75f64), None)
+                            .alias(format!("__ds_q75_{i}")),
+                    );
+                }
+                Some(Type::DateTime | Type::TimeSpan) => {
+                    aggs.push(
+                        agg::approx_distinct(col_expr.clone()).alias(format!("__ds_uniq_{i}")),
+                    );
+                    aggs.push(agg::min(col_expr.clone()).alias(format!("__ds_min_{i}")));
+                    aggs.push(agg::max(col_expr.clone()).alias(format!("__ds_max_{i}")));
+                    let as_f64 = cast(cast(col_expr, DataType::Int64), DataType::Float64);
+                    aggs.push(
+                        agg::approx_percentile_cont(
+                            as_f64.clone().sort(true, false),
+                            lit(0.25f64),
+                            None,
+                        )
+                        .alias(format!("__ds_q25_{i}")),
+                    );
+                    aggs.push(
+                        agg::approx_percentile_cont(
+                            as_f64.clone().sort(true, false),
+                            lit(0.50f64),
+                            None,
+                        )
+                        .alias(format!("__ds_q50_{i}")),
+                    );
+                    aggs.push(
+                        agg::approx_percentile_cont(as_f64.sort(true, false), lit(0.75f64), None)
+                            .alias(format!("__ds_q75_{i}")),
+                    );
+                }
+                Some(Type::String | Type::Bool) => {
+                    aggs.push(
+                        agg::approx_distinct(col_expr.clone()).alias(format!("__ds_uniq_{i}")),
+                    );
+                    aggs.push(agg::min(col_expr.clone()).alias(format!("__ds_min_{i}")));
+                    aggs.push(agg::max(col_expr).alias(format!("__ds_max_{i}")));
+                }
+                // Unsupported Arrow types (DS2008) and M2 `decimal` get only `count` and
+                // `null_percentage`.
+                Some(Type::Decimal) | None => {}
+                Some(Type::Dynamic | Type::Guid | Type::Null | Type::Error) => {}
+            }
+        }
+        let agg_builder = input.aggregate(Vec::<DfExpr>::new(), aggs).map_err(fail)?;
+
+        // Compute the 10 per-column statistics on the single aggregated row so formatting UDFs
+        // run once per column rather than once per unpivoted row.
+        let total = DfExpr::Column(Column::new_unqualified("__ds_total"));
+        let null_str = || lit(ScalarValue::Utf8(None));
+        let null_f64 = || lit(ScalarValue::Float64(None));
+        let null_i64 = || lit(ScalarValue::Int64(None));
+
+        let build_row_exprs = |i: usize, meta: &ColMeta| -> Result<[DfExpr; 10], Diagnostic> {
+            let cnt = DfExpr::Column(Column::new_unqualified(format!("__ds_cnt_{i}")));
+            let null_pct = when(
+                binary_expr(total.clone(), Operator::Eq, lit(0i64)),
+                null_f64(),
+            )
+            .otherwise(binary_expr(
+                binary_expr(
+                    cast(
+                        binary_expr(total.clone(), Operator::Minus, cnt.clone()),
+                        DataType::Float64,
+                    ),
+                    Operator::Multiply,
+                    lit(100.0f64),
+                ),
+                Operator::Divide,
+                cast(total.clone(), DataType::Float64),
+            ))
+            .map_err(fail)?;
+            let col_ref = |prefix: &str| {
+                DfExpr::Column(Column::new_unqualified(format!("__ds_{prefix}_{i}")))
+            };
+            let (uniq, min, max, avg, std, q25, q50, q75) = match meta.ty {
+                Some(Type::Int | Type::Long | Type::Real) => (
+                    coalesce(vec![cast(col_ref("uniq"), DataType::Int64), lit(0i64)]),
+                    to_str(col_ref("min")),
+                    to_str(col_ref("max")),
+                    col_ref("avg"),
+                    col_ref("std"),
+                    to_str(col_ref("q25")),
+                    to_str(col_ref("q50")),
+                    to_str(col_ref("q75")),
+                ),
+                Some(Type::DateTime) => {
+                    let fmt_dt = |e: DfExpr| {
+                        describe_udf(
+                            "ds_f64_to_datetime_str",
+                            udf::k_f64_to_datetime_str,
+                            DataType::Utf8,
+                            e,
+                        )
+                    };
+                    (
+                        coalesce(vec![cast(col_ref("uniq"), DataType::Int64), lit(0i64)]),
+                        to_str(col_ref("min")),
+                        to_str(col_ref("max")),
+                        null_f64(),
+                        null_f64(),
+                        fmt_dt(col_ref("q25")),
+                        fmt_dt(col_ref("q50")),
+                        fmt_dt(col_ref("q75")),
+                    )
+                }
+                Some(Type::TimeSpan) => {
+                    let fmt_ts = |e: DfExpr| {
+                        describe_udf(
+                            "ds_f64_to_timespan_str",
+                            udf::k_f64_to_timespan_str,
+                            DataType::Utf8,
+                            e,
+                        )
+                    };
+                    (
+                        coalesce(vec![cast(col_ref("uniq"), DataType::Int64), lit(0i64)]),
+                        to_str(col_ref("min")),
+                        to_str(col_ref("max")),
+                        null_f64(),
+                        null_f64(),
+                        fmt_ts(col_ref("q25")),
+                        fmt_ts(col_ref("q50")),
+                        fmt_ts(col_ref("q75")),
+                    )
+                }
+                Some(Type::String) => (
+                    coalesce(vec![cast(col_ref("uniq"), DataType::Int64), lit(0i64)]),
+                    col_ref("min"),
+                    col_ref("max"),
+                    null_f64(),
+                    null_f64(),
+                    null_str(),
+                    null_str(),
+                    null_str(),
+                ),
+                Some(Type::Bool) => (
+                    coalesce(vec![cast(col_ref("uniq"), DataType::Int64), lit(0i64)]),
+                    to_str(col_ref("min")),
+                    to_str(col_ref("max")),
+                    null_f64(),
+                    null_f64(),
+                    null_str(),
+                    null_str(),
+                    null_str(),
+                ),
+                _ => (
+                    null_i64(),
+                    null_str(),
+                    null_str(),
+                    null_f64(),
+                    null_f64(),
+                    null_str(),
+                    null_str(),
+                    null_str(),
+                ),
+            };
+            Ok([cnt, null_pct, uniq, min, max, avg, std, q25, q50, q75])
+        };
+
+        const STAT_NAMES: [&str; 10] = [
+            "count",
+            "null_percentage",
+            "approx_unique",
+            "min",
+            "max",
+            "avg",
+            "std",
+            "q25",
+            "q50",
+            "q75",
+        ];
+
+        // Single-column input needs no unpivot.
+        if cols.len() == 1 {
+            let stats = build_row_exprs(0, &cols[0])?;
+            let mut proj = vec![
+                lit(cols[0].name.clone()).alias("column_name"),
+                lit(cols[0].type_name.clone()).alias("column_type"),
+            ];
+            for (expr, name) in stats.into_iter().zip(STAT_NAMES) {
+                proj.push(expr.alias(name));
+            }
+            return agg_builder.project(proj).map_err(fail);
+        }
+
+        // Format every column's stats on the 1-row aggregate result, then cross-join with
+        // `Values((0), ..., (k-1))` and unpivot via `CASE` in exact input-column order.
+        let mut flat: Vec<DfExpr> = Vec::with_capacity(cols.len() * STAT_NAMES.len());
+        for (i, meta) in cols.iter().enumerate() {
+            let stats = build_row_exprs(i, meta)?;
+            for (expr, stat) in stats.into_iter().zip(STAT_NAMES) {
+                flat.push(expr.alias(format!("__ds_s_{stat}_{i}")));
+            }
+        }
+        let stats_plan = agg_builder
+            .project(flat)
+            .and_then(LogicalPlanBuilder::build)
+            .map_err(fail)?;
+
+        let idx_rows: Vec<Vec<DfExpr>> = (0..cols.len()).map(|i| vec![lit(i as i64)]).collect();
+        let idx_builder = LogicalPlanBuilder::values(idx_rows)
+            .and_then(|b| {
+                b.project(vec![
+                    DfExpr::Column(Column::new_unqualified("column1")).alias("__ds_idx"),
+                ])
+            })
+            .map_err(fail)?;
+        let joined = idx_builder.cross_join(stats_plan).map_err(fail)?;
+
+        let idx = DfExpr::Column(Column::new_unqualified("__ds_idx"));
+        let mut unpivoted = vec![
+            idx.clone(),
+            pick_by_idx(&idx, cols.iter().map(|c| lit(c.name.clone())).collect())
+                .map_err(fail)?
+                .alias("column_name"),
+            pick_by_idx(
+                &idx,
+                cols.iter().map(|c| lit(c.type_name.clone())).collect(),
+            )
+            .map_err(fail)?
+            .alias("column_type"),
+        ];
+        for stat in STAT_NAMES {
+            let choices: Vec<DfExpr> = (0..cols.len())
+                .map(|i| DfExpr::Column(Column::new_unqualified(format!("__ds_s_{stat}_{i}"))))
+                .collect();
+            unpivoted.push(pick_by_idx(&idx, choices).map_err(fail)?.alias(stat));
+        }
+
+        let final_cols: Vec<DfExpr> = node
+            .schema
+            .fields()
+            .iter()
+            .map(|f| DfExpr::Column(Column::new_unqualified(f.name())))
+            .collect();
+        joined
+            .project(unpivoted)
+            .and_then(|b| b.sort(vec![idx.sort(true, false)]))
+            .and_then(|b| b.project(final_cols))
+            .map_err(fail)
     }
 
     fn values(
@@ -440,6 +788,22 @@ pub(crate) fn source_name(source: &SourceRef) -> String {
 
 fn to_usize(count: u64) -> usize {
     usize::try_from(count).unwrap_or(usize::MAX)
+}
+
+/// `CASE WHEN idx = 0 THEN values[0] WHEN idx = 1 THEN values[1] ... ELSE values[k-1] END`.
+fn pick_by_idx(idx: &DfExpr, mut values: Vec<DfExpr>) -> Result<DfExpr, DataFusionError> {
+    let last = values.pop().expect("pick_by_idx needs at least one value");
+    if values.is_empty() {
+        return Ok(last);
+    }
+    let mut builder = when(
+        binary_expr(idx.clone(), Operator::Eq, lit(0i64)),
+        values[0].clone(),
+    );
+    for (i, v) in values.into_iter().enumerate().skip(1) {
+        builder = builder.when(binary_expr(idx.clone(), Operator::Eq, lit(i as i64)), v);
+    }
+    builder.otherwise(last)
 }
 
 /// Column `name` of a file with schema `raw`, as type `target`: cast if needed, null if the
@@ -907,5 +1271,59 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn describe_lowers_to_one_aggregate_pass() {
+        use arrow_schema::{Field, Schema};
+        use datascript_compiler::ir::{Plan, PlanNode};
+        use datascript_diagnostics::FileId;
+
+        let span = Span::new(FileId(0), 0, 1);
+        let input_schema = Arc::new(Schema::new(vec![
+            Field::new("a", DataType::Int64, true),
+            Field::new("b", DataType::Float64, true),
+            Field::new("c", DataType::Utf8, true),
+            Field::new("d", DataType::Boolean, true),
+        ]));
+        let input = Plan {
+            node: PlanNode::Values { rows: Vec::new() },
+            schema: input_schema,
+            span,
+        };
+        let out_schema = Arc::new(Schema::new(vec![
+            Field::new("column_name", DataType::Utf8, true),
+            Field::new("column_type", DataType::Utf8, true),
+            Field::new("count", DataType::Int64, true),
+            Field::new("null_percentage", DataType::Float64, true),
+            Field::new("approx_unique", DataType::Int64, true),
+            Field::new("min", DataType::Utf8, true),
+            Field::new("max", DataType::Utf8, true),
+            Field::new("avg", DataType::Float64, true),
+            Field::new("std", DataType::Float64, true),
+            Field::new("q25", DataType::Utf8, true),
+            Field::new("q50", DataType::Utf8, true),
+            Field::new("q75", DataType::Utf8, true),
+        ]));
+        let describe = Plan {
+            node: PlanNode::Describe {
+                input: Box::new(input),
+            },
+            schema: out_schema,
+            span,
+        };
+        let mut lowering = Lowering::new(Vec::new(), 0);
+        let plan = lowering.plan(&describe).unwrap();
+        let display = plan.display_indent().to_string();
+        assert_eq!(
+            display.matches("Aggregate:").count(),
+            1,
+            "expected a single Aggregate pass:\n{display}"
+        );
+        assert_eq!(
+            display.matches("EmptyRelation").count(),
+            1,
+            "expected the input to be read once:\n{display}"
+        );
     }
 }

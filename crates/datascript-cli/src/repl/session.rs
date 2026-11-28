@@ -32,6 +32,7 @@ const GLUE: &str = "\n;\n";
 pub const COMMANDS: &[&str] = &[
     ".help",
     ".schema",
+    ".describe",
     ".tables",
     ".format",
     ".max-rows",
@@ -274,6 +275,9 @@ pub enum MetaOutcome {
     Print(String),
     /// Program diagnostics (from `.schema`), against [`ReplSession::sources`].
     Diagnostics(Vec<Diagnostic>),
+    /// A query prepared by a meta command (`.describe`), to check and run through the normal
+    /// query path so Ctrl-C cancels it like any other query.
+    Run(Prepared),
     Mistake(Mistake),
     Quit,
 }
@@ -379,6 +383,7 @@ impl ReplSession {
     ///
     /// The same as [`prepare`](Self::prepare), awaiting [`check_task`](Self::check_task) and
     /// [`commit`](Self::commit), which a frontend calls itself to check on another thread.
+    #[cfg(test)]
     pub async fn check_input(&mut self, text: &str) -> Checked {
         let prepared = self.prepare(text);
         let analysis = self.check_task(&prepared).await;
@@ -591,6 +596,12 @@ impl ReplSession {
                 let offset = lead + name.len() + (rest.len() - rest.trim_start().len());
                 self.schema(text, arg, len32(&text[..offset])).await
             }
+            ".describe" => {
+                let lead = text.len() - text.trim_start().len();
+                let rest = &trimmed[name.len()..];
+                let offset = lead + name.len() + (rest.len() - rest.trim_start().len());
+                self.describe(text, arg, len32(&text[..offset]))
+            }
             _ => MetaOutcome::Mistake(unknown_command(name)),
         }
     }
@@ -683,6 +694,35 @@ impl ReplSession {
                 "check that it is a table, such as a file path, a host table or a tabular let",
             )),
         }
+    }
+
+    /// `.describe <source>`: builds `from <source> | describe` after the saved lets so it runs
+    /// through the normal query path (with worker-thread execution and Ctrl-C cancellation).
+    fn describe(&mut self, text: &str, arg: &str, arg_offset: u32) -> MetaOutcome {
+        if arg.is_empty() {
+            return MetaOutcome::Mistake(Mistake::new(
+                "`.describe` needs a source",
+                "give anything that can follow `from`, such as `.describe 'orders.csv'` or \
+                 `.describe orders`",
+            ));
+        }
+        self.session.invalidate_schemas();
+        let file = self.sources.add_snippet("<repl>", text);
+        let mut program = ReplProgram::new(file);
+        for saved in &self.saved {
+            self.push_saved(&mut program, saved);
+        }
+        program.push_glue("from ", file, arg_offset);
+        program.push(arg, file, arg_offset);
+        program.push_glue(" | describe", file, arg_offset + len32(arg));
+        MetaOutcome::Run(Prepared {
+            file,
+            new_lets: Vec::new(),
+            removed: vec![false; self.saved.len()],
+            has_queries: true,
+            program,
+            ctx: self.session.exec_context(&self.base_dir),
+        })
     }
 
     fn tables_listing(&self) -> String {
@@ -971,7 +1011,8 @@ blank line. Lets are kept for the rest of the session; entering `let x = ...` ag
 
 Commands:
   .help               show this help
-  .schema <source>    the columns of a file, host table or tabular let
+  .schema <source>    the columns of a file, host table or tabular let (reads no data)
+  .describe <source>  summary statistics for every column (reads every row)
   .tables             the host tables and saved lets
   .format [table|csv|json]
                       set the output format, or show it
