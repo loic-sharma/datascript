@@ -228,6 +228,9 @@ pub(crate) fn code_actions(
                 Applicability::MaybeIncorrect => false,
                 Applicability::HasPlaceholders => continue,
             };
+            if suggestion.edits.is_empty() {
+                continue;
+            }
             let edits: Vec<TextEdit> = suggestion
                 .edits
                 .iter()
@@ -268,10 +271,7 @@ pub(crate) fn allows_quickfix(only: Option<&[CodeActionKind]>) -> bool {
     let quickfix = quickfix_kind.as_str();
     kinds.iter().any(|k| {
         let s = k.as_str();
-        s.is_empty()
-            || s == quickfix
-            || s.starts_with(&format!("{quickfix}."))
-            || quickfix.starts_with(&format!("{s}."))
+        s.is_empty() || s == quickfix || quickfix.starts_with(&format!("{s}."))
     })
 }
 
@@ -416,9 +416,9 @@ pub(crate) fn semantic_tokens(src: &SourceFile, tokens: Vec<SemanticToken>) -> S
             let pos = src.utf16_line_col(seg_start as u32);
             let line = pos.line - 1;
             let start = pos.column - 1;
-            let delta_line = line - prev_line;
+            let delta_line = line.saturating_sub(prev_line);
             let delta_start = if delta_line == 0 {
-                start - prev_start
+                start.saturating_sub(prev_start)
             } else {
                 start
             };
@@ -487,5 +487,34 @@ mod tests {
             panic!("a text edit");
         };
         assert_eq!(edit.new_text, "strlen");
+    }
+
+    #[test]
+    fn code_actions_skip_placeholders_and_narrow_only_filter() {
+        use datascript_diagnostics::{Suggestion, codes};
+
+        let src = SourceFile::new("q.ds", "from t");
+        let uri: Uri = "file:///w/q.ds".parse().unwrap();
+        let diag = Diagnostic::error(codes::DS0101, "placeholder test")
+            .primary(Span::new(FileId(0), 0, 4), "")
+            .help_with(
+                "fill in placeholder",
+                Suggestion::new(
+                    vec![datascript_diagnostics::TextEdit::new(
+                        Span::new(FileId(0), 0, 4),
+                        "from <expr>",
+                    )],
+                    Applicability::HasPlaceholders,
+                ),
+            );
+        assert!(code_actions(&src, &uri, &[diag], lsp::Range::default()).is_empty());
+
+        assert!(allows_quickfix(None));
+        assert!(allows_quickfix(Some(&[CodeActionKind::QUICKFIX])));
+        assert!(allows_quickfix(Some(&[CodeActionKind::EMPTY])));
+        assert!(!allows_quickfix(Some(&[CodeActionKind::new(
+            "quickfix.other"
+        )])));
+        assert!(!allows_quickfix(Some(&[CodeActionKind::REFACTOR])));
     }
 }

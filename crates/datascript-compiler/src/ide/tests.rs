@@ -982,6 +982,19 @@ fn goto_definition_references_and_rename_for_lets() {
             goto_definition(&src, analysis_opt, cutoff_use_2 + 2),
             Some(cutoff_def..cutoff_def + 6)
         );
+        // Cursor right at the end of a `let` name before punctuation (`cutoff;`) still resolves.
+        assert_eq!(
+            goto_definition(&src, analysis_opt, cutoff_use_1 + 6),
+            Some(cutoff_def..cutoff_def + 6)
+        );
+        assert_eq!(
+            prepare_rename(&src, analysis_opt, cutoff_use_1 + 6),
+            Some(RenameTarget {
+                start: cutoff_use_1,
+                end: cutoff_use_1 + 6,
+                placeholder: "cutoff".into(),
+            })
+        );
         assert_eq!(
             goto_definition(&src, analysis_opt, big_use_2 + 1),
             Some(big_def..big_def + 3)
@@ -1094,6 +1107,27 @@ fn let_resolution_respects_column_shadowing_and_non_let_positions() {
     assert_eq!(goto_definition(&src, Some(&analysis), sum_call), None);
     assert_eq!(goto_definition(&src, None, sum_call), None);
 
+    // A `let` shadowed by an earlier `extend` item (not an input column): `total + 1` still
+    // resolves to `let total`, while `y = total` resolves to the column made by the prior item.
+    let ext_text = "let total = 1;\nfrom 'orders.csv' | extend total = total + 1, y = total\n";
+    let ext_src = SourceFile::new("ext.ds", ext_text);
+    let ext_analysis = analyze(&ext_src, &Orders);
+    let total_def = ext_text.find("total").unwrap();
+    let total_rhs_1 = ext_text.find("total + 1").unwrap();
+    let total_rhs_2 = ext_text.find("y = total").unwrap() + 4;
+    assert_eq!(
+        goto_definition(&ext_src, Some(&ext_analysis), total_rhs_1),
+        Some(total_def..total_def + 5)
+    );
+    assert_eq!(
+        goto_definition(&ext_src, Some(&ext_analysis), total_rhs_2),
+        None
+    );
+    assert_eq!(
+        references(&ext_src, Some(&ext_analysis), total_def, false),
+        vec![total_rhs_1..total_rhs_1 + 5]
+    );
+
     // Non-`let` positions (`join ... on`, `$left.col`, `project-rename`, `render xcolumn`,
     // `distinct`, self/forward references, duplicate `let`) never resolve to `let`.
     let edge = "let a = a + b;\n\
@@ -1158,6 +1192,9 @@ fn rename_handles_quoted_identifiers_and_validation() {
     let already_quoted = rename(&src, None, def, "['row limit']").unwrap();
     assert_eq!(already_quoted[0].replacement, "['row limit']");
 
+    let bracketed = rename(&src, None, def, "[total]").unwrap();
+    assert_eq!(bracketed[0].replacement, "['[total]']");
+
     assert!(matches!(
         rename(&src, None, def, ""),
         Err(RenameError::InvalidName(_))
@@ -1209,6 +1246,17 @@ fn document_symbols_for_lets_and_queries() {
     assert_eq!(syntax[0].detail.as_deref(), Some("scalar"));
     assert_eq!(syntax[1].detail.as_deref(), Some("table"));
     assert_eq!(syntax[2].detail.as_deref(), Some("from big"));
+
+    // Duplicate `let` of a different kind keeps its own syntactic fallback detail instead of
+    // inheriting the first binding's HIR type.
+    let dup = SourceFile::new("dup.ds", "let x = 1;\nlet x = from 'orders.csv';\n");
+    let dup_analysis = analyze(&dup, &Orders);
+    let dup_syms = document_symbols(&dup, Some(&dup_analysis));
+    assert_eq!(dup_syms.len(), 2);
+    assert_eq!(dup_syms[0].kind, SymbolKind::Variable);
+    assert_eq!(dup_syms[0].detail.as_deref(), Some("long"));
+    assert_eq!(dup_syms[1].kind, SymbolKind::Table);
+    assert_eq!(dup_syms[1].detail.as_deref(), Some("table"));
 }
 
 #[test]
@@ -1448,4 +1496,22 @@ fn semantic_tokens_classify_contextual_keywords_and_syntax() {
             SemanticTokenModifiers::NONE
         )
     );
+
+    // Built-in readers (`read_csv`) get Function + DEFAULT_LIBRARY, and reader options get Property.
+    let reader_src = SourceFile::new("r.ds", "from read_csv('orders.csv', header = true)");
+    let reader_tokens = semantic_tokens(&reader_src, None);
+    let reader_tagged: Vec<(&str, SemanticTokenKind, SemanticTokenModifiers)> = reader_tokens
+        .iter()
+        .map(|t| (&reader_src.text()[t.start..t.end], t.kind, t.modifiers))
+        .collect();
+    assert!(reader_tagged.contains(&(
+        "read_csv",
+        SemanticTokenKind::Function,
+        SemanticTokenModifiers::DEFAULT_LIBRARY,
+    )));
+    assert!(reader_tagged.contains(&(
+        "header",
+        SemanticTokenKind::Property,
+        SemanticTokenModifiers::NONE,
+    )));
 }

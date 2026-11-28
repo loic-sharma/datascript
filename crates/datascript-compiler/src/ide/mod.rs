@@ -141,11 +141,7 @@ impl<'a> Doc<'a> {
 
     /// The token at `offset` for hover: the one containing it, or else the one ending at it.
     pub fn token_at(&self, offset: usize) -> Option<&SyntaxToken> {
-        let containing = self.tokens.iter().find(|t| {
-            let r = range(t);
-            r.start <= offset && offset < r.end
-        });
-        containing.or_else(|| self.tokens.iter().find(|t| range(t).end == offset))
+        token_at(&self.tokens, offset)
     }
 
     /// The columns after `node`, a pipeline stage (the source or an operator), a pipeline, or a
@@ -288,8 +284,18 @@ impl<'a> Doc<'a> {
 
     /// What the analysis knows about `let` `name`.
     pub fn let_kind(&self, name: &str) -> LetKind {
+        self.let_kind_matching(|b| b.name == name)
+    }
+
+    /// What the analysis knows about the `let` binding whose defining name spans `name_range`.
+    /// Duplicate `let` definitions are omitted from the HIR and therefore return [`LetKind::Unknown`].
+    pub fn let_kind_at(&self, name: &str, name_range: &Range<usize>) -> LetKind {
+        self.let_kind_matching(|b| b.name == name && b.name_span.range() == *name_range)
+    }
+
+    fn let_kind_matching(&self, pred: impl Fn(&hir::LetBinding) -> bool) -> LetKind {
         let binding = self.analysis.hir.statements.iter().find_map(|s| match s {
-            Statement::Let(b) if b.name == name => Some(b),
+            Statement::Let(b) if pred(b) => Some(b),
             _ => None,
         });
         match binding.map(|b| &b.value) {

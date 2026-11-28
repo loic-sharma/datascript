@@ -11,9 +11,9 @@ use std::ops::Range;
 
 use datascript_diagnostics::{FileId, SourceFile, Span};
 use datascript_syntax::ast::{self, AstNode, Stmt};
-use datascript_syntax::{SyntaxKind, SyntaxNode, SyntaxToken, display_name, literal};
+use datascript_syntax::{SyntaxKind, SyntaxNode, display_name, literal};
 
-use super::{Doc, floor_char_boundary, is_operator, name_text, range, range_of, token_at};
+use super::{Doc, floor_char_boundary, is_operator, name_text, range, range_of};
 use crate::Analysis;
 use crate::binder::{property_takes_columns, property_words};
 
@@ -155,19 +155,22 @@ impl LetIndex {
         self.ref_ranges.contains(r)
     }
 
-    /// Finds the `LetDef` (index) and the matched token range if `token` is either a `let`'s
-    /// defining name or one of its references.
-    fn resolve_token(&self, token: &SyntaxToken) -> Option<(usize, Range<usize>)> {
-        let r = range(token);
+    /// Finds the `LetDef` (index) and matched token range at byte `offset`, preferring a range
+    /// containing `offset` and falling back to one ending at `offset` (so a cursor right before
+    /// punctuation such as `cutoff;` or `abs(cutoff)` still resolves `cutoff`).
+    fn resolve_at_offset(&self, offset: usize) -> Option<(usize, Range<usize>)> {
+        let mut ending = None;
         for (idx, def) in self.defs.iter().enumerate() {
-            if def.name_range == r {
-                return Some((idx, r));
-            }
-            if def.references.contains(&r) {
-                return Some((idx, r));
+            for r in std::iter::once(&def.name_range).chain(&def.references) {
+                if r.start <= offset && offset < r.end {
+                    return Some((idx, r.clone()));
+                }
+                if ending.is_none() && r.end == offset {
+                    ending = Some((idx, r.clone()));
+                }
             }
         }
-        None
+        ending
     }
 }
 
@@ -275,6 +278,7 @@ fn is_let_reference(
         SyntaxKind::TOP_OP => {
             let in_key = name_ref
                 .ancestors()
+                .take_while(|n| n != &scope)
                 .any(|n| n.kind() == SyntaxKind::SORT_KEY);
             if !in_key {
                 true
@@ -315,28 +319,18 @@ fn resolve_at(
 ) -> Option<(LetIndex, usize, Range<usize>)> {
     let text = src.text();
     let offset = floor_char_boundary(text, offset);
-    match analysis {
+    let index = match analysis {
         Some(analysis) => {
             let doc = Doc::new(text, analysis);
-            let token = doc.token_at(offset)?;
-            let index = LetIndex::build(&doc.root, Some(&doc));
-            let (def_idx, tok_range) = index.resolve_token(token)?;
-            Some((index, def_idx, tok_range))
+            LetIndex::build(&doc.root, Some(&doc))
         }
         None => {
-            let parse = datascript_syntax::parse(text, FileId(0));
-            let root = parse.syntax();
-            let tokens: Vec<SyntaxToken> = root
-                .descendants_with_tokens()
-                .filter_map(|e| e.into_token())
-                .filter(|t| !t.kind().is_trivia())
-                .collect();
-            let token = token_at(&tokens, offset)?;
-            let index = LetIndex::build(&root, None);
-            let (def_idx, tok_range) = index.resolve_token(token)?;
-            Some((index, def_idx, tok_range))
+            let root = datascript_syntax::parse(text, FileId(0)).syntax();
+            LetIndex::build(&root, None)
         }
-    }
+    };
+    let (def_idx, tok_range) = index.resolve_at_offset(offset)?;
+    Some((index, def_idx, tok_range))
 }
 
 /// The byte range of the `let` definition for the name at byte `offset`, if it refers to a `let`.
@@ -427,7 +421,10 @@ fn parse_new_name(new_name: &str) -> Result<(String, String), RenameError> {
     if new_name.is_empty() {
         return Err(RenameError::InvalidName("name cannot be empty".into()));
     }
-    let raw = if new_name.starts_with('[') && new_name.ends_with(']') {
+    let is_quoted_ident = new_name.len() >= 4
+        && ((new_name.starts_with("['") && new_name.ends_with("']"))
+            || (new_name.starts_with("[\"") && new_name.ends_with("\"]")));
+    let raw = if is_quoted_ident {
         let span = Span::new(FileId(0), 0, 0);
         literal::quoted_ident(new_name, span)
             .map_err(|_| RenameError::InvalidName(format!("`{new_name}` is not a valid name")))?

@@ -64,9 +64,9 @@ pub fn document_symbols(src: &SourceFile, analysis: Option<&Analysis>) -> Vec<Do
                 } else {
                     SymbolKind::Variable
                 };
-                let detail = let_detail(&name, is_tabular, doc.as_ref());
                 let full = range_of(let_stmt.syntax());
                 let sel = range_of(name_node.syntax());
+                let detail = let_detail(&name, &sel, is_tabular, doc.as_ref());
                 symbols.push(DocumentSymbol {
                     name,
                     detail: Some(detail),
@@ -102,9 +102,14 @@ pub fn document_symbols(src: &SourceFile, analysis: Option<&Analysis>) -> Vec<Do
     symbols
 }
 
-fn let_detail(name: &str, is_tabular: bool, doc: Option<&Doc<'_>>) -> String {
+fn let_detail(
+    name: &str,
+    name_range: &std::ops::Range<usize>,
+    is_tabular: bool,
+    doc: Option<&Doc<'_>>,
+) -> String {
     if let Some(doc) = doc {
-        match doc.let_kind(name) {
+        match doc.let_kind_at(name, name_range) {
             LetKind::Scalar { ty, .. } => return ty,
             LetKind::Table(Some(cols)) => {
                 let word = if cols.len() == 1 { "column" } else { "columns" };

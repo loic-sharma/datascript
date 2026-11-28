@@ -2307,21 +2307,53 @@ async fn code_actions_offer_quick_fixes_from_diagnostics() {
         "read_csv('data.txt')"
     );
 
-    // Asking for non-quickfix kinds returns empty.
-    let refactor = client
+    // Asking for non-quickfix or narrower quickfix sub-kinds returns empty.
+    for only in [json!(["refactor"]), json!(["quickfix.other"])] {
+        let filtered = client
+            .request(
+                "textDocument/codeAction",
+                json!({
+                    "textDocument": { "uri": uri },
+                    "range": {
+                        "start": { "line": 0, "character": eq_col },
+                        "end": { "line": 0, "character": eq_col + 1 }
+                    },
+                    "context": { "diagnostics": [], "only": only }
+                }),
+            )
+            .await;
+        assert_eq!(filtered, json!([]));
+    }
+
+    // Multi-edit quick fix: DS2103 on `sort by amount, customerId` produces 2 edits in one action.
+    let multi_uri = client.uri("multi_edit.ds");
+    client
+        .open(
+            &multi_uri,
+            "from 'orders.csv' | sort by amount, customerId\n",
+        )
+        .await;
+    assert_eq!(client.diagnostics(&multi_uri).await.codes(), ["DS2103"]);
+    let actions = client
         .request(
             "textDocument/codeAction",
             json!({
-                "textDocument": { "uri": uri },
+                "textDocument": { "uri": multi_uri },
                 "range": {
-                    "start": { "line": 0, "character": eq_col },
-                    "end": { "line": 0, "character": eq_col + 1 }
+                    "start": { "line": 0, "character": 28 },
+                    "end": { "line": 0, "character": 34 }
                 },
-                "context": { "diagnostics": [], "only": ["refactor"] }
+                "context": { "diagnostics": [] }
             }),
         )
         .await;
-    assert_eq!(refactor, json!([]));
+    let arr = actions.as_array().unwrap();
+    assert_eq!(arr.len(), 1, "{actions}");
+    assert_eq!(arr[0]["isPreferred"], true);
+    let edits = arr[0]["edit"]["changes"][&multi_uri].as_array().unwrap();
+    assert_eq!(edits.len(), 2, "{actions}");
+    assert_eq!(edits[0]["newText"], " asc");
+    assert_eq!(edits[1]["newText"], " asc");
 
     client.shutdown().await;
 }

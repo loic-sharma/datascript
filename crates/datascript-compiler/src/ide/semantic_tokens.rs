@@ -375,7 +375,9 @@ fn classify_name_ref(
     if let Some(call) = grand.as_ref().filter(|g| g.kind() == SyntaxKind::CALL_EXPR)
         && call.children().next().as_ref() == Some(name_ref)
     {
-        let modifiers = if name_text(token).is_some_and(|n| catalog.lookup(&n).is_ok()) {
+        let modifiers = if name_text(token)
+            .is_some_and(|n| catalog.lookup(&n).is_ok() || crate::source::reader(&n).is_some())
+        {
             SemanticTokenModifiers::DEFAULT_LIBRARY
         } else {
             SemanticTokenModifiers::NONE
