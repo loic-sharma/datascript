@@ -162,15 +162,22 @@ impl fmt::Debug for Session {
 }
 
 /// The lookups one binding pass sees.
-struct CallSchemas(HashMap<SourceRef, Lookup>);
+struct CallSchemas {
+    lookups: HashMap<SourceRef, Lookup>,
+    sandboxed: bool,
+}
 
 impl SchemaProvider for CallSchemas {
     fn schema_of(&self, source: &SourceRef) -> SchemaLookup {
-        match self.0.get(source) {
+        match self.lookups.get(source) {
             Some(Ok(schema)) => SchemaLookup::Ready(schema.clone()),
             Some(Err(error)) => SchemaLookup::Failed(error.clone()),
             None => SchemaLookup::Pending,
         }
+    }
+
+    fn is_sandboxed(&self) -> bool {
+        self.sandboxed
     }
 }
 
@@ -451,7 +458,15 @@ impl Session {
             .map(|(key, lookup)| (key.source.clone(), lookup.clone()))
             .collect();
         lookups.extend(fetched.iter().map(|(s, l)| (s.clone(), l.clone())));
-        datascript_compiler::check(src, file, &CallSchemas(lookups), self.engine.capabilities())
+        datascript_compiler::check(
+            src,
+            file,
+            &CallSchemas {
+                lookups,
+                sandboxed: ctx.sandbox.is_some(),
+            },
+            self.engine.capabilities(),
+        )
     }
 
     #[cfg(test)]

@@ -13,6 +13,7 @@ Examples:
   ds run -e \"from 'orders.csv' | take 10\"
   ds check queries/*.ds
   ds explain report.ds
+  ds ui ./data
 
 Exit codes: 0 success, 1 the program has errors, 2 usage or internal error, 130 interrupted.";
 
@@ -42,6 +43,16 @@ const EXPLAIN_EXAMPLES: &str = "\
 Examples:
   ds explain report.ds
   ds explain -e \"from 'orders.csv' | where amount > 100 | take 5\"";
+
+const UI_EXAMPLES: &str = "\
+Examples:
+  ds ui
+  ds ui ./data --no-open
+  ds ui ./data --port 8080 --allow-outside-root
+  ds ui ./data --dev-proxy http://127.0.0.1:5173
+
+The server listens on 127.0.0.1 only and requires the per-launch token shown in the URL.
+By default queries can only read files inside DIR; pass --allow-outside-root to lift this.";
 
 /// DataScript: a pipe-based query language for local data files.
 ///
@@ -88,6 +99,39 @@ pub enum Command {
     ///
     /// Editors start this; it is not meant to be run by hand.
     Lsp(LspArgs),
+    /// Start the local web UI server on 127.0.0.1 and open it in a browser.
+    #[command(after_help = UI_EXAMPLES)]
+    Ui(UiArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct UiArgs {
+    /// Root directory for browsing and reading data files. Defaults to the current directory.
+    #[arg(value_name = "DIR")]
+    pub dir: Option<PathBuf>,
+
+    /// Port on 127.0.0.1 to listen on. 0 picks a random available port.
+    #[arg(long, value_name = "PORT", default_value_t = 0)]
+    pub port: u16,
+
+    /// Print the URL without opening the browser.
+    #[arg(long)]
+    pub no_open: bool,
+
+    /// Allow queries to read files outside DIR (disables the path sandbox).
+    #[arg(long)]
+    pub allow_outside_root: bool,
+
+    /// Default maximum rows returned per query result in the UI. 0 removes the limit.
+    #[arg(long, value_name = "N", default_value_t = datascript_engine::printer::DEFAULT_UI_ROW_LIMIT)]
+    pub max_rows: usize,
+
+    /// Proxy non-API requests to a frontend dev server (such as Vite) instead of embedded assets.
+    #[arg(long, value_name = "URL")]
+    pub dev_proxy: Option<String>,
+
+    #[command(flatten)]
+    pub tables: TableArgs,
 }
 
 #[derive(Debug, Args)]

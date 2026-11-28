@@ -21,10 +21,12 @@ datascript-datafusion = { path = "../datascript-datafusion" }
 datascript-diagnostics = { path = "../datascript-diagnostics" }
 datascript-engine = { path = "../datascript-engine" }
 datascript-lsp = { path = "../datascript-lsp" }
+datascript-server = { path = "../datascript-server" }
 datascript-syntax = { path = "../datascript-syntax" }
 dirs.workspace = true
 futures.workspace = true
 nu-ansi-term.workspace = true
+open.workspace = true
 reedline.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
 # The CLI runs the program on a worker thread so the main thread can catch Ctrl-C (`signal`).

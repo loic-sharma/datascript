@@ -46,6 +46,18 @@ futures = { version = "0.3", default-features = false, features = ["std", "async
 tokio = { version = "1", default-features = false, features = ["rt"] }
 # The language server (M3-01). Only `datascript-lsp` uses it; it re-exports `ls-types`.
 tower-lsp-server = "0.23"
+# Local web UI server (M4-01). Only `datascript-server` and `datascript-cli` (`ds ui`) use them.
+axum = { version = "0.8", features = ["ws"] }
+base64 = "0.23"
+getrandom = "0.4"
+http-body-util = "0.1"
+hyper-util = { version = "0.1", features = ["client", "client-legacy", "http1", "tokio"] }
+mime_guess = "2"
+notify = "8"
+open = "5"
+rust-embed = "8"
+tower = { version = "0.5", features = ["util"] }
+tokio-tungstenite = "0.29"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

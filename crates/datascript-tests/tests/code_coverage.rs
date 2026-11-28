@@ -14,8 +14,16 @@ use datascript_tests::runner::{discover, repo_root};
 /// for each.
 const ALLOWLIST: &[(Code, &str)] = &[
     (
+        codes::DS3007,
+        "requires ExecContext::sandbox (D-016); covered by datascript-datafusion and datascript-server integration tests",
+    ),
+    (
         codes::DS4002,
         "fallback for untraceable DataFusion runtime errors; covered by unit tests",
+    ),
+    (
+        codes::DS4060,
+        "emitted by UI runtimes when a result hits the UI row limit (D-062); covered by datascript-engine and datascript-server tests",
     ),
     (
         codes::DS5001,

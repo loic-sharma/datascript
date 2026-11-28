@@ -315,7 +315,8 @@ impl JsonDiagnostic {
 }
 
 impl JsonSpan {
-    fn new(span: Span, sources: &SourceMap) -> Self {
+    /// Converts a byte [`Span`] to a UTF-16 [`JsonSpan`] using `sources` (D-025).
+    pub fn new(span: Span, sources: &SourceMap) -> Self {
         let Some(file) = sources.get(span.file) else {
             return JsonSpan {
                 file: UNKNOWN_FILE.to_string(),

@@ -191,7 +191,7 @@ pub const DS3004: Code = Code::new(3004);
 pub const DS3005: Code = Code::new(3005);
 /// source path or reader option is not a constant
 pub const DS3006: Code = Code::new(3006);
-/// path is outside the UI root directory (planned, M4-01, D-016)
+/// path is outside the UI root directory (D-016)
 pub const DS3007: Code = Code::new(3007);
 /// file could not be read (permission denied, malformed CSV/JSON row at runtime)
 pub const DS3008: Code = Code::new(3008);
@@ -205,6 +205,8 @@ pub const DS4002: Code = Code::new(4002);
 pub const DS4003: Code = Code::new(4003);
 /// invalid argument value: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100 (reported by `check` when the argument is a constant, D-049)
 pub const DS4004: Code = Code::new(4004);
+/// result truncated at the UI row limit (D-062)
+pub const DS4060: Code = Code::new(4060);
 /// chart not drawn in this runtime (once per program run, not for `render table`)
 pub const DS5001: Code = Code::new(5001);
 /// chart role cannot be filled: no column of the type the kind needs, or an explicit column of the wrong type (names the role and lists the result's columns)
@@ -673,8 +675,8 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS3007,
         severity: Some(Severity::Error),
-        summary: "path is outside the UI root directory *(planned, M4-01, D-016)*",
-        status: CodeStatus::Planned,
+        summary: "path is outside the UI root directory (D-016)",
+        status: CodeStatus::Active,
     },
     CodeInfo {
         code: DS3008,
@@ -710,6 +712,12 @@ pub const REGISTRY: &[CodeInfo] = &[
         code: DS4004,
         severity: Some(Severity::Error),
         summary: "invalid argument value: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100 (reported by `check` when the argument is a constant, D-049)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS4060,
+        severity: Some(Severity::Info),
+        summary: "result truncated at the UI row limit (D-062)",
         status: CodeStatus::Active,
     },
     CodeInfo {

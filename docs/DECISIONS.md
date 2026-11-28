@@ -1032,6 +1032,41 @@ with its own streaming JSON/NDJSON `FileFormat` and `FileSource` (`json.rs`):
   diagnostics (M2-34, M2-12). Parallelism across the files of a glob is unaffected.
 *(M2-33, 2026-11-28.)*
 
+### D-062 — Result size limits in UI runtimes and `ds ui` server contract (M4-01)
+**Accepted.** Closes Q-007.
+
+- **Default UI row limit of 10,000 rows.** UI runtimes (`ds ui`, WASM playground, VS Code results
+  panel) cap each query result at `DEFAULT_UI_ROW_LIMIT = 10_000` rows by default (`ds ui
+  --max-rows N`, or per-request `rowLimit`; `0` disables the limit). Enforcement uses
+  `ExecContext::row_limit` (D-043) or batch-by-batch counting on `RunStream` (D-055), dropping the
+  stream as soon as an extra row arrives so the engine cancels immediately.
+- **Truncation diagnostic `DS4060` (info).** When a UI runtime truncates a result, it sets
+  `truncated: true` on the result and emits `DS4060` (`result truncated to N rows`, primary label
+  on the query statement: `more rows were omitted`, help: ``export the full result, or narrow the
+  query with `where` or `take` ``) via `datascript_engine::printer::result_truncated`. `Session::run`
+  itself continues to set `QueryResult::truncated` without injecting `DS4060`, so non-UI callers
+  keep full control.
+- **Full untruncated export (`POST /api/export`).** Streams the complete result (`row_limit: None`)
+  batch by batch through `datascript_engine::writers` (`csv`, `json`, `ndjson`) and
+  `arrow_ipc::writer::FileWriter` (`arrow`), matching the writers future `output` (M2-25) uses.
+  The first batch is pulled before committing HTTP `200` headers so check, sandbox, and immediate
+  runtime errors return structured `JsonDiagnostic` responses (`422`), and closing the HTTP stream
+  drops the `QueryStream` to cancel execution.
+- **Sandbox precedes format detection (`DS3007` over `DS3002`).** `SchemaProvider::is_sandboxed()`
+  lets the binder ask the engine about unknown-extension paths (such as `from '/etc/passwd' | take
+  1`) when `ExecContext::sandbox` is active, so paths outside the UI root always fail with
+  `DS3007` instead of `DS3002` suggesting `read_csv(...)`. `check_sandbox` resolves symlinks
+  component by component (including dangling symlinks and `..` after symlinks) and checks glob
+  non-wildcard prefixes before expanding matches, preventing silent fallback to lexical
+  normalization or `DS3004`.
+- **Server auth & streaming.** `ds ui` binds to `127.0.0.1` only, generates a 256-bit CSPRNG hex
+  token per launch (accepted via `Authorization: Bearer`, `X-DataScript-Token`, or `?token=`),
+  validates `Origin` and loopback `Host` headers on `/api/*`, watches the root directory with
+  `notify` to invalidate `Session`'s schema cache, embeds `web/dist/` with `rust-embed` (with
+  `--dev-proxy` for Vite), and streams/cancels queries over `/api/ws` via `Session::start`.
+  See [API.md](API.md).
+*(M4-01, 2026-11-28.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack
@@ -1058,11 +1093,6 @@ used where a column is expected. Revisit with the first user feedback, carried o
 DuckDB users expect `'data/year=*/month=*/*.parquet'` to expose `year` and `month` as columns.
 DataFusion's `ListingTable` supports this. Decide whether it is automatic, opt-in
 (`read_parquet(..., hive = true)`), or later. Not needed for M1.
-
-### Q-007 — Result size limits in UI runtimes
-The CLI streams; the web UI, VS Code panel and WASM must not buffer a 10 GB result. Proposal: UI
-runtimes fetch the first N rows (default 10 000) with a "results truncated" info diagnostic and an
-option to export the full result. Decide in M4-01.
 
 ### Q-008 — Does KQL error on integer overflow and integer division by zero?
 D-014 says these are runtime errors and calls that "following KQL". Check real KQL behaviour in

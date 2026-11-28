@@ -320,6 +320,15 @@ pub enum SchemaLookup {
 pub trait SchemaProvider {
     /// The schema of `source`, or [`SchemaLookup::Pending`] if it has not been fetched yet.
     fn schema_of(&self, source: &SourceRef) -> SchemaLookup;
+
+    /// Whether the host enforces a path sandbox (D-016).
+    ///
+    /// When `true`, a constant path with no recognized extension (such as `'/etc/passwd'`) is
+    /// checked against the provider before reporting `DS3002`, so paths outside the sandbox
+    /// report `DS3007` instead of suggesting a reader call.
+    fn is_sandboxed(&self) -> bool {
+        false
+    }
 }
 
 /// A provider that knows nothing: every source is pending. A first binding pass with it finds

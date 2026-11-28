@@ -132,7 +132,7 @@ Two shared files are touched by many tasks:
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
-| [M4-01](M4-01-server-api.md) | Local server (`ds ui`) | M1-13, M2-13 | todo |
+| [M4-01](M4-01-server-api.md) | Local server (`ds ui`) | M1-13, M2-13 | done |
 | [M4-02](M4-02-web-frontend.md) | Web UI front end | M4-01, M2-13 | todo |
 | [M4-03](M4-03-web-charts.md) | Charts from RenderSpec | M4-02, M1-10 | todo |
 | [M4-04](M4-04-web-schema-completion.md) | Schema browser and completion | M4-02, M3-02, M2-13 | todo |

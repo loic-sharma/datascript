@@ -13,14 +13,17 @@ use std::io::{self, Write};
 use arrow_array::RecordBatch;
 use arrow_schema::{ArrowError, Schema};
 use datascript_compiler::ir::{ChartKind, QueryPlan, RenderSpec};
-use datascript_diagnostics::codes::DS5001;
-use datascript_diagnostics::{Diagnostic, Span};
+use datascript_diagnostics::codes::{DS4060, DS5001};
+use datascript_diagnostics::{Diagnostic, FileId, Span};
 use futures::StreamExt;
 use serde_json::{Value, json};
 
-use crate::table::{datascript_type, format_table};
+use crate::table::{column_type_name, format_table};
 use crate::writers::{json_rows, write_csv_header, write_csv_rows, write_ndjson};
 use crate::{BatchStream, QueryStream, RunStream};
+
+/// Default row limit for UI runtimes (`ds ui`, WASM playground, VS Code panel; D-062).
+pub const DEFAULT_UI_ROW_LIMIT: usize = 10_000;
 
 /// After a table's last shown row, how many more rows are read just to count them. Past this the
 /// footer says "at least" instead of reading the whole result.
@@ -404,13 +407,7 @@ fn columns(schema: &Schema) -> Value {
     schema
         .fields()
         .iter()
-        .map(|field| {
-            let ty = match datascript_type(field) {
-                Some(ty) => ty.to_string(),
-                None => format!("arrow:{}", field.data_type()),
-            };
-            json!({ "name": field.name(), "type": ty })
-        })
+        .map(|field| json!({ "name": field.name(), "type": column_type_name(field) }))
         .collect()
 }
 
@@ -458,6 +455,23 @@ pub fn chart_not_drawn<'a>(
         ));
     }
     Some(d)
+}
+
+/// `DS4060`: info diagnostic emitted by UI runtimes (`ds ui`, WASM, VS Code results panel) when a
+/// query result is cut at `limit` rows (D-062).
+pub fn result_truncated(limit: usize, statement: Option<Span>, file: Option<FileId>) -> Diagnostic {
+    let mut d = Diagnostic::info(
+        DS4060,
+        format!("result truncated to {}", count(limit, "row", "rows")),
+    );
+    d = match statement {
+        Some(span) => d.primary(span, "more rows were omitted"),
+        None => match file {
+            Some(file) => d.in_file(file),
+            None => d,
+        },
+    };
+    d.help("export the full result, or narrow the query with `where` or `take`")
 }
 
 #[cfg(test)]
@@ -519,5 +533,25 @@ mod tests {
     fn counts_are_singular_for_one() {
         assert_eq!(count(1, "more row", "more rows"), "1 more row");
         assert_eq!(count(0, "more row", "more rows"), "0 more rows");
+    }
+
+    #[test]
+    fn result_truncated_formats_ds4060_singular_and_plural() {
+        use datascript_diagnostics::{Renderer, Severity, SourceMap};
+
+        let mut sources = SourceMap::new();
+        let file = sources.add("query.ds", "from 'orders.csv'");
+        let span = Span::new(file, 0, 17);
+
+        let one = result_truncated(1, Some(span), Some(file));
+        assert_eq!(one.code, DS4060);
+        assert_eq!(one.severity, Severity::Info);
+        assert_eq!(one.message, "result truncated to 1 row");
+
+        let many = result_truncated(DEFAULT_UI_ROW_LIMIT, Some(span), Some(file));
+        let rendered = Renderer::plain().render(&many, &sources);
+        assert!(rendered.contains("info[DS4060]: result truncated to 10000 rows"));
+        assert!(rendered.contains("more rows were omitted"));
+        assert!(rendered.contains("export the full result"));
     }
 }

@@ -10,7 +10,8 @@
 //! The scan (in `lib.rs`) reads each file with its own schema and casts every column to the
 //! merged type, so it never depends on DataFusion applying one table schema to every file.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
+use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
@@ -163,6 +164,23 @@ pub(crate) async fn resolve(
         },
         other => (other, false),
     };
+    // When sandboxed, reject paths or glob prefixes outside the root before checking format
+    // extensions, so `from '/etc/passwd'` reports `DS3007` instead of `DS3002` (D-016).
+    if ctx.sandbox.is_some() {
+        match source {
+            SourceRef::Path(path) => check_sandbox(&resolve_path(path, &ctx.base_dir), ctx)?,
+            SourceRef::Glob(pattern) => {
+                let prefix = glob_static_prefix(pattern);
+                let resolved_prefix = if prefix.is_absolute() {
+                    prefix
+                } else {
+                    ctx.base_dir.join(prefix)
+                };
+                check_sandbox(&resolved_prefix, ctx)?;
+            }
+            _ => {}
+        }
+    }
     let request = match source {
         SourceRef::Path(path) | SourceRef::Glob(path) => Request {
             path,
@@ -583,6 +601,18 @@ fn glob_files(pattern: &str, ctx: &ExecContext) -> Result<Vec<(PathBuf, String)>
             position: e.pos,
         });
     }
+    // Check the glob's non-wildcard prefix before expanding, so an escaping glob that matches
+    // nothing (`../*.nope`, `/outside/*.csv`, `symlink_out/*.nope`) reports `DS3007` instead of
+    // `DS3004` and never walks directories outside the sandbox (D-016).
+    if ctx.sandbox.is_some() {
+        let prefix = glob_static_prefix(pattern);
+        let resolved_prefix = if prefix.is_absolute() {
+            prefix
+        } else {
+            ctx.base_dir.join(prefix)
+        };
+        check_sandbox(&resolved_prefix, ctx)?;
+    }
     let matches = glob::glob_with(&full, options).map_err(|e| SourceError::BadPattern {
         reason: e.msg.to_string(),
         position: e.pos,
@@ -591,10 +621,17 @@ fn glob_files(pattern: &str, ctx: &ExecContext) -> Result<Vec<(PathBuf, String)>
     for entry in matches {
         // A directory that cannot be listed is skipped, as a shell would.
         let Ok(path) = entry else { continue };
-        if !path.is_file() {
+        let is_file = path.is_file();
+        let is_dangling_symlink = !is_file
+            && std::fs::symlink_metadata(&path)
+                .is_ok_and(|meta| meta.file_type().is_symlink() && !path.is_dir());
+        if !is_file && !is_dangling_symlink {
             continue;
         }
         check_sandbox(&path, ctx)?;
+        if !is_file {
+            continue;
+        }
         let shown = match path.strip_prefix(&base_dir) {
             Ok(rest) if relative => rest.to_string_lossy().into_owned(),
             _ => path.to_string_lossy().into_owned(),
@@ -608,6 +645,20 @@ fn glob_files(pattern: &str, ctx: &ExecContext) -> Result<Vec<(PathBuf, String)>
     Ok(files)
 }
 
+/// The leading components of a glob pattern before the first component containing a wildcard.
+fn glob_static_prefix(pattern: &str) -> PathBuf {
+    let mut prefix = PathBuf::new();
+    for component in Path::new(pattern).components() {
+        if let Component::Normal(part) = component
+            && datascript_compiler::source::is_glob(&part.to_string_lossy())
+        {
+            break;
+        }
+        prefix.push(component);
+    }
+    prefix
+}
+
 pub(crate) fn resolve_path(path: &str, base_dir: &Path) -> PathBuf {
     let path = Path::new(path);
     if path.is_absolute() {
@@ -617,14 +668,19 @@ pub(crate) fn resolve_path(path: &str, base_dir: &Path) -> PathBuf {
     }
 }
 
+/// Maximum number of symbolic link expansions while resolving a path for sandbox checks.
+const MAX_SYMLINK_HOPS: usize = 40;
+
 /// `OutsideSandbox` if `ctx` has a sandbox and `path` is not inside it (D-016). Paths are
-/// compared after resolving symbolic links where the file exists, and `..` otherwise.
+/// compared after resolving symbolic links (including intermediate and dangling symlinks) and
+/// `..` components.
 fn check_sandbox(path: &Path, ctx: &ExecContext) -> Result<(), SourceError> {
     let Some(root) = &ctx.sandbox else {
         return Ok(());
     };
-    let real = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| normalize(p));
-    if real(path).starts_with(real(root)) {
+    let real_path = resolve_for_sandbox(path);
+    let real_root = resolve_for_sandbox(root);
+    if real_path.starts_with(&real_root) {
         Ok(())
     } else {
         Err(SourceError::OutsideSandbox {
@@ -633,19 +689,96 @@ fn check_sandbox(path: &Path, ctx: &ExecContext) -> Result<(), SourceError> {
     }
 }
 
-/// `path` with `.` and `..` components removed lexically.
-fn normalize(path: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                out.pop();
+enum PathSeg {
+    Prefix(OsString),
+    Root,
+    Parent,
+    Normal(OsString),
+}
+
+fn push_components(path: &Path, into: &mut VecDeque<PathSeg>, front: bool) {
+    let segs: Vec<PathSeg> = path
+        .components()
+        .filter_map(|c| match c {
+            Component::Prefix(p) => Some(PathSeg::Prefix(p.as_os_str().to_os_string())),
+            Component::RootDir => Some(PathSeg::Root),
+            Component::CurDir => None,
+            Component::ParentDir => Some(PathSeg::Parent),
+            Component::Normal(s) => Some(PathSeg::Normal(s.to_os_string())),
+        })
+        .collect();
+    if front {
+        for seg in segs.into_iter().rev() {
+            into.push_front(seg);
+        }
+    } else {
+        into.extend(segs);
+    }
+}
+
+/// Resolves `path` for sandbox comparison: makes it absolute, expands symbolic links component by
+/// component (including dangling symlinks and `..` after a symlink), and canonicalizes the deepest
+/// existing ancestor so platform aliases (such as macOS `/var` -> `/private/var` or Windows
+/// casing/verbatim prefixes) match the sandbox root.
+fn resolve_for_sandbox(path: &Path) -> PathBuf {
+    let abs = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .unwrap_or_else(|_| path.to_path_buf())
+    };
+    let mut queue = VecDeque::new();
+    push_components(&abs, &mut queue, false);
+
+    let mut resolved = PathBuf::new();
+    let mut hops = 0usize;
+    while let Some(seg) = queue.pop_front() {
+        match seg {
+            PathSeg::Prefix(p) => resolved.push(p),
+            PathSeg::Root => resolved.push(Component::RootDir.as_os_str()),
+            PathSeg::Parent => {
+                resolved.pop();
             }
-            other => out.push(other),
+            PathSeg::Normal(name) => {
+                resolved.push(&name);
+                if hops < MAX_SYMLINK_HOPS
+                    && std::fs::symlink_metadata(&resolved)
+                        .is_ok_and(|meta| meta.file_type().is_symlink())
+                    && let Ok(target) = std::fs::read_link(&resolved)
+                {
+                    hops += 1;
+                    resolved.pop();
+                    if target.is_absolute() {
+                        resolved.clear();
+                    }
+                    push_components(&target, &mut queue, true);
+                }
+            }
         }
     }
-    out
+
+    if let Ok(canon) = std::fs::canonicalize(&resolved) {
+        return strip_verbatim(&canon);
+    }
+    // Canonicalize the deepest existing ancestor and re-attach the non-existent suffix so
+    // non-existent paths under an aliased root (e.g. `/var/...` on macOS) match `canonicalize(root)`.
+    let mut ancestor = resolved.clone();
+    let mut tail: Vec<OsString> = Vec::new();
+    while let Some(name) = ancestor.file_name().map(OsString::from) {
+        if !ancestor.pop() {
+            break;
+        }
+        tail.push(name);
+        if let Ok(canon) = std::fs::canonicalize(&ancestor) {
+            let mut out = strip_verbatim(&canon);
+            for part in tail.into_iter().rev() {
+                out.push(part);
+            }
+            return out;
+        }
+    }
+    resolved
 }
 
 /// `path` without a Windows verbatim prefix: `\\?\C:\x` becomes `C:\x` and

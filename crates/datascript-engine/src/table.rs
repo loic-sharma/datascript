@@ -106,6 +106,15 @@ pub fn datascript_type(field: &Field) -> Option<Type> {
     datascript_compiler::arrow::from_arrow(field).ok()
 }
 
+/// The type name displayed for a result column: its DataScript type name, or `arrow:<DataType>`
+/// when its Arrow type has no DataScript equivalent (LANGUAGE.md §5.1).
+pub fn column_type_name(field: &Field) -> String {
+    match datascript_type(field) {
+        Some(ty) => ty.to_string(),
+        None => format!("arrow:{}", field.data_type()),
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Align {
     Left,

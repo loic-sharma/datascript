@@ -1,0 +1,39 @@
+[package]
+name = "datascript-server"
+description = "Local HTTP and WebSocket API server (`ds ui`) for DataScript."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+arrow-array.workspace = true
+arrow-ipc.workspace = true
+arrow-schema.workspace = true
+axum.workspace = true
+base64.workspace = true
+datascript-compiler = { path = "../datascript-compiler" }
+datascript-diagnostics = { path = "../datascript-diagnostics" }
+datascript-engine = { path = "../datascript-engine" }
+futures.workspace = true
+getrandom.workspace = true
+http-body-util.workspace = true
+hyper-util.workspace = true
+mime_guess.workspace = true
+notify.workspace = true
+rust-embed.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["preserve_order"] }
+tokio = { workspace = true, features = ["net", "rt", "sync", "time"] }
+
+[dev-dependencies]
+async-trait.workspace = true
+datascript-datafusion = { path = "../datascript-datafusion" }
+tempfile.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio-tungstenite.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use datascript_compiler::SourceRef;
 use datascript_datafusion::{DataFusionConfig, DataFusionEngine};
-use datascript_diagnostics::codes::{DS3001, DS3008, DS4003};
+use datascript_diagnostics::codes::{DS3001, DS3007, DS3008, DS4003};
 use datascript_diagnostics::{Code, Diagnostic, FileId, SourceFile};
 use datascript_engine::table::format_table;
 use datascript_engine::{Engine, ExecContext, FixedClock, QueryResult, RunOutput, Session};
@@ -589,4 +589,204 @@ fn a_gzipped_ndjson_file_needs_the_compression_feature() {
         said(d).contains("this build cannot read compressed files"),
         "{d:#?}"
     );
+}
+
+// ---- sandbox (D-016, M4-01) ----
+
+fn sandboxed(root: &Path) -> ExecContext {
+    ExecContext {
+        sandbox: Some(root.to_path_buf()),
+        ..ctx(root)
+    }
+}
+
+#[test]
+fn sandbox_allows_inside_and_rejects_sibling_prefix_and_absolute_paths() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("root");
+    let sibling = dir.path().join("root2");
+    std::fs::create_dir(&root).unwrap();
+    std::fs::create_dir(&sibling).unwrap();
+    std::fs::write(root.join("in.csv"), "a\n1\n").unwrap();
+    std::fs::write(sibling.join("a.csv"), "a\n2\n").unwrap();
+    std::fs::write(dir.path().join("outside.csv"), "a\n3\n").unwrap();
+
+    let session = session();
+    let ctx = sandboxed(&root);
+
+    // Relative path inside root.
+    assert_eq!(
+        run_ok(&session, "from 'in.csv'", &ctx),
+        ["a\nlong\n----\n   1\n"]
+    );
+    // Absolute path inside root.
+    let abs_inside = root.join("in.csv");
+    let abs_inside_str = abs_inside.to_string_lossy().replace('\\', "/");
+    assert_eq!(
+        run_ok(&session, &format!("from '{abs_inside_str}'"), &ctx),
+        ["a\nlong\n----\n   1\n"]
+    );
+
+    // Sibling-prefix directory (`root2/a.csv` against `root`).
+    assert_fails_with(&run(&session, "from '../root2/a.csv'", &ctx), DS3007);
+    let abs_sibling = sibling.join("a.csv").to_string_lossy().replace('\\', "/");
+    assert_fails_with(
+        &run(&session, &format!("from '{abs_sibling}'"), &ctx),
+        DS3007,
+    );
+
+    // Absolute path outside root (existing and missing).
+    let abs_outside = dir
+        .path()
+        .join("outside.csv")
+        .to_string_lossy()
+        .replace('\\', "/");
+    assert_fails_with(
+        &run(&session, &format!("from '{abs_outside}'"), &ctx),
+        DS3007,
+    );
+    let abs_missing = dir
+        .path()
+        .join("missing.csv")
+        .to_string_lossy()
+        .replace('\\', "/");
+    assert_fails_with(
+        &run(&session, &format!("from '{abs_missing}'"), &ctx),
+        DS3007,
+    );
+}
+
+#[test]
+fn sandbox_rejects_escaping_globs_with_zero_or_all_outside_matches() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("root");
+    let outside = dir.path().join("outside");
+    std::fs::create_dir(&root).unwrap();
+    std::fs::create_dir(&outside).unwrap();
+    std::fs::write(root.join("in.csv"), "a\n1\n").unwrap();
+    std::fs::write(outside.join("secret.csv"), "a\n2\n").unwrap();
+
+    let session = session();
+    let ctx = sandboxed(&root);
+
+    // Zero matches outside root must report DS3007, never DS3004.
+    assert_fails_with(&run(&session, "from '../outside/*.nope.csv'", &ctx), DS3007);
+    assert_fails_with(&run(&session, "from '../*.nope.csv'", &ctx), DS3007);
+    let abs_outside_glob = outside
+        .join("*.nope.csv")
+        .to_string_lossy()
+        .replace('\\', "/");
+    assert_fails_with(
+        &run(&session, &format!("from '{abs_outside_glob}'"), &ctx),
+        DS3007,
+    );
+
+    // All-outside matches must report DS3007.
+    assert_fails_with(&run(&session, "from '../outside/*.csv'", &ctx), DS3007);
+    let abs_match_glob = outside.join("*.csv").to_string_lossy().replace('\\', "/");
+    assert_fails_with(
+        &run(&session, &format!("from '{abs_match_glob}'"), &ctx),
+        DS3007,
+    );
+
+    // In-root glob still works.
+    assert_eq!(
+        run_ok(&session, "from '*.csv'", &ctx),
+        ["a\nlong\n----\n   1\n"]
+    );
+}
+
+#[test]
+fn sandbox_checks_host_tables_inside_and_outside_root() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("root");
+    std::fs::create_dir(&root).unwrap();
+    let inside_file = root.join("ok.csv");
+    let outside_file = dir.path().join("secret.csv");
+    std::fs::write(&inside_file, "a\n1\n").unwrap();
+    std::fs::write(&outside_file, "a\n9\n").unwrap();
+
+    let engine = DataFusionEngine::default()
+        .with_table(
+            "inside_tbl",
+            SourceRef::for_path(inside_file.to_string_lossy()),
+        )
+        .with_table(
+            "outside_tbl",
+            SourceRef::for_path(outside_file.to_string_lossy()),
+        );
+    let session = Session::new(Arc::new(engine), Arc::new(FixedClock(0)));
+    let ctx = sandboxed(&root);
+
+    assert_eq!(
+        run_ok(&session, "from inside_tbl", &ctx),
+        ["a\nlong\n----\n   1\n"]
+    );
+    let out = run(&session, "from outside_tbl", &ctx);
+    assert_fails_with(&out, DS3007);
+    assert!(
+        out.diagnostics[0].message.contains("outside_tbl"),
+        "{:#?}",
+        out.diagnostics[0]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn sandbox_rejects_symlinks_pointing_outside_root() {
+    use std::os::unix::fs::symlink;
+
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().join("root");
+    let sub = root.join("sub");
+    let outside = dir.path().join("outside");
+    std::fs::create_dir_all(&sub).unwrap();
+    std::fs::create_dir(&outside).unwrap();
+
+    std::fs::write(sub.join("good.csv"), "a\n1\n").unwrap();
+    std::fs::write(outside.join("secret.csv"), "a\n99\n").unwrap();
+
+    // 1. File symlink to existing outside file.
+    symlink(outside.join("secret.csv"), root.join("file_out.csv")).unwrap();
+    // 2. File symlink to missing outside target (dangling).
+    symlink(outside.join("missing.csv"), root.join("file_missing.csv")).unwrap();
+    // 3. Relative dangling file symlink escaping root.
+    symlink("../outside/rel_missing.csv", root.join("rel_missing.csv")).unwrap();
+    // 4. Directory symlink to existing outside directory.
+    symlink(&outside, root.join("dir_out")).unwrap();
+    // 5. Directory symlink to missing outside directory.
+    symlink(dir.path().join("no_such_dir"), root.join("dir_missing")).unwrap();
+    // 6. Symlink inside root pointing to another file inside root (allowed).
+    symlink(sub.join("good.csv"), root.join("ok_link.csv")).unwrap();
+    // 7. Mixed glob: `sub/good.csv` (inside) and `dir_out/secret.csv` (outside).
+
+    let session = session();
+    let ctx = sandboxed(&root);
+
+    // Symlink staying inside root is allowed.
+    assert_eq!(
+        run_ok(&session, "from 'ok_link.csv'", &ctx),
+        ["a\nlong\n----\n   1\n"]
+    );
+
+    // All escaping symlinks fail with DS3007.
+    for query in [
+        "from 'file_out.csv'",
+        "from 'file_missing.csv'",
+        "from 'rel_missing.csv'",
+        "from 'dir_out/secret.csv'",
+        "from 'dir_out/nonexistent.csv'",
+        "from 'dir_missing/nonexistent.csv'",
+        // Escaping glob via dir symlink with zero matches.
+        "from 'dir_out/*.nope.csv'",
+        // Escaping glob via dir symlink with matches.
+        "from 'dir_out/*.csv'",
+        // Mixed glob matching both inside (`sub/good.csv`) and outside (`dir_out/secret.csv`).
+        "from '*/*.csv'",
+        // Glob hitting a dangling symlink pointing outside.
+        "from 'file_m*.csv'",
+    ] {
+        let out = run(&session, query, &ctx);
+        assert_fails_with(&out, DS3007);
+    }
 }

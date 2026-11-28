@@ -28,7 +28,7 @@ use datascript_diagnostics::{Diagnostic, JsonReport, Severity, Span};
 use datascript_engine::{Session, SystemClock};
 
 use crate::args::{
-    CheckArgs, CheckFormat, Cli, ColorChoice, Command, ExplainArgs, RunArgs, TableArg,
+    CheckArgs, CheckFormat, Cli, ColorChoice, Command, ExplainArgs, RunArgs, TableArg, UiArgs,
 };
 use crate::output::{Destination, OutputError};
 use crate::script::{Reporter, Sources};
@@ -54,6 +54,9 @@ fn main() -> ExitCode {
     }
     if let Command::Lsp(_) = command {
         return lsp();
+    }
+    if let Command::Ui(args) = command {
+        return ui(args, cli.color);
     }
     // A worker thread runs the program, so the main thread stays free to notice Ctrl-C even
     // while a query is busy computing.
@@ -91,7 +94,9 @@ async fn run(command: Command, color: ColorChoice) -> ExitCode {
         Command::Check(args) => check(args, &reporter).await,
         Command::Run(args) => run_script(args, &reporter).await,
         Command::Explain(args) => explain(args, &reporter).await,
-        Command::Lsp(_) => unreachable!("`main` serves the LSP before this"),
+        Command::Lsp(_) | Command::Ui(_) => {
+            unreachable!("`main` serves the LSP and UI before this")
+        }
     };
     ExitCode::from(code)
 }
@@ -112,6 +117,83 @@ fn lsp() -> ExitCode {
     let session = Session::new(Arc::new(DataFusionEngine::default()), Arc::new(SystemClock));
     runtime.block_on(datascript_lsp::serve_stdio(Arc::new(session)));
     ExitCode::SUCCESS
+}
+
+/// `ds ui [dir]`: starts the local web UI server on 127.0.0.1 and waits for Ctrl-C.
+fn ui(args: UiArgs, color: ColorChoice) -> ExitCode {
+    let root_dir = match args.dir {
+        Some(dir) => dir,
+        None => match std::env::current_dir() {
+            Ok(cwd) => cwd,
+            Err(e) => {
+                eprintln!("error: cannot read the current directory: {e}");
+                return ExitCode::from(EXIT_USAGE);
+            }
+        },
+    };
+    match std::fs::metadata(&root_dir) {
+        Ok(meta) if meta.is_dir() => {}
+        Ok(_) => args::usage_error(
+            &format!("`{}` is not a directory", root_dir.display()),
+            "pass a directory path to `ds ui`, or omit it to use the current directory",
+        ),
+        Err(e) => args::usage_error(
+            &format!("cannot open `{}`: {e}", root_dir.display()),
+            "check that the directory exists and is readable",
+        ),
+    }
+
+    let reporter = Reporter::new(color);
+    let session = match session(&args.tables.tables) {
+        Ok(session) => Arc::new(session),
+        Err(d) => return ExitCode::from(reporter.fail_usage(&Sources::new(), &d)),
+    };
+
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(e) => {
+            eprintln!("error: cannot start the async runtime: {e}");
+            return ExitCode::from(EXIT_USAGE);
+        }
+    };
+
+    let mut config = datascript_server::ServerConfig::new(root_dir);
+    config.sandboxed = !args.allow_outside_root;
+    config.default_row_limit = (args.max_rows > 0).then_some(args.max_rows);
+    config.port = args.port;
+    config.dev_proxy = args.dev_proxy;
+    config.tables = args.tables.tables.iter().map(|t| t.name.clone()).collect();
+
+    runtime.block_on(async move {
+        let server = match datascript_server::bind(session, config).await {
+            Ok(server) => server,
+            Err(e) => {
+                eprintln!("error: cannot start the UI server: {e}");
+                return ExitCode::from(EXIT_USAGE);
+            }
+        };
+        let url = server.url();
+        println!("DataScript UI listening on {url}");
+        let _ = std::io::stdout().flush();
+
+        if !args.no_open
+            && let Err(e) = open::that_detached(&url)
+        {
+            eprintln!("note: could not open browser automatically: {e}");
+        }
+
+        let shutdown = async {
+            let _ = tokio::signal::ctrl_c().await;
+        };
+        if let Err(e) = server.serve_with_graceful_shutdown(shutdown).await {
+            eprintln!("error: UI server failed: {e}");
+            return ExitCode::from(EXIT_USAGE);
+        }
+        ExitCode::SUCCESS
+    })
 }
 
 /// A session over the DataFusion engine with the `--table` host tables, or the diagnostic for a

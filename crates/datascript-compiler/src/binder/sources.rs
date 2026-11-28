@@ -151,6 +151,20 @@ impl Binder<'_> {
                 let path = path.clone();
                 match format_of_path(&path) {
                     None => {
+                        if self.schemas.is_sandboxed() {
+                            let source = SourceRef::for_path(path.clone());
+                            match self.schemas.schema_of(&source) {
+                                SchemaLookup::Pending => {
+                                    self.pending.insert(source);
+                                    return error;
+                                }
+                                SchemaLookup::Failed(err @ SourceError::OutsideSandbox { .. }) => {
+                                    self.source_error(span, &source, &err);
+                                    return error;
+                                }
+                                _ => {}
+                            }
+                        }
                         self.unknown_format(span, &path);
                         error
                     }
@@ -587,14 +601,24 @@ impl Binder<'_> {
                 );
             }
             (_, SourceError::OutsideSandbox { root }) => {
-                let path = source.path().unwrap_or_default();
+                let (message, label) = match source {
+                    SourceRef::Table(name) => (
+                        format!("table `{name}` points outside the allowed directory"),
+                        "registered file is outside the root",
+                    ),
+                    _ => (
+                        format!(
+                            "`{}` is outside the allowed directory",
+                            source.path().unwrap_or_default()
+                        ),
+                        "resolves outside the root",
+                    ),
+                };
                 self.diagnostics.push(
-                    Diagnostic::error(
-                        DS3007,
-                        format!("`{path}` is outside the directory that can be read"),
-                    )
-                    .primary(span, "this path leads outside it")
-                    .note(format!("only files inside `{root}` can be read")),
+                    Diagnostic::error(DS3007, message)
+                        .primary(span, label)
+                        .help("use a path inside the root directory, or restart with `--allow-outside-root`")
+                        .note(format!("only files inside `{root}` can be read")),
                 );
             }
             (_, SourceError::Unreadable { file, problem }) => {
