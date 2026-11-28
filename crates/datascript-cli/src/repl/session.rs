@@ -296,11 +296,12 @@ pub struct ReplSession {
 
 impl ReplSession {
     /// A REPL over `session`, whose host tables are `tables`. Relative paths resolve against
-    /// the current directory.
+    /// the current directory. Duplicate table names are deduplicated last-wins, matching
+    /// `DataFusionEngine::with_table`.
     pub fn new(session: Session, tables: Vec<TableArg>) -> Self {
         ReplSession {
             session: Arc::new(session),
-            tables,
+            tables: dedup_tables(tables),
             sources: Sources::new(),
             saved: Vec::new(),
             inputs: 0,
@@ -869,6 +870,20 @@ impl CompletionContext {
             },
         }
     }
+}
+
+/// Deduplicates `--table` flags so the last path for each name wins, matching
+/// `DataFusionEngine::with_table`.
+fn dedup_tables(tables: Vec<TableArg>) -> Vec<TableArg> {
+    let mut out: Vec<TableArg> = Vec::with_capacity(tables.len());
+    for table in tables {
+        if let Some(existing) = out.iter_mut().find(|t| t.name == table.name) {
+            existing.path = table.path;
+        } else {
+            out.push(table);
+        }
+    }
+    out
 }
 
 /// Which saved lets go when the input defines `defined`: those it redefines, and every one that

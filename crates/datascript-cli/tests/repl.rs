@@ -12,13 +12,21 @@ fn data_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/data")
 }
 
+/// `ds` running in `tests/data`, with `NO_COLOR` unset so the environment cannot leak in.
+fn ds_process() -> std::process::Command {
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_ds"));
+    cmd.current_dir(data_dir()).env_remove("NO_COLOR");
+    cmd
+}
+
+/// `ds` as an [`assert_cmd::Command`], built from [`ds_process`].
+fn ds() -> Command {
+    Command::from_std(ds_process())
+}
+
 /// `ds` (no command) running in `tests/data`, reading `input` from a pipe.
 fn repl(input: &str) -> assert_cmd::assert::Assert {
-    Command::new(env!("CARGO_BIN_EXE_ds"))
-        .current_dir(data_dir())
-        .env_remove("NO_COLOR")
-        .write_stdin(input)
-        .assert()
+    ds().write_stdin(input).assert()
 }
 
 #[test]
@@ -121,9 +129,7 @@ fn schema_needs_a_source() {
 
 #[test]
 fn tables_lists_host_tables_and_lets() {
-    Command::new(env!("CARGO_BIN_EXE_ds"))
-        .current_dir(data_dir())
-        .args(["--table", "orders=orders.csv"])
+    ds().args(["--table", "orders=orders.csv"])
         .write_stdin("let n = 5;\nlet t = from orders;\n.tables\n")
         .assert()
         .success()
@@ -196,8 +202,7 @@ fn a_cut_table_of_a_large_result_stops_reading_and_names_the_command() {
         format!("x\n{}", "1\n".repeat(30_000)),
     )
     .unwrap();
-    Command::new(env!("CARGO_BIN_EXE_ds"))
-        .current_dir(dir.path())
+    ds().current_dir(dir.path())
         .write_stdin(".max-rows 1\nfrom 'big.csv';\n")
         .assert()
         .success()
@@ -258,9 +263,7 @@ fn charts_give_one_ds5001_per_input() {
 
 #[test]
 fn table_with_an_unknown_format_is_a_usage_error() {
-    Command::new(env!("CARGO_BIN_EXE_ds"))
-        .current_dir(data_dir())
-        .args(["--table", "t=orders.txt"])
+    ds().args(["--table", "t=orders.txt"])
         .write_stdin("")
         .assert()
         .code(2)
@@ -268,16 +271,17 @@ fn table_with_an_unknown_format_is_a_usage_error() {
 }
 
 #[test]
-fn diagnostics_are_plain_even_with_color_always_requested_by_auto() {
-    repl("from nope;\n").code(1).stderr(contains("\x1b[").not());
+fn diagnostics_are_plain_even_with_color_always() {
+    ds().args(["--color", "always"])
+        .write_stdin("from nope;\n")
+        .assert()
+        .code(1)
+        .stderr(contains("--> <repl:1>").and(contains("\x1b[").not()));
 }
 
 #[test]
 fn startup_max_rows_flag_sets_initial_limit() {
-    Command::new(env!("CARGO_BIN_EXE_ds"))
-        .current_dir(data_dir())
-        .env_remove("NO_COLOR")
-        .args(["--max-rows", "2"])
+    ds().args(["--max-rows", "2"])
         .write_stdin("from 'orders.csv' | project orderId;\n.max-rows\n")
         .assert()
         .success()
@@ -287,10 +291,7 @@ fn startup_max_rows_flag_sets_initial_limit() {
         )
         .stderr("");
 
-    Command::new(env!("CARGO_BIN_EXE_ds"))
-        .current_dir(data_dir())
-        .env_remove("NO_COLOR")
-        .args(["--max-rows", "0"])
+    ds().args(["--max-rows", "0"])
         .write_stdin(".max-rows\n")
         .assert()
         .success()
@@ -334,9 +335,8 @@ fn saved_let_whose_file_is_removed_points_at_repl_1() {
     let pad_body = pad_row.repeat(10_000);
     std::fs::write(dir.path().join("pad.csv"), format!("s\n{pad_body}")).unwrap();
 
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_ds"))
+    let mut child = ds_process()
         .current_dir(dir.path())
-        .env_remove("NO_COLOR")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -417,4 +417,151 @@ fn extra_arguments_to_no_arg_commands() {
         .code(1)
         .stdout(contains("no host tables or saved lets yet"))
         .stderr(contains("error: `.quit` takes no argument"));
+}
+
+// ---- M2-31: duplicate --table and piped REPL coverage ----
+
+#[test]
+fn duplicate_table_flags_last_wins_in_tables_schema_and_queries() {
+    ds().args(["--table", "o=orders.csv", "--table", "o=customers.csv"])
+        .write_stdin(".tables\n.schema o\nfrom o | take 1 | project name;\n")
+        .assert()
+        .success()
+        .stdout(
+            contains(
+                "name | kind       | path\n\
+                 -----+------------+--------------\n\
+                 o    | host table | customers.csv\n",
+            )
+            .and(contains("orders.csv").not())
+            .and(contains("name       | string\n"))
+            .and(contains("Ana Silva")),
+        )
+        .stderr("");
+}
+
+#[test]
+fn warning_on_saved_let_is_reported_once() {
+    repl(
+        "let sorted = from 'orders.csv' | sort by orderId;\n\
+         from sorted | take 1 | project orderId;\n\
+         from sorted | count;\n",
+    )
+    .success()
+    .stdout(contains("o-0001").and(contains("50")))
+    .stderr(
+        contains("warning[DS2103]")
+            .count(1)
+            .and(contains("--> <repl:1>:"))
+            .and(contains("<repl:2>").not())
+            .and(contains("<repl:3>").not()),
+    );
+}
+
+#[test]
+fn schema_on_host_table_and_arrow_only_column() {
+    ds().args(["--table", "orders=orders.csv"])
+        .write_stdin(".schema orders\n")
+        .assert()
+        .success()
+        .stdout(
+            contains("column     | type\n")
+                .and(contains("orderId    | string\n"))
+                .and(contains("amount     | real\n")),
+        )
+        .stderr("");
+
+    repl(".schema 'types.parquet'\n")
+        .success()
+        .stdout(contains("bin").and(contains("arrow:Binary")))
+        .stderr("");
+}
+
+#[test]
+fn format_switches_to_table_handles_csv_mid_stream_error_and_rejects_unsupported() {
+    // Switching from `csv` back to `table`.
+    repl(
+        ".format csv\n\
+         from 'orders.csv' | take 1 | project orderId;\n\
+         .format table\n\
+         from 'orders.csv' | take 1 | project orderId;\n",
+    )
+    .success()
+    .stdout(
+        "orderId\n\
+         o-0001\n\
+         orderId\n\
+         string\n\
+         -------\n\
+         o-0001\n",
+    )
+    .stderr("");
+
+    // `ndjson` and `arrow` are CLI-only formats and rejected by `.format`.
+    for fmt in ["ndjson", "arrow"] {
+        repl(&format!(".format {fmt}\n"))
+            .code(1)
+            .stderr(contains(format!("error: unknown output format `{fmt}`")));
+    }
+
+    // Mid-stream runtime failure under `csv` keeps flushed batches and lets later inputs run.
+    let dir = tempfile::tempdir().unwrap();
+    let mut text = String::from("x\n");
+    text.push_str(&"1\n".repeat(19_999));
+    text.push_str("10000\n");
+    std::fs::write(dir.path().join("big.csv"), text).unwrap();
+
+    let output = ds()
+        .current_dir(dir.path())
+        .write_stdin(
+            ".format csv\n\
+             from 'big.csv' | extend y = x * 1000000000000000;\n\
+             from 'big.csv' | take 1;\n",
+        )
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("DS4003"), "{stderr}");
+    assert!(stderr.contains("--> <repl:1>:"), "{stderr}");
+    assert!(!stderr.contains("<repl:2>"), "{stderr}");
+    assert!(
+        stdout.starts_with("x,y\n1,1000000000000000\n"),
+        "{stdout:.100}"
+    );
+    assert!(stdout.ends_with("\nx\n1\n"), "{stdout}");
+    let lines = stdout.lines().count();
+    assert!((8_195..20_005).contains(&lines), "{lines} lines");
+}
+
+#[test]
+fn failed_let_redefinition_rolls_back_and_plural_removal_lists_dependents() {
+    // A failed redefinition leaves the old `let` and its dependents intact.
+    repl(
+        "let x = 10;\n\
+         let y = x + 5;\n\
+         let x = nope;\n\
+         from 'orders.csv' | take 1 | project orderId, v = y;\n",
+    )
+    .code(1)
+    .stdout(contains("o-0001").and(contains("15")))
+    .stderr(
+        contains("--> <repl:3>:")
+            .and(contains("info: removed").not())
+            .and(contains("<repl:4>").not()),
+    );
+
+    // Redefining a `let` with several dependents prints the plural removal notice.
+    repl(
+        "let x = 1;\n\
+         let y = x + 1;\n\
+         let z = y * 2;\n\
+         let w = z + 3;\n\
+         let x = 10;\n",
+    )
+    .success()
+    .stderr(contains(
+        "info: removed `y`, `z` and `w`, which used `x`; enter them again to use the new definition",
+    ));
 }
