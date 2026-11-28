@@ -7,9 +7,11 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use tower_lsp_server::ls_types::Uri;
 
 /// A warning, a chart, a table cut by `--max-rows`, and a runtime error at the end.
 const PROGRAM: &str = "from 'orders.csv' | sort by orderId | take 1;\n\
@@ -18,10 +20,15 @@ const PROGRAM: &str = "from 'orders.csv' | sort by orderId | take 1;\n\
 
 const ORDERS: &str = "orderId,customerId,amount\n1,c-1,10.5\n2,c-2,20\n3,c-3,7\n";
 
+/// How long `ds lsp` may take to exit after `exit`.
+const EXIT_TIMEOUT: Duration = Duration::from_secs(20);
+
 struct Server {
     child: Child,
     input: ChildStdin,
     output: BufReader<ChildStdout>,
+    /// Drains standard error continuously so a noisy server cannot fill the pipe and block.
+    stderr: Option<std::thread::JoinHandle<String>>,
     next_id: i64,
 }
 
@@ -32,15 +39,22 @@ impl Server {
             .current_dir(root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .unwrap();
         let input = child.stdin.take().unwrap();
         let output = BufReader::new(child.stdout.take().unwrap());
+        let mut stderr_pipe = child.stderr.take().unwrap();
+        let stderr = std::thread::spawn(move || {
+            let mut buf = String::new();
+            stderr_pipe.read_to_string(&mut buf).unwrap();
+            buf
+        });
         let mut server = Server {
             child,
             input,
             output,
+            stderr: Some(stderr),
             next_id: 0,
         };
         let root = uri_of(root);
@@ -100,29 +114,45 @@ impl Server {
             }
         }
     }
+
+    /// Ends the session as an editor does, `shutdown` then `exit`, keeping standard input
+    /// open, and waits for the process to exit on its own. Returns its exit status and
+    /// everything it wrote to standard error.
+    fn shut_down(mut self) -> (ExitStatus, String) {
+        assert_eq!(self.request("shutdown", Value::Null), Value::Null);
+        self.notify("exit", Value::Null);
+        let deadline = Instant::now() + EXIT_TIMEOUT;
+        let status = loop {
+            if let Some(status) = self.child.try_wait().unwrap() {
+                break status;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "`ds lsp` did not exit within {EXIT_TIMEOUT:?} of `exit`"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        let stderr = self.stderr.take().unwrap().join().unwrap();
+        (status, stderr)
+    }
 }
 
 impl Drop for Server {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        if let Some(stderr) = self.stderr.take() {
+            let _ = stderr.join();
+        }
     }
 }
 
+/// The `file:` URI of `path`, as an editor sends it, on every platform.
 fn uri_of(path: &Path) -> String {
-    let path = path.canonicalize().unwrap();
-    let mut uri = String::from("file://");
-    for part in path.to_string_lossy().split('/').filter(|p| !p.is_empty()) {
-        uri.push('/');
-        for b in part.bytes() {
-            if b.is_ascii_alphanumeric() || b"-._~".contains(&b) {
-                uri.push(b as char);
-            } else {
-                uri.push_str(&format!("%{b:02X}"));
-            }
-        }
-    }
-    uri
+    Uri::from_file_path(path)
+        .unwrap_or_else(|| panic!("{} has no file URI", path.display()))
+        .as_str()
+        .to_owned()
 }
 
 /// `ds run --color always <args>` in `dir`: (stdout, stderr).
@@ -150,14 +180,13 @@ fn assert_interleaved(lsp: &str, stdout: &str, stderr: &str) {
 }
 
 #[test]
-#[cfg_attr(windows, ignore = "the test builds file URIs for Unix paths")]
 fn run_output_equals_ds_run() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("orders.csv"), ORDERS).unwrap();
     std::fs::write(dir.path().join("big.csv"), "x\n1\n10000\n").unwrap();
     std::fs::write(dir.path().join("report.ds"), PROGRAM).unwrap();
     let mut server = Server::start(dir.path());
-    let uri = format!("{}/report.ds", uri_of(dir.path()));
+    let uri = uri_of(&dir.path().join("report.ds"));
     server.notify(
         "textDocument/didOpen",
         json!({ "textDocument": { "uri": uri, "languageId": "datascript", "version": 1, "text": PROGRAM } }),
@@ -199,4 +228,10 @@ fn run_output_equals_ds_run() {
         // Only the third statement fails; `ds run` exits with 1 then.
         assert_eq!(result["failed"], stderr.contains("DS4003"), "{args:?}");
     }
+
+    // The server wrote nothing outside the protocol, and exits cleanly on `exit` after
+    // `shutdown` without waiting for its input to close.
+    let (status, stderr) = server.shut_down();
+    assert!(status.success(), "`ds lsp` exited with {status}");
+    assert_eq!(stderr, "", "`ds lsp` wrote to standard error");
 }

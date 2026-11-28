@@ -35,6 +35,8 @@ futures = { workspace = true, features = ["executor"] }
 assert_cmd.workspace = true
 predicates.workspace = true
 tempfile.workspace = true
+# `Uri::from_file_path` for the stdio LSP test (`tests/lsp_run.rs`).
+tower-lsp-server.workspace = true
 
 [lints]
 workspace = true

@@ -59,10 +59,9 @@ export function waitForCodes(
     };
     const timer = setTimeout(() => {
       subscription.dispose();
+      const name = uri.scheme === 'file' ? path.basename(uri.fsPath) : uri.toString();
       reject(
-        new Error(
-          `${path.basename(uri.fsPath)} has [${codes(uri).join(', ')}], expected [${expected.join(', ')}]`,
-        ),
+        new Error(`${name} has [${codes(uri).join(', ')}], expected [${expected.join(', ')}]`),
       );
     }, timeoutMs);
     const subscription = vscode.languages.onDidChangeDiagnostics(() => {
@@ -108,17 +107,20 @@ export interface ShownMessage {
   items: string[];
 }
 
+/** The `vscode.window` notification methods `captureMessages` can intercept. */
+export type MessageKind = 'showInformationMessage' | 'showWarningMessage' | 'showErrorMessage';
+
 /**
- * Intercepts `vscode.window.showInformationMessage` or `showErrorMessage` while `body` runs,
- * returning what was shown and always restoring the original method.
+ * Intercepts `vscode.window.showInformationMessage`, `showWarningMessage` or `showErrorMessage`
+ * while `body` runs, returning what was shown and always restoring the original method.
  */
 export async function captureMessages(
-  kind: 'showInformationMessage' | 'showErrorMessage',
+  kind: MessageKind,
   body: (captured: ShownMessage[]) => Promise<void>,
 ): Promise<ShownMessage[]> {
   const captured: ShownMessage[] = [];
   const win = vscode.window as unknown as Record<
-    'showInformationMessage' | 'showErrorMessage',
+    MessageKind,
     (...args: unknown[]) => Thenable<unknown>
   >;
   const original = win[kind];

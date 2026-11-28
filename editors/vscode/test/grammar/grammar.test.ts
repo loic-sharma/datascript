@@ -267,3 +267,88 @@ describe('`from`', () => {
     assert.deepEqual(scopesOf('let from = 1', 0, 'from'), [VAR]);
   });
 });
+
+describe('escapes', () => {
+  const ESCAPE = 'constant.character.escape.datascript';
+  const INVALID = 'invalid.illegal.escape.datascript';
+
+  it('are scoped in quoted strings when the lexer accepts them', () => {
+    assert.deepEqual(
+      scopesOf(String.raw`let s = "a\tb\nc\rd\0e\\f\"g\'h"`, 0, '\\t', '\\n', '\\r', '\\0', '\\\\', '\\"', "\\'"),
+      [ESCAPE, ESCAPE, ESCAPE, ESCAPE, ESCAPE, ESCAPE, ESCAPE],
+    );
+    assert.deepEqual(scopesOf(String.raw`let s = 'x\u{1F600}y\u{41}'`, 0, '\\u{1F600}', '\\u{41}'), [
+      ESCAPE,
+      ESCAPE,
+    ]);
+  });
+
+  it('are invalid when the lexer rejects them', () => {
+    assert.deepEqual(scopesOf(String.raw`let s = "bad \q"`, 0, '\\q'), [INVALID]);
+    // A `\u` without a valid `{hex}` is the bad escape; the braces are just text.
+    const STRING = 'string.quoted.single.datascript';
+    assert.deepEqual(scopesOf(String.raw`let s = '\u{zz}'`, 0, '\\u', '{zz}'), [INVALID, STRING]);
+    assert.deepEqual(scopesOf(String.raw`let s = '\u{1234567}'`, 0, '\\u'), [INVALID]);
+  });
+
+  it('are not read in verbatim strings', () => {
+    const DOUBLE = 'string.quoted.double.verbatim.datascript';
+    const SINGLE = 'string.quoted.single.verbatim.datascript';
+    assert.deepEqual(scopesOf(String.raw`let p = @"C:\temp\new\q"`, 0, '\\t', '\\n', '\\q'), [
+      DOUBLE,
+      DOUBLE,
+      DOUBLE,
+    ]);
+    assert.deepEqual(scopesOf(String.raw`let p = @'a\u{41}b'`, 0, '\\u{41}'), [SINGLE]);
+    // A backslash does not escape the closing quote: the string ends there.
+    assert.deepEqual(scopesOf(String.raw`let p = @'dir\' + x`, 0, '\\', "'", 'x'), [
+      SINGLE,
+      'punctuation.definition.string.end.datascript',
+      'variable.other.datascript',
+    ]);
+  });
+});
+
+describe('contextual words', () => {
+  const WORD = 'keyword.operator.word.datascript';
+  const KEYWORD = 'keyword.other.datascript';
+  const VAR = 'variable.other.datascript';
+
+  it('`matches regex` is an operator only as a pair', () => {
+    assert.deepEqual(scopesOf('from t | where s matches regex "a"', 0, 'matches', 'regex'), [
+      WORD,
+      WORD,
+    ]);
+    assert.deepEqual(scopesOf('from t | where s matches  regex "a"', 0, 'matches', 'regex'), [
+      WORD,
+      WORD,
+    ]);
+    assert.deepEqual(scopesOf('from t | where matches > 1', 0, 'matches'), [VAR]);
+    assert.deepEqual(scopesOf('from t | where regex == 1', 0, 'regex'), [VAR]);
+    assert.deepEqual(scopesOf('from t | where s matches regexes', 0, 'matches', 'regexes'), [
+      VAR,
+      VAR,
+    ]);
+  });
+
+  it('`nulls first` and `nulls last` are keywords only as pairs', () => {
+    assert.deepEqual(scopesOf('from t | sort by a asc nulls first', 0, 'nulls', 'first'), [
+      KEYWORD,
+      KEYWORD,
+    ]);
+    assert.deepEqual(scopesOf('from t | sort by a desc nulls last', 0, 'nulls', 'last'), [
+      KEYWORD,
+      KEYWORD,
+    ]);
+    assert.deepEqual(scopesOf('from t | project nulls, first, last', 0, 'nulls', 'first', 'last'), [
+      VAR,
+      VAR,
+      VAR,
+    ]);
+    assert.deepEqual(scopesOf('from t | sort by nulls asc', 0, 'nulls'), [VAR]);
+    assert.deepEqual(scopesOf('from t | sort by a nulls firstly', 0, 'nulls', 'firstly'), [
+      VAR,
+      VAR,
+    ]);
+  });
+});

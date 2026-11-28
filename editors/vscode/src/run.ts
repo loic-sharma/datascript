@@ -119,35 +119,45 @@ export class Runner implements vscode.Disposable {
 
   /** `datascript.runStatement`: from a CodeLens (URI and statement), or at the cursor. */
   async runStatement(uri?: string, statement?: number): Promise<RunRecord | undefined> {
+    // Trust and the server come first: without them there is no statement to find, and the
+    // user should hear the real reason.
+    const client = this.runnableClient();
+    if (!client) {
+      return undefined;
+    }
     if (uri !== undefined && statement !== undefined) {
-      return this.run(vscode.Uri.parse(uri), statement);
+      return this.run(client, vscode.Uri.parse(uri), statement);
     }
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'datascript') {
       void vscode.window.showInformationMessage('Open a DataScript file to run a statement.');
       return undefined;
     }
-    const at = await this.statementAt(editor.document, editor.selection.active);
+    const at = await this.statementAt(client, editor.document, editor.selection.active);
     if (at === undefined) {
       void vscode.window.showInformationMessage(
         'Put the cursor in a query statement to run it. `let` statements run with the queries that use them.',
       );
       return undefined;
     }
-    return this.run(editor.document.uri, at);
+    return this.run(client, editor.document.uri, at);
   }
 
   /** `datascript.runFile`: from a CodeLens (URI), or the active editor. */
   async runFile(uri?: string): Promise<RunRecord | undefined> {
+    const client = this.runnableClient();
+    if (!client) {
+      return undefined;
+    }
     if (uri !== undefined) {
-      return this.run(vscode.Uri.parse(uri));
+      return this.run(client, vscode.Uri.parse(uri));
     }
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.document.languageId !== 'datascript') {
       void vscode.window.showInformationMessage('Open a DataScript file to run it.');
       return undefined;
     }
-    return this.run(editor.document.uri);
+    return this.run(client, editor.document.uri);
   }
 
   /** Cancels every run. */
@@ -163,15 +173,33 @@ export class Runner implements vscode.Disposable {
     this.terminal = undefined;
   }
 
+  /**
+   * The client to run with, or `undefined` after telling the user why nothing can run: the
+   * workspace is in Restricted Mode, or the server is not running.
+   */
+  private runnableClient(): LanguageClient | undefined {
+    if (!vscode.workspace.isTrusted) {
+      void vscode.window.showWarningMessage(
+        'DataScript runs no queries in Restricted Mode. Trust the workspace to run it.',
+      );
+      return undefined;
+    }
+    const client = this.client();
+    if (!client) {
+      void vscode.window.showErrorMessage(
+        'DataScript: the language server is not running, so nothing can run.',
+      );
+      return undefined;
+    }
+    return client;
+  }
+
   /** The query statement whose CodeLens range holds `position`, 1-based. */
   private async statementAt(
+    client: LanguageClient,
     document: vscode.TextDocument,
     position: vscode.Position,
   ): Promise<number | undefined> {
-    const client = this.client();
-    if (!client) {
-      return undefined;
-    }
     const lenses = (await client.sendRequest('textDocument/codeLens', {
       textDocument: { uri: document.uri.toString() },
     })) as Array<{
@@ -191,20 +219,11 @@ export class Runner implements vscode.Disposable {
     return undefined;
   }
 
-  private async run(uri: vscode.Uri, statement?: number): Promise<RunRecord | undefined> {
-    if (!vscode.workspace.isTrusted) {
-      void vscode.window.showWarningMessage(
-        'DataScript runs no queries in Restricted Mode. Trust the workspace to run it.',
-      );
-      return undefined;
-    }
-    const client = this.client();
-    if (!client) {
-      void vscode.window.showErrorMessage(
-        'DataScript: the language server is not running, so nothing can run.',
-      );
-      return undefined;
-    }
+  private async run(
+    client: LanguageClient,
+    uri: vscode.Uri,
+    statement?: number,
+  ): Promise<RunRecord | undefined> {
     // The server runs documents it has open; opening is a no-op when the editor has it already.
     await vscode.workspace.openTextDocument(uri);
     const key = uri.toString();

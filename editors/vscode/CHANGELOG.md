@@ -7,3 +7,5 @@
 - Run: a "▶ Run" CodeLens over each query statement, **DataScript: Run Statement at Cursor** and
   **DataScript: Run File**, printing what `ds run` prints in a "DataScript" terminal. Unsaved
   edits run; runtime errors show as diagnostics; Ctrl+C cancels. No Run in untrusted workspaces.
+- Run Statement at Cursor says why nothing ran (Restricted Mode, or the server is not running)
+  instead of asking to put the cursor in a query statement.
