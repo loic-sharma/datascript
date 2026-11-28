@@ -35,7 +35,8 @@ WebSocket streaming runs, row-limit capping, and export land in M4-10.
     (per-path `tokio::sync::Mutex`, `expectedVersion` `409` check, lossless content diff against
     the on-disk file via M4-08, atomic temp-file + `sync_all` + rename preserving Unix
     permissions). `PUT` requires `expectedVersion` (`428 Precondition Required` without it),
-    returns `WriteResult { version }`, and records the `version` it wrote per path so M4-10's
+    returns `WriteResult { version }`, makes `GET /api/file` wait on the same per-path lock (so a
+    read never sees the version from before a write in progress), and records the `version` it wrote per path so M4-10's
     watcher can ignore the server's own writes.
   - Refuse non-`.dsnb`/`.ds` paths and any path with a symlink component under the root
     (`symlink_metadata` + final `O_NOFOLLOW`).

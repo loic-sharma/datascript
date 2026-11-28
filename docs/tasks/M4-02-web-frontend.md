@@ -46,9 +46,10 @@ M4-04; power-user tabs/shortcuts/file management in M4-05. `Runtime.run` is decl
 
 ## Acceptance criteria
 - [ ] Vitest unit tests for `ServerRuntime` (including edits made while a slow `PUT` is in
-      flight producing exactly one follow-up `PUT` with the fresh `version` and no `409`, and a
-      timed-out `PUT` that actually landed being recovered by re-reading the file instead of a
-      `409` banner), notebook-relative
+      flight producing exactly one follow-up `PUT` with the fresh `version` and no `409`, timed-out `PUT`s
+      recovered by re-reading the file: one that landed adopts the new `version`, one that never
+      reached the server is retried, and neither shows a banner, including when the sent cells had
+      CRLF, trailing blank lines, or an empty Markdown cell), notebook-relative
       path calculation (root notebook, nested subfolder notebook, Scratchpad save-location
       warning), and Markdown sanitization.
 - [ ] Playwright smoke test against a real `ds ui`: verifies strict CSP header, page reload

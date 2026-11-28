@@ -22,11 +22,14 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
     `crates/datascript-engine/src/tests.rs` must pass unchanged.
 - **WebSocket streaming execution & file watcher** (`WS /api/ws`, requiring the `ds_session_<port>` cookie +
   `Origin` check):
-  - Executes single cells (or a single cell-relative `statementIndex`) using M4-08's
-    `StitchedProgram` (transitive upstream `let` prepending + `DS1085`; single-statement stitching
-    for a `statementIndex` run, so the cell's other query statements cannot block it, per
-    [WEB_UI.md §3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085)) and `Session::start` +
-    the streaming row-limit helper.
+  - Executes a `run` request `{ cells, targetCellIndex, mode, statementIndex?, nowMicros? }` with
+    `mode` = `"cell"` (every statement), `"statement"` (one cell-relative query `statementIndex`;
+    single-statement stitching, so the cell's other query statements cannot block it), or
+    `"bindings"` (validate the cell's `let`s; no queries, `DS0004` suppressed). Before stitching,
+    the server checks every upstream `let` statement with `Session::check` (schema cache makes
+    repeats cheap) and builds M4-08's `BrokenLets` set, then runs M4-08's `StitchedProgram`
+    ([WEB_UI.md §3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085)) with
+    `Session::start` + the streaming row-limit helper. Export builds `BrokenLets` the same way.
   - Emits `started` carrying `nowMicros` (accepting an optional shared `nowMicros` for Run all) and
     `rowLimit`, then for each result its `statementIndex` and `sourceCount` (distinct `SourceRef`s
     found by walking `PlanNode::Scan` nodes in that query's `QueryPlan::root`; per result, not a
@@ -65,9 +68,10 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
 - [ ] API/WS integration tests covering:
   - WS cookie + `Origin` auth, streaming batches, cancellation, `sourceCount`/`rowLimit`, `DS4060`
     truncation (default & custom `row_limit`), per-result `sourceCount` in a multi-statement
-    cell, `DS1085` propagation (not on an unreferenced broken `let` or upstream
-    query error), a statement run and an export succeeding while another query statement in the
+    cell, `DS1085` propagation (direct, through a chain, once per broken `let`; not on an
+    unreferenced broken `let`, an upstream query error, or a column named like a broken `let`), a statement run and an export succeeding while another query statement in the
     same cell has an error (and a whole-cell run of that cell blocked by it),
+    `mode: "bindings"` validating a `let` while a half-typed query in the same cell is ignored,
     `DS0004` suppression on `let`-only cells, workspace file-watch invalidation,
     and **no** change notification after the server's own `PUT`;
   - two-step streaming export reusing the run-time snapshot, `nowMicros` (`now()`/`ago()`),
@@ -75,6 +79,8 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
   - export failures: a check or missing-source error returned by `POST /api/export` with no
     ticket, and an error mid-stream aborting the connection (the client sees an incomplete body,
     not a clean end) plus an `exportFailed` WS event;
+  - `GET /api/info` returning `exportFormats` (`["csv", "ndjson"]` in v1, growing as the
+    carried-over writers land);
   - each v1 format (`csv`, `ndjson`) streaming a multi-batch result larger than
     `row_limit`, read back and compared row for row.
 - [ ] Exact JSON/WebSocket wire contract documented alongside [WEB_UI.md](../WEB_UI.md) (shared

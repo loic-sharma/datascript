@@ -43,8 +43,9 @@ truncation-aware sorting + **Sort in query**, and two-step streaming export (D-0
     `statementIndex`) at run time and wire the **Export full result** menu to `POST /api/export` →
     `GET /api/export/<ticket>` (authenticated by session cookie + one-shot ticket; re-executes
     against current disk files), started from a programmatic `<a download>` click so the page
-    never unloads; show `POST` diagnostics and `exportFailed` WS events in the cell footer. The menu lists the formats the server reports (v1: CSV, NDJSON;
-    JSON, Parquet and `.xlsx` once M2-26 / M2-27 / M2-28 land).
+    never unloads; show `POST` diagnostics and `exportFailed` WS events in the cell footer. The menu lists exactly `Runtime.capabilities.exportFormats` (from
+    `GET /api/info`; v1: CSV, NDJSON; JSON, Parquet and `.xlsx` once M2-26 / M2-27 / M2-28 land),
+    never a hard-coded list.
 
 ## Acceptance criteria
 - [ ] Vitest unit tests for transitive-`let` staleness fingerprinting, Run-statement-at-cursor
@@ -54,8 +55,9 @@ truncation-aware sorting + **Sort in query**, and two-step streaming export (D-0
       (including after editing a cell into Stale state).
 - [ ] Playwright test against `ds ui` verifying Run / Run all / Cancel, `let`-only cell showing no
       `DS0004` warning, `DS1085` jump, virtualized scrolling, multi-statement sub-tabs (each with
-      its own source count), truncation banner + "Sort in query", and streaming CSV export
-      download (plus Parquet if M2-27 is done), live tree refresh after a file is added and
+      its own source count), truncation banner + "Sort in query", streaming CSV export
+      download, and the export menu showing exactly the server's `exportFormats` (Parquet appears
+      only when the server reports it), live tree refresh after a file is added and
       deleted on disk, the "changed on disk" banner appearing without a save after an external
       edit, and **no** banner after the server's own auto-save.
 

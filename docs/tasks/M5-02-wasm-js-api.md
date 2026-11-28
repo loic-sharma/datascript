@@ -22,8 +22,9 @@ also cover what `web/` (M4-02's `Runtime` interface, M5-03) and the parity tests
   `ds ui` exactly ([WEB_UI.md §3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085)):
   `parseNotebook(text)` / `serializeNotebook(cells, baseText?)` (the same content-diff
   serializer), `checkNotebook(cells)` (whole-notebook check, diagnostics grouped by `cellIndex`),
-  and `runCell(cells, cellIndex, { statementIndex?, now })` using single-cell, single-statement,
-  or bindings-only stitching with `DS1085` and `DS0004` suppression, so a broken neighbouring
+  and `runCell(cells, cellIndex, { mode: "cell" | "statement" | "bindings", statementIndex?, now })`
+  using single-cell, single-statement, or bindings-only stitching, building `BrokenLets` from a
+  check of the upstream `let`s exactly as M4-10 does, with `DS1085` and `DS0004` suppression, so a broken neighbouring
   statement never blocks a statement run. `complete`/`hover`/`signatureHelp` also accept
   `(cells, cellIndex, offset)` using prefix stitching;
 - the 10,000-row UI display limit decided in D-064 (closed Q-007), and the `truncated` flag;
@@ -37,7 +38,7 @@ Write the final API into ARCHITECTURE.md § WASM constraints and [WEB_UI.md §6]
 ## Acceptance criteria
 - [ ] Generated `.d.ts` plus hand-written docs. Vitest tests in Node and in a browser.
 - [ ] Notebook Vitest tests: `DS1085` (direct and indirect), a statement run succeeding next to a
-      broken statement in the same cell, cross-cell `let` completion, and a `.dsnb` round trip
+      broken statement in the same cell, `mode: "bindings"` ignoring a half-typed query, cross-cell `let` completion, and a `.dsnb` round trip
       through `parseNotebook`/`serializeNotebook`, with results identical to M4-08's fixtures.
 
 ## Carried over

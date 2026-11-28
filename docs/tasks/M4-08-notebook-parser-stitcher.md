@@ -51,11 +51,10 @@ REPL, and `datascript-wasm` (M5) all share one implementation
     1. whole-notebook stitching (for `POST /api/check`, `ds check`, `ds run`);
     2. single-cell stitching that syntactically computes the target cell's **transitive upstream
        `let` dependencies** (parsing upstream cells with recovery, over-approximating references
-       by identifier text), prepends only those **valid** `let` statements in document order
-       (which upstream statements are broken comes from the whole-notebook check), and emits
-       **`DS1085`** (register active in `codes.rs` & `DIAGNOSTICS.md`) exactly per the rule in
-       [WEB_UI.md §3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085), with the
-       message, primary span, secondary label, and help given there;
+       by identifier text), and prepends only those **valid** `let` statements in document
+       order. It takes a caller-built `BrokenLets` set (the caller checks the upstream `let`s with
+       `Session::check`; `StitchedProgram` stays pure) and registers each entry with the binder as
+       a declared-but-broken scope entry;
     3. single-statement stitching (Run statement at cursor, export): the same as 2, but keeping
        only the target query statement and the `let`s it transitively references from the target
        cell, so the cell's other query statements cannot block it; and bindings-only stitching
@@ -64,6 +63,17 @@ REPL, and `datascript-wasm` (M5) all share one implementation
     4. prefix stitching for IDE requests: every DataScript cell up to and including the target, so
        completion sees every upstream `let`
        ([WEB_UI.md §3](../WEB_UI.md#ide-requests-see-every-upstream-let)).
+  - **`BrokenLets` builder**: a pure function from the upstream-`let` check's diagnostics and the
+    binder's resolved `let` references to the set: `let`s with their own errors, the later of two
+    declarations of a name (`DS1003`), and, transitively, `let`s that resolved a name to a broken
+    `let` (with the chain recorded). A name resolved to a column taints nothing.
+  - **Binder `LetEntry::Broken { cell, decl_span, chain }`**: every `let` lookup (expressions,
+    table positions, and `const_value_of` for `take n` / `top n` / render properties) emits
+    **`DS1085`** (register active in `codes.rs` & `DIAGNOSTICS.md`) on a broken entry, after the
+    usual column lookup, once per broken `let` per program, with the message, primary span,
+    secondary label, chain note, and help in
+    [WEB_UI.md §3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085). No unknown-name
+    error is rewritten after the fact.
   - Map diagnostic spans back to `(cell_index, local_span)` and UTF-16 positions (D-025).
   - Have `datascript-cli`'s `ReplProgram` delegate to `datascript_compiler::StitchedProgram`.
 
@@ -95,13 +105,18 @@ REPL, and `datascript-wasm` (M5) all share one implementation
       cell, and serialize with base: every other cell keeps its CRLF bytes and fence style.
 - [ ] Unit tests for `StitchedProgram` whole-notebook and transitive single-cell stitching, span
       mapping (multi-byte UTF-8/UTF-16), and `DS1085`: fires for a referenced `let` with a type
-      error, for a referenced name declared twice upstream (`DS1003`), and for an indirect chain
-      (cell 3 uses valid `b`, `b` uses broken `a`: primary span on cell 3's `b`, with the chain
-      note); does *not* fire on an unreferenced broken `let`, a broken query next to a valid `let`
-      in the same cell, an upstream warning, an upstream `let` whose name is missing (the target
-      gets the ordinary unknown-name error for a name it might have defined), or a column whose
-      name matches a **broken** upstream `let` (the run succeeds); a column whose name matches a
-      valid upstream `let` prepends that `let` harmlessly. Single-statement stitching leaves out a
+      error, for a referenced name declared twice upstream (`DS1003`, naming the later
+      declaration), for an indirect chain (cell 3 uses `b`, `b` uses broken `a`: one `DS1085` on
+      cell 3's `b` with the chain note), for a broken scalar `let n` used in `take n` and in a
+      render `title` (not `DS2050`/`DS5005`), and only once when the target references the broken
+      name three times; does *not* fire on an unreferenced broken `let`, a broken query next to a
+      valid `let` in the same cell, an upstream warning, an upstream `let` whose name is missing
+      (the target gets the ordinary unknown-name error for a name it might have defined), a column
+      whose name matches a broken upstream `let`, or a column whose name matches a `let` broken only
+      through a chain (both runs succeed); a column whose name matches a valid upstream `let`
+      prepends that `let` harmlessly. `BrokenLets` builder unit tests cover own errors,
+      duplicates, transitive chains, and a `let` whose same-named reference resolved to a column
+      staying valid. Single-statement stitching leaves out a
       broken neighbouring query statement in the target cell, bindings-only stitching leaves out a
       half-typed query in the same cell, and prefix stitching includes an unreferenced upstream
       `let`.
