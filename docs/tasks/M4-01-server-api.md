@@ -1,4 +1,4 @@
-# M4-01 — Local web UI server (`ds ui`)
+# M4-01 — Local web UI server (`ds ui`), `.dsnb` parser & cell stitcher
 
 **Status:** todo
 **Depends on:** M1-13, M2-13
@@ -9,16 +9,20 @@ results truncated per D-064; `DS4061` upstream cell has errors per D-062) (D-018
 ## Goal
 `ds ui [dir]` starts an axum server on 127.0.0.1 with a random port, prints the URL and opens the
 browser. Access requires a per-launch token in the URL; check the `Origin` header on API/WS
-requests. Implements the server API specified in
-[WEB_UI.md §6](../WEB_UI.md#server-api-contract-datascript-server-m4-01--m4-04).
+requests. Implements the M4 v1 server API specified in
+[WEB_UI.md §6](../WEB_UI.md#server-api-contract-datascript-server-m4-01--m4-04) (file rename/delete
+lands in M4-05).
 
 ## Scope
-- **Shared cross-cell program stitcher** (`datascript-compiler`, D-062):
+- **Shared `.dsnb` parser & cross-cell program stitcher** (`datascript-compiler`, D-062):
+  - Implement the canonical, pure, `wasm32`-compatible `.dsnb` Markdown parser/serializer in
+    `datascript-compiler` so `datascript-server` (M4-01/M4-04), `ds run`/`ds check` and `ds lsp`
+    (M4-06), and `datascript-wasm` (M5) all reuse it.
   - Extract the pure segment-stitching and span-mapping primitive (`StitchedProgram`) from
-    `datascript-cli`'s `ReplProgram` into `datascript-compiler` (pure, `wasm32`-compatible), have
-    `ReplProgram` delegate to it, and use it in `datascript-server` (M4-01 & M4-04) so upstream
-    `let` statements (`0..targetCellIndex`) prepend cleanly ahead of the target cell and every
-    UTF-16 span (D-025) maps back to `{ cellIndex, start, end, line, column }`.
+    `datascript-cli`'s `ReplProgram` into `datascript-compiler`, have `ReplProgram` delegate to it,
+    and use it in `datascript-server` so upstream `let` statements (`0..targetCellIndex`) prepend
+    cleanly ahead of the target cell and every UTF-16 span (D-025) maps back to
+    `{ cellIndex, start, end, line, column }`.
   - Relative paths resolve against the `.dsnb`/`.ds` file's parent directory (or root for
     Scratchpads), inside the D-016 sandbox.
 - **Streaming row-limit helper** (`datascript-engine`, D-064):
@@ -27,32 +31,29 @@ requests. Implements the server API specified in
     streaming-limit helper in `datascript-engine` that counts rows as batches arrive, slices the
     final batch at `row_limit`, drops the `QueryStream` on the next row to cancel execution, and
     reports `truncated = true` (reused by `datascript-server`, M3-06, and M5).
-- **Server info & workspace files API** (all confined to root per D-016):
+- **Server info & M4 v1 workspace files API** (all confined to root per D-016):
   - `GET /api/info`: root folder name, capabilities, default `row_limit` (`10_000`, D-064),
     registered `--table` host tables.
   - `GET /api/files?dir=&includeHidden=`: full working-directory tree (hiding `.git`,
     `node_modules`, `target`, dotfiles unless `includeHidden=true`; no path traversal).
-  - `GET /api/file?path=`, `PUT /api/file`, `POST /api/file`, `PATCH /api/file`, `DELETE /api/file`:
-    read/write/create/rename/delete `.dsnb` notebooks, `.ds` scripts, and folders. Writes carry an
-    optional `expectedVersion` (mtime + hash) and return `409 Conflict` if changed on disk (D-062).
-    Data-file safety rules:
-    - Refuse mutating or deleting any file whose extension is not `.dsnb` or `.ds`.
-    - Refuse `POST` (create) and `PATCH` (rename) if the target path does not end in `.dsnb`/`.ds`
-      (for files) or **already exists** (preventing `rename(2)` from overwriting data files or
-      other notebooks).
-    - Refuse `DELETE` or `PATCH` (rename) on a folder if it recursively contains any non-`.dsnb`/
-      non-`.ds` file or any symlink.
+  - `GET /api/file?path=`, `POST /api/file` (create `.dsnb`/`.ds`), `PUT /api/file` (save
+    `.dsnb`/`.ds`): writes carry an optional `expectedVersion` (mtime + hash) and return
+    `409 Conflict` if changed on disk (D-062). Strictly enforce read-only data files: refuse
+    creating or writing any path whose extension is not `.dsnb` or `.ds`, and refuse `POST` when
+    the target path already exists. *(File/folder rename `PATCH` and delete `DELETE` are added in
+    M4-05.)*
   - `GET /api/schema?source=`: inspect a file or host table schema via `Session`.
 - **Notebook-aware check, streaming run, cancellation & ticketed streaming export**:
   - `POST /api/check`: checks a script or notebook cell via `StitchedProgram`; returns per-cell
     UTF-16 JSON diagnostics and active `let` scope summaries.
   - `WS /api/ws`: multiplexed WebSocket for (1) streaming query runs (`run` / `cancel` using
-    `Session::start` + the streaming row-limit helper → `started` event carrying `nowMicros`,
-    capped Arrow IPC batches + `RenderSpec` + diagnostics + timing; emits `DS4060` info on
-    truncation per D-064, and `DS4061` — `"cannot run cell because an upstream cell has errors"`
-    with a secondary label pointing at the broken upstream cell — when running a cell whose
-    upstream `let` cell has errors; supports running a whole cell or a single statement index) and
-    (2) filesystem watch events (updating the tree and invalidating `Session`'s schema cache).
+    `Session::start` + the streaming row-limit helper → `started` event carrying `nowMicros` and
+    scanned `sourceCount` from the `QueryPlan`, capped Arrow IPC batches + `RenderSpec` +
+    diagnostics + timing; emits `DS4060` info on truncation per D-064, and `DS4061` — `"cannot run
+    cell because an upstream cell has errors"` with a secondary label pointing at the broken
+    upstream cell — when running a cell whose upstream `let` cell has errors; supports running a
+    whole cell or a single statement index) and (2) filesystem watch events (updating the tree and
+    invalidating `Session`'s schema cache).
   - **Two-step zero-buffering streaming export** (D-064):
     - `POST /api/export` (standard Bearer token + `Origin` check) accepts
       `{ path, cells, targetCellIndex, statementIndex, nowMicros, format }`, validates the request,
@@ -80,13 +81,12 @@ Design-review additions:
 - [ ] API integration tests covering:
   - auth (missing/wrong token, bad `Origin` on API/WS, one-shot ticket replay/expiry and
     `Sec-Fetch-Site` check on `GET /api/export/<ticket>`);
-  - path traversal and workspace CRUD safety: read-only rejection on `.csv`/`.parquet` writes and
-    deletes, refusal to delete/rename folders containing data files or symlinks, refusal to create
-    or rename onto a data-file extension or an already-existing target, and `409` version conflicts;
-  - `StitchedProgram` cross-cell `let` checking/execution with mapped UTF-16 spans and `DS4061`
-    when running a cell with a broken upstream cell;
-  - WebSocket streaming + cancellation + streaming row-cap slicing/truncation (`DS4060`) over a
-    result exceeding `row_limit`;
+  - path traversal and workspace safety: read-only rejection on `.csv`/`.parquet` creates/writes,
+    refusal to create over an already-existing file, and `409` version conflicts;
+  - `.dsnb` parser round-trip tests and `StitchedProgram` cross-cell `let` checking/execution with
+    mapped UTF-16 spans and `DS4061` when running a cell with a broken upstream cell;
+  - WebSocket streaming + cancellation + `sourceCount` metadata + streaming row-cap
+    slicing/truncation (`DS4060`) over a result exceeding `row_limit`;
   - two-step streaming export reusing `nowMicros` (verified with `now()`/`ago()`), exact
     `statementIndex` on a multi-statement cell, and upstream `let`s.
 - [ ] `datascript-cli`'s REPL tests pass unchanged after delegating `ReplProgram` to
