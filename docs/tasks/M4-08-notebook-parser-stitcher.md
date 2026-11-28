@@ -11,7 +11,7 @@ Build the single canonical, pure, `wasm32`-compatible `.dsnb` Markdown parser/se
 `datascript-server` (M4-01, M4-10, M4-04), `ds run`/`ds check`/`ds lsp` (M4-06), `datascript-cli`'s
 REPL, and `datascript-wasm` (M5) all share one implementation
 ([WEB_UI.md §2](../WEB_UI.md#2-notebook-file-format-dsnb),
-[§3](../WEB_UI.md#transitive-upstream-let-prepending--ds4061),
+[§3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085),
 [§6](../WEB_UI.md#cross-cell-combined-program--dsnb-parser-datascript-compiler-m4-08), D-062).
 
 ## Scope
@@ -27,8 +27,12 @@ REPL, and `datascript-wasm` (M5) all share one implementation
     - whitespace-only text between DataScript cells treated as separator (empty Markdown cells
       dropped on save/reload), canonical `\n\n` separator for newly serialized cells, no persisted
       cell metadata in v1;
-    - `<!-- ds:cell -->` adjacent-Markdown delimiter with lossless `<!-- ds:cell:literal -->`
-      escaping/unescaping;
+    - `<!-- ds:cell -->` adjacent-Markdown delimiter with stacking `:literal` escaping (add one
+      `:literal` on save, remove one on load), so every input round-trips;
+    - Markdown cells can never change cell boundaries: top-level `ds`/`datascript` fences inside a
+      Markdown cell get the same stacking `:literal` escape on their tag, a fence left open at the
+      end of a Markdown cell gets a closing fence appended, and a first Markdown cell starting with
+      `---` (no frontmatter) gets a leading blank line;
     - opaque per-cell `originId` (byte range + content hash) returned by the parser and matched on
       serialize-with-base so untouched cells and separators retain exact original bytes and line
       endings unambiguously even with duplicate identical cells or reorders. Serializing also
@@ -43,7 +47,7 @@ REPL, and `datascript-wasm` (M5) all share one implementation
        `let` dependencies** (parsing upstream cells with recovery, over-approximating references
        by identifier text), prepends only those `let` statements in document order, and emits
        **`DS1085`** (register active in `codes.rs` & `DIAGNOSTICS.md`) exactly per rules (a) and
-       (b) in [WEB_UI.md §3](../WEB_UI.md#transitive-upstream-let-prepending--ds4061), with the
+       (b) in [WEB_UI.md §3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085), with the
        message, primary span, secondary label, and help given there.
   - Map diagnostic spans back to `(cell_index, local_span)` and UTF-16 positions (D-025).
   - Have `datascript-cli`'s `ReplProgram` delegate to `datascript_compiler::StitchedProgram`.
@@ -54,8 +58,14 @@ REPL, and `datascript-wasm` (M5) all share one implementation
       0–3 space indent stripping, `ds` fence inside a blockquote/list staying Markdown,
       `datascript` and `~~~ds` fences, extra info tokens, DataScript cells containing ```` ``` ````,
       ` ```ds ` nested inside a 4-backtick non-`ds` fence, unclosed fence to EOF, adjacent Markdown
-      cells with `<!-- ds:cell -->`, literal `<!-- ds:cell -->` escaping, and `originId`
+      cells with `<!-- ds:cell -->`, literal `<!-- ds:cell -->` **and** literal
+      `<!-- ds:cell:literal -->` escaping, a Markdown cell holding a top-level ```` ```ds ```` block,
+      a Markdown cell ending in an unclosed ```` ```json ```` fence followed by a DataScript cell, a
+      first Markdown cell starting with `---`, and `originId`
       partial-edit diff preservation across duplicate identical cells and reorders.
+- [ ] Property test: `parse(serialize(cells)) == cells` for generated cell lists (random Markdown
+      and DataScript text including fences, `---`, and `ds:cell` lines), apart from appended
+      closing fences.
 - [ ] Repeated-save test: parse, edit cell A, serialize, re-parse to get fresh `originId`s, edit
       cell B, serialize again. Cell A (CRLF, `~~~datascript` fence) and every untouched cell keep
       their bytes after the second save, and a stale `originId` is reported as a mismatch rather
@@ -63,10 +73,12 @@ REPL, and `datascript-wasm` (M5) all share one implementation
 - [ ] Unit tests for `StitchedProgram` whole-notebook and transitive single-cell stitching, span
       mapping (multi-byte UTF-8/UTF-16), and `DS1085`: fires under rule (a) (referenced `let` with
       a type error; referenced name declared twice upstream, `DS1003`) and rule (b) (upstream
-      `let` with a missing name or `=`, and the target references an otherwise undeclared name);
+      `let` with a missing name, and the target has a name the binder cannot resolve; `DS1085`
+      replaces that unknown-name error);
       does *not* fire on an unreferenced broken `let`, a broken query next to a valid `let` in the
       same cell, an upstream warning, or an undeclared name with no upstream syntax error (that is
-      the ordinary unknown-name diagnostic); a column whose name matches an upstream `let`
+      the ordinary unknown-name diagnostic), or a target that uses only existing columns and
+      functions while an upstream `let` has a missing name; a column whose name matches an upstream `let`
       prepends that `let` harmlessly.
 - [ ] Rendered-output snapshot tests (error output is first-class behaviour, AGENTS.md): `.dsnb`
       fixtures under `crates/datascript-compiler/tests/notebooks/` whose expected output is the

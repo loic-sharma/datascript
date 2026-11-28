@@ -961,9 +961,10 @@ box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
   (D-007) so `.dsnb` notebooks stay 1:1 with `.ds` scripts. Live `POST /api/check` checks the whole
   notebook in one pass; single-cell runs prepend only the cell's transitively referenced upstream
   `let`s, and `StitchedProgram` emits `DS1085` when the run is blocked by a broken referenced `let`
-  or by an upstream syntax error that may define a referenced name. Warnings, upstream queries, and
+  or, when the cell has a name the binder cannot resolve, by an upstream syntax error that may
+  define it. Warnings, upstream queries, and
   unreferenced broken `let`s do not block. The exact rule, the deliberate over-approximation of
-  references, and the diagnostic's shape are defined once in [WEB_UI.md §3](WEB_UI.md#transitive-upstream-let-prepending--ds4061). Lazy
+  references, and the diagnostic's shape are defined once in [WEB_UI.md §3](WEB_UI.md#transitive-upstream-let-prepending--ds1085). Lazy
   `let` re-scans are surfaced via distinct `SourceRef` counts (`PlanNode::Scan`) per result;
   `let`-only validation suppresses `DS0004`.
 - **Auth, persistence, CSP & workspace safety**: `ds ui` exchanges the launch `?token=` for an
@@ -980,8 +981,8 @@ box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
   `M4-04`) ships a single-notebook view, read-only tree + atomic `.dsnb` creation, Scratchpad quick
   previews, grid + ECharts (plain table queries stay in Table view by default with a **Visualize**
   helper appending `| render ...`), auto-save with `409` conflicts, and a right-hand inspector
-  starting collapsed by default. Multi-file tabs & pinning, atomic no-clobber rename (`rustix`) &
-  per-file+`rmdir` folder delete, Outline/Scope tabs, Cell Command Mode, Command Palette
+  starting collapsed by default. Multi-file tabs & pinning, atomic no-clobber rename (`rustix` /
+  `MoveFileExW`) & verify-then-delete folder removal, Outline/Scope tabs, Cell Command Mode, Command Palette
   (`Cmd/Ctrl+K` primary), and Quick Open follow in `M4-05` ([WEB_UI.md §5](WEB_UI.md#5-keyboard-shortcuts--command-mode)).
 *(Web UI design session, 2026-11-27.)*
 

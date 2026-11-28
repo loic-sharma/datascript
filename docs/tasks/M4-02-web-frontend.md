@@ -42,10 +42,13 @@ M4-04; power-user tabs/shortcuts/file management in M4-05. `Runtime.run` is decl
     checking (`POST /api/check`), inline squiggles, and rustc/Claude-Code-style diagnostic cards
     with one-click **Apply fix** and `DS1085` upstream jump links.
   - Swap in the fresh `originId`s and `version` returned by every `PUT /api/file` before the next
-    auto-save ([WEB_UI.md §2](../WEB_UI.md#serialization-grammar--canonical-layout)).
+    auto-save, keeping **at most one `PUT` per path in flight** and merging edits made meanwhile
+    into one follow-up save ([WEB_UI.md §2](../WEB_UI.md#serialization-grammar--canonical-layout)).
 
 ## Acceptance criteria
-- [ ] Vitest unit tests for `ServerRuntime` (including `originId` swap after save), notebook-relative
+- [ ] Vitest unit tests for `ServerRuntime` (including `originId` swap after save, and edits made
+      while a slow `PUT` is in flight producing exactly one follow-up `PUT` with the fresh
+      `originId`s and no `409`), notebook-relative
       path calculation (root notebook, nested subfolder notebook, Scratchpad save-location
       warning), and Markdown sanitization.
 - [ ] Playwright smoke test against a real `ds ui`: verifies strict CSP header, page reload

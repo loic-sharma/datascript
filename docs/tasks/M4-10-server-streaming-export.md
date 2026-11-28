@@ -42,11 +42,15 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
 - **Two-step zero-buffering streaming export** (D-064):
   - `POST /api/export` (cookie + `Origin`) accepts the run-time cell snapshot
     `{ path, cells, targetCellIndex, statementIndex, nowMicros, format }` (`statementIndex` 0-based
-    among the target cell's own query statements), validates it, and mints a short-lived single-use
-    ticket `/api/export/<ticket>`.
+    among the target cell's own query statements), checks, plans and starts the query (returning
+    diagnostics and no ticket if that fails), and mints a single-use ticket
+    `/api/export/<ticket>` holding the started stream (60 s expiry drops it).
   - `GET /api/export/<ticket>` requires the session cookie, verifies
     `Sec-Fetch-Site: same-origin` when present, consumes the ticket atomically, and streams the
-    uncapped result via `datascript_engine::writers` as `Content-Disposition: attachment`.
+    uncapped result via `datascript_engine::writers` as `Content-Disposition: attachment`. On a
+    runtime or I/O error after the headers are sent it **aborts the connection** (never a clean
+    end, so the browser marks the download failed) and sends an `exportFailed` WS event with the
+    `Diagnostic` ([WEB_UI.md §6](../WEB_UI.md#server-auth-csp--api-contract-datascript-server-m4-01-m4-10-m4-04--m4-05)).
   - **Formats.** Today `writers.rs` has CSV, JSON and NDJSON, and `write_json` takes every batch
     at once. v1 export offers `csv` and `ndjson` (existing row writers), `json` (add a streaming
     JSON-array writer: `[`, rows with separators per batch, `]`) and `arrow` (add a streaming Arrow
@@ -65,6 +69,9 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
     and **no** change notification after the server's own `PUT`;
   - two-step streaming export reusing the run-time snapshot, `nowMicros` (`now()`/`ago()`),
     cell-relative `statementIndex`, cookie + one-shot ticket replay/expiry, and `Sec-Fetch-Site`;
+  - export failures: a check or missing-source error returned by `POST /api/export` with no
+    ticket, and an error mid-stream aborting the connection (the client sees an incomplete body,
+    not a clean end) plus an `exportFailed` WS event;
   - each v1 format (`csv`, `ndjson`, `json`, `arrow`) streaming a multi-batch result larger than
     `row_limit`, read back and compared row for row.
 - [ ] Exact JSON/WebSocket wire contract documented alongside [WEB_UI.md](../WEB_UI.md) (shared

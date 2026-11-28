@@ -16,7 +16,8 @@ inspector tabs, Cell Command Mode, Command Palette, and Quick Open.
   `KeyboardEvent.code`, outside text inputs).
 - **Safe file/folder management** (`datascript-server` + `web/`): add `POST /api/dir`,
   `PATCH /api/file`, and `DELETE /api/file` following the symlink, atomic no-clobber rename (via
-  `rustix` on Unix and `MoveFileExW` on Windows), and per-file+`rmdir` folder deletion rules in
+  `rustix` on Unix and `MoveFileExW` on Windows for files and folders, `hard_link` fallback), OS
+  clutter allow-list, and verify-then-delete folder rules in
   [WEB_UI.md §4.1](../WEB_UI.md#41-left-pane--working-directory-tree--attached-tables).
 - **Outline & Scope inspector tabs** (`web/`, [WEB_UI.md §4.3](../WEB_UI.md#43-right-pane--contextual-inspector-collapsed-by-default)).
 - **Cell Command Mode, Command Palette (`Cmd/Ctrl+K` primary) & Quick Open (`Cmd/Ctrl+P`)**: full
@@ -27,7 +28,10 @@ inspector tabs, Cell Command Mode, Command Palette, and Quick Open.
 ## Acceptance criteria
 - [ ] Server API tests for `POST /api/dir`, `PATCH`, and `DELETE`: data-file and in-root symlink
       rejection (`notes.ds -> data/orders.csv`), folder-with-data-files/symlinks rejection, atomic
-      no-clobber rename refusal on existing files, and per-file+`rmdir` folder deletion.
+      no-clobber rename refusal on existing files (files and folders), verify-then-delete folder
+      deletion with nested subfolders, a folder containing only notebooks and `.DS_Store` deleting
+      cleanly, a folder with one hidden data file refused before anything is deleted (the error
+      names the file), and a concurrent new file reported as a partial delete.
 - [ ] Keyboard shortcut unit tests verifying `KeyboardEvent.code` matching, macOS/Win/Linux chords,
       `Alt+W`/`Alt+N` suppression inside text inputs, `AltGraph` ignored on `Ctrl+Alt+Enter`, and
       no CodeMirror editing conflicts.

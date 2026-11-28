@@ -37,7 +37,8 @@ truncation-aware sorting + **Sort in query**, and two-step streaming export (D-0
   - Capture the immutable cell snapshot (`cells`, `targetCellIndex`, `nowMicros`, cell-relative
     `statementIndex`) at run time and wire the **Export full result** menu to `POST /api/export` →
     `GET /api/export/<ticket>` (authenticated by session cookie + one-shot ticket; re-executes
-    against current disk files). The menu lists the formats the server reports (v1: CSV, NDJSON,
+    against current disk files), started from a programmatic `<a download>` click so the page
+    never unloads; show `POST` diagnostics and `exportFailed` WS events in the cell footer. The menu lists the formats the server reports (v1: CSV, NDJSON,
     JSON, Arrow IPC; Parquet and `.xlsx` once M2-27 / M2-28 land).
 
 ## Acceptance criteria
