@@ -32,10 +32,15 @@ fn repo_dir() -> PathBuf {
 }
 
 /// `ds` running in `tests/data`, with `NO_COLOR` unset so the environment cannot leak in.
-fn ds() -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ds"));
+fn ds_process() -> std::process::Command {
+    let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_ds"));
     cmd.current_dir(data_dir()).env_remove("NO_COLOR");
     cmd
+}
+
+/// `ds` as an [`assert_cmd::Command`], built from [`ds_process`].
+fn ds() -> Command {
+    Command::from_std(ds_process())
 }
 
 const TWO_ROWS: &str = "from 'orders.csv' | take 2 | project orderId, amount";
@@ -98,8 +103,7 @@ fn run_prints_a_table() {
 
 #[test]
 fn run_a_script_file_resolves_paths_against_its_directory() {
-    Command::new(env!("CARGO_BIN_EXE_ds"))
-        .current_dir(std::env::temp_dir())
+    ds().current_dir(std::env::temp_dir())
         .arg("run")
         .arg(repo_dir().join("examples/orders.ds"))
         .assert()
@@ -354,25 +358,21 @@ fn run_table_prints_each_query_with_its_line() {
 
 #[test]
 fn single_result_formats_need_one_query() {
+    let dir = tempfile::tempdir().unwrap();
     for format in ["csv", "ndjson", "arrow"] {
-        ds().args([
-            "run",
-            "-e",
-            TWO_QUERIES,
-            "--format",
-            format,
-            "-o",
-            "/dev/null",
-        ])
-        .assert()
-        .code(2)
-        .stdout("")
-        .stderr(
-            contains(format!(
-                "`--format {format}` prints one result, but the program has 2 query statements"
-            ))
-            .and(contains("--statement <n>`: 1 (line 2), 2 (line 4)")),
-        );
+        let out = dir.path().join(format!("out.{format}"));
+        ds().args(["run", "-e", TWO_QUERIES, "--format", format, "-o"])
+            .arg(&out)
+            .assert()
+            .code(2)
+            .stdout("")
+            .stderr(
+                contains(format!(
+                    "`--format {format}` prints one result, but the program has 2 query statements"
+                ))
+                .and(contains("--statement <n>`: 1 (line 2), 2 (line 4)")),
+            );
+        assert!(!out.exists(), "{format} should not create an output file");
     }
 }
 
@@ -517,9 +517,8 @@ fn closed_stdout_pipe_exits_0_and_stops_reading() {
     // hits BrokenPipe long before reaching the overflowing last row.
     let dir = tempfile::tempdir().unwrap();
     let program = big_csv(dir.path(), 60_000);
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_ds"))
+    let mut child = ds_process()
         .current_dir(dir.path())
-        .env_remove("NO_COLOR")
         .args(["run", "-e", &program, "--format", "csv"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1141,9 +1140,7 @@ fn explain_prints_the_plan() {
 
 #[test]
 fn explain_a_script_file_and_stdin() {
-    Command::new(env!("CARGO_BIN_EXE_ds"))
-        .current_dir(std::env::temp_dir())
-        .env_remove("NO_COLOR")
+    ds().current_dir(std::env::temp_dir())
         .arg("explain")
         .arg(repo_dir().join("examples/orders.ds"))
         .assert()
@@ -1250,49 +1247,91 @@ fn color_never_is_plain() {
 
 // ---- Ctrl-C ----
 
+/// Rewinds a temporary file capturing child stderr and returns its contents.
+fn read_temp_file(file: &mut std::fs::File) -> String {
+    use std::io::{Read, Seek, SeekFrom};
+
+    file.seek(SeekFrom::Start(0)).unwrap();
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).unwrap();
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
 #[cfg(unix)]
 #[test]
 fn ctrl_c_stops_a_running_query() {
+    use std::io::{BufRead, BufReader};
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::Stdio;
+    use std::sync::mpsc;
     use std::time::{Duration, Instant};
 
-    // Each self-join multiplies the rows, so this runs far longer than the test waits.
+    // Query 1 flushes a row immediately, proving `ds` has started and installed its SIGINT
+    // handler; query 2 then runs a 14-way self-join that would outlast the test.
     let join = "join kind = inner (from 'orders.csv' | project customerId) on customerId";
     let program = format!(
-        "from 'orders.csv' | project customerId | {} | summarize n = count()",
+        "from 'orders.csv' | take 1 | project orderId;\n\
+         from 'orders.csv' | project customerId | {} | summarize n = count()",
         vec![join; 14].join(" | ")
     );
-    // The first launch of a freshly linked binary can take seconds on macOS, and a SIGINT that
-    // arrives before `main` installs its handler kills the process outright. Launch it once.
-    ds().arg("--version").assert().success();
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_ds"))
-        .current_dir(data_dir())
+    let mut stderr_file = tempfile::tempfile().unwrap();
+    let mut child = ds_process()
         .args(["run", "-e", &program])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::from(stderr_file.try_clone().unwrap()))
         .spawn()
         .unwrap();
-    std::thread::sleep(Duration::from_secs(1));
-    assert!(
-        child.try_wait().unwrap().is_none(),
-        "the query finished too soon"
-    );
+    let (tx, rx) = mpsc::channel();
+    let stdout = child.stdout.take().unwrap();
+    let reader = std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        loop {
+            let mut line = String::new();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    if tx.send(line).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        match rx.recv_timeout(remaining) {
+            Ok(line) if line == "o-0001\n" => break,
+            Ok(_) => continue,
+            Err(reason) => {
+                let _ = child.kill();
+                let status = child.wait().unwrap();
+                let _ = reader.join();
+                let stderr = read_temp_file(&mut stderr_file);
+                panic!(
+                    "did not see first row on stdout ({reason}); status={status:?}, stderr={stderr}"
+                );
+            }
+        }
+    }
     let sent = Instant::now();
     let kill = std::process::Command::new("kill")
         .args(["-INT", &child.id().to_string()])
         .status()
         .unwrap();
     assert!(kill.success());
-    let output = child.wait_with_output().unwrap();
+    let status = child.wait().unwrap();
+    drop(rx);
+    reader.join().unwrap();
+    let stderr = read_temp_file(&mut stderr_file);
     assert!(sent.elapsed() < Duration::from_secs(5));
-    use std::os::unix::process::ExitStatusExt;
     assert_eq!(
-        output.status.code(),
+        status.code(),
         Some(130),
-        "signal {:?}, stderr {}",
-        output.status.signal(),
-        String::from_utf8_lossy(&output.stderr)
+        "signal {:?}, stderr {stderr}",
+        status.signal(),
     );
-    assert!(String::from_utf8_lossy(&output.stderr).contains("interrupted"));
+    assert!(stderr.contains("interrupted"), "{stderr}");
 }
 
 /// Writes one framed JSON-RPC message, as the LSP sends them over stdio.
@@ -1329,9 +1368,8 @@ fn lsp_speaks_the_protocol_on_stdio() {
     use std::io::BufReader;
     use std::process::Stdio;
 
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_ds"))
+    let mut child = ds_process()
         .args(["lsp", "--stdio"])
-        .current_dir(data_dir())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -1365,4 +1403,431 @@ fn lsp_speaks_the_protocol_on_stdio() {
     assert!(lsp_receive(&mut stdout).contains(r#""id":2"#));
     lsp_send(&mut stdin, r#"{"jsonrpc":"2.0","method":"exit"}"#);
     assert!(child.wait().unwrap().success());
+}
+
+// ---- M2-31: CLI plumbing and bug-fix regressions ----
+
+#[test]
+fn zero_row_results_are_valid_in_every_format() {
+    let query = "from 'orders.csv' | take 0 | project orderId, amount";
+
+    ds().args(["run", "-e", query, "--format", "table"])
+        .assert()
+        .success()
+        .stdout(
+            "orderId | amount\n\
+             string  | real\n\
+             --------+-------\n",
+        )
+        .stderr("");
+
+    ds().args(["run", "-e", query, "--format", "csv"])
+        .assert()
+        .success()
+        .stdout("orderId,amount\n")
+        .stderr("");
+
+    let json_out = ds()
+        .args(["run", "-e", query, "--format", "json"])
+        .output()
+        .unwrap();
+    assert!(json_out.status.success());
+    assert!(json_out.stderr.is_empty());
+    let json: serde_json::Value = serde_json::from_slice(&json_out.stdout).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!([
+            {
+                "statement": 1,
+                "columns": [
+                    {"name": "orderId", "type": "string"},
+                    {"name": "amount", "type": "real"},
+                ],
+                "rows": [],
+            }
+        ])
+    );
+
+    ds().args(["run", "-e", query, "--format", "ndjson"])
+        .assert()
+        .success()
+        .stdout("")
+        .stderr("");
+
+    let arrow_out = ds()
+        .args(["run", "-e", query, "--format", "arrow"])
+        .output()
+        .unwrap();
+    assert!(arrow_out.status.success());
+    assert!(arrow_out.stderr.is_empty());
+    let reader =
+        arrow_ipc::reader::FileReader::try_new(std::io::Cursor::new(&arrow_out.stdout), None)
+            .unwrap();
+    assert_eq!(reader.schema().fields().len(), 2);
+    assert_eq!(reader.schema().field(0).name(), "orderId");
+    assert_eq!(reader.schema().field(1).name(), "amount");
+    let rows: usize = reader.map(|b| b.unwrap().num_rows()).sum();
+    assert_eq!(rows, 0);
+}
+
+#[test]
+fn let_only_program_writes_nothing_and_creates_no_output_file() {
+    let dir = tempfile::tempdir().unwrap();
+    for format in ["table", "csv", "json", "ndjson", "arrow"] {
+        let out = dir.path().join(format!("let_only.{format}"));
+        ds().args(["run", "-e", "let x = 1;", "--format", format, "--output"])
+            .arg(&out)
+            .assert()
+            .success()
+            .stdout("")
+            .stderr(contains("warning[DS0004]"));
+        assert!(!out.exists(), "{format} should not create an output file");
+    }
+}
+
+#[test]
+fn warnings_go_to_stderr_and_leave_stdout_parseable() {
+    // `sort by orderId` without `asc`/`desc` emits `warning[DS2103]`.
+    let query = "from 'orders.csv' | sort by orderId | take 2 | project orderId, amount";
+
+    let csv_out = ds()
+        .args(["run", "-e", query, "--format", "csv"])
+        .output()
+        .unwrap();
+    assert!(csv_out.status.success());
+    assert!(String::from_utf8_lossy(&csv_out.stderr).contains("warning[DS2103]"));
+    assert_eq!(
+        String::from_utf8(csv_out.stdout).unwrap(),
+        "orderId,amount\no-0001,183.5\no-0002,88.5\n"
+    );
+
+    let json_out = ds()
+        .args(["run", "-e", query, "--format", "json"])
+        .output()
+        .unwrap();
+    assert!(json_out.status.success());
+    assert!(String::from_utf8_lossy(&json_out.stderr).contains("warning[DS2103]"));
+    let json: serde_json::Value = serde_json::from_slice(&json_out.stdout).unwrap();
+    assert_eq!(json[0]["rows"].as_array().unwrap().len(), 2);
+
+    let ndjson_out = ds()
+        .args(["run", "-e", query, "--format", "ndjson"])
+        .output()
+        .unwrap();
+    assert!(ndjson_out.status.success());
+    assert!(String::from_utf8_lossy(&ndjson_out.stderr).contains("warning[DS2103]"));
+    let ndjson_text = String::from_utf8(ndjson_out.stdout).unwrap();
+    let lines: Vec<&str> = ndjson_text.lines().collect();
+    assert_eq!(lines.len(), 2);
+    for line in lines {
+        let row: serde_json::Value = serde_json::from_str(line).unwrap();
+        assert!(row.is_object());
+    }
+
+    let arrow_out = ds()
+        .args(["run", "-e", query, "--format", "arrow"])
+        .output()
+        .unwrap();
+    assert!(arrow_out.status.success());
+    assert!(String::from_utf8_lossy(&arrow_out.stderr).contains("warning[DS2103]"));
+    let reader =
+        arrow_ipc::reader::FileReader::try_new(std::io::Cursor::new(&arrow_out.stdout), None)
+            .unwrap();
+    let rows: usize = reader.map(|b| b.unwrap().num_rows()).sum();
+    assert_eq!(rows, 2);
+}
+
+#[test]
+fn statement_with_json_keeps_line_number_and_skips_failing_sibling() {
+    // Statement 2 in `TWO_QUERIES` starts on line 4.
+    let output = ds()
+        .args([
+            "run",
+            "-e",
+            TWO_QUERIES,
+            "--statement",
+            "2",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!([
+            {
+                "statement": 4,
+                "columns": [{"name": "n", "type": "long"}],
+                "rows": [{"n": 50}],
+            }
+        ])
+    );
+
+    // Selecting statement 2 succeeds even when statement 1 fails at runtime.
+    let mixed = "from 'orders.csv' | take 1 | extend z = 1 / (tolong(amount) - tolong(amount));\n\
+                 from 'orders.csv' | take 1 | project orderId";
+    ds().args(["run", "-e", mixed, "--statement", "2", "--format", "csv"])
+        .assert()
+        .success()
+        .stdout("orderId\no-0001\n")
+        .stderr("");
+    ds().args(["run", "-e", mixed, "--statement", "1"])
+        .assert()
+        .code(1)
+        .stderr(contains("DS4003"));
+}
+
+#[test]
+fn runtime_failure_during_count_rest_leaves_partial_table_without_footer() {
+    // Batch 1 has 8,192 valid rows; with `--max-rows 2`, 8,190 extra rows remain (< COUNT_BUDGET
+    // of 10,000), so `count_rest` reads batch 2 and hits the overflowing row 9,000.
+    let dir = tempfile::tempdir().unwrap();
+    let program = big_csv(dir.path(), 9_000);
+    let output = ds()
+        .current_dir(dir.path())
+        .args(["run", "-e", &program, "--max-rows", "2"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("DS4003"), "{stderr}");
+    assert_eq!(
+        stdout,
+        "x    | y\n\
+         long | long\n\
+         -----+-----------------\n\
+         \x20  1 | 1000000000000000\n\
+         \x20  1 | 1000000000000000\n"
+    );
+    assert!(!stdout.contains("more row"), "{stdout}");
+}
+
+#[test]
+fn mid_stream_failure_while_writing_to_output_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let program = big_csv(dir.path(), 20_000);
+    let out = dir.path().join("partial.csv");
+    ds().current_dir(dir.path())
+        .args(["run", "-e", &program, "--format", "csv", "--output"])
+        .arg(&out)
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(contains("DS4003"));
+    let written = std::fs::read_to_string(&out).unwrap();
+    assert!(
+        written.starts_with("x,y\n1,1000000000000000\n"),
+        "{written:.100}"
+    );
+    let lines = written.lines().count();
+    assert!((8_193..20_000).contains(&lines), "{lines} lines");
+}
+
+/// Spawns `cmd`, reads `prefix_bytes` from stdout, closes the pipe, and asserts exit 0 with
+/// clean stderr.
+fn assert_broken_pipe_exits_0(cmd: &mut std::process::Command, prefix_bytes: usize) {
+    use std::io::Read;
+    use std::process::Stdio;
+
+    let mut stderr_file = tempfile::tempfile().unwrap();
+    let mut child = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::from(stderr_file.try_clone().unwrap()))
+        .spawn()
+        .unwrap();
+    let mut stdout = child.stdout.take().unwrap();
+    let mut buf = vec![0u8; prefix_bytes];
+    if let Err(err) = stdout.read_exact(&mut buf) {
+        drop(stdout);
+        let status = child.wait().unwrap();
+        let stderr = read_temp_file(&mut stderr_file);
+        panic!(
+            "failed to read {prefix_bytes} byte(s) from stdout ({err}); \
+             status={status:?}, stderr={stderr}"
+        );
+    }
+    drop(stdout);
+    let status = child.wait().unwrap();
+    let stderr = read_temp_file(&mut stderr_file);
+    assert_eq!(status.code(), Some(0), "{stderr}");
+    assert!(stderr.is_empty(), "{stderr}");
+}
+
+#[test]
+fn broken_pipe_exits_0_for_all_formats_check_json_and_explain() {
+    let dir = tempfile::tempdir().unwrap();
+
+    // `table` buffers up to `--max-rows` before writing; use valid rows so it reaches the write.
+    let valid = valid_big_csv(dir.path(), 60_000);
+    assert_broken_pipe_exits_0(
+        ds_process().current_dir(dir.path()).args([
+            "run",
+            "-e",
+            &valid,
+            "--format",
+            "table",
+            "--max-rows",
+            "0",
+        ]),
+        1,
+    );
+
+    // `json`, `ndjson` and `arrow` stream batch by batch; 100,000 rows exceed any OS pipe buffer
+    // (~1.6 MB even for binary Arrow IPC), so `ds` hits BrokenPipe before the overflowing row.
+    let failing = big_csv(dir.path(), 100_000);
+    for (format, prefix) in [("json", 1), ("ndjson", 1), ("arrow", 6)] {
+        assert_broken_pipe_exits_0(
+            ds_process()
+                .current_dir(dir.path())
+                .args(["run", "-e", &failing, "--format", format]),
+            prefix,
+        );
+    }
+
+    // `ds check --format json` with a >1 MiB diagnostic report (30 copies of a 50-error script).
+    let bad_script = dir.path().join("many_errors.ds");
+    std::fs::write(&bad_script, "from 'a.csv' | where x = 1;\n".repeat(50)).unwrap();
+    let mut check_cmd = ds_process();
+    check_cmd.args(["check", "--format", "json"]);
+    for _ in 0..30 {
+        check_cmd.arg(&bad_script);
+    }
+    assert_broken_pipe_exits_0(&mut check_cmd, 1);
+
+    // `ds explain` with a >1 MiB logical plan dump.
+    let explain_script = dir.path().join("many_queries.ds");
+    let one_query = format!(
+        "from '{}' | where amount > 0 | extend a = amount + 1, b = amount + 2, \
+         c = amount + 3, d = amount + 4 | project orderId, customerId, amount, a, b, c, d;\n",
+        orders_path()
+    );
+    std::fs::write(&explain_script, one_query.repeat(3_000)).unwrap();
+    assert_broken_pipe_exits_0(ds_process().arg("explain").arg(&explain_script), 1);
+}
+
+#[test]
+fn check_json_with_bad_table_emits_json_ds3002_and_exits_2() {
+    let output = ds()
+        .args(["check", "-", "--format", "json", "--table", "o=orders.txt"])
+        .write_stdin("from o")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        output.stderr.is_empty(),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["version"], 1);
+    let diagnostics = report["diagnostics"].as_array().unwrap();
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0]["code"], "DS3002");
+    assert_eq!(diagnostics[0]["severity"], "error");
+    assert!(diagnostics[0]["file"].is_null());
+    assert!(diagnostics[0]["primary"].is_null());
+    assert!(
+        diagnostics[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("orders.txt")
+    );
+}
+
+#[test]
+fn duplicate_table_flags_last_wins_in_run_check_and_explain() {
+    let tables = ["--table", "t=orders.csv", "--table", "t=customers.csv"];
+
+    ds().args([
+        "run",
+        "-e",
+        "from t | take 1 | project name",
+        "--format",
+        "csv",
+    ])
+    .args(tables)
+    .assert()
+    .success()
+    .stdout("name\nAna Silva\n")
+    .stderr("");
+
+    ds().args(["check", "-"])
+        .args(tables)
+        .write_stdin("from t | project name")
+        .assert()
+        .success()
+        .stderr("");
+
+    ds().args(["explain", "-e", "from t | project name"])
+        .args(tables)
+        .assert()
+        .success()
+        .stdout(
+            contains("Scan: table `t`")
+                .and(contains("name: string"))
+                .and(contains("orderId").not()),
+        )
+        .stderr("");
+}
+
+#[test]
+fn missing_table_file_unused_exits_0_and_referenced_exits_1_with_ds3008() {
+    let missing = ["--table", "ghost=does_not_exist.csv"];
+
+    ds().args([
+        "run",
+        "-e",
+        "from 'orders.csv' | take 1 | project orderId",
+        "--format",
+        "csv",
+    ])
+    .args(missing)
+    .assert()
+    .success()
+    .stdout("orderId\no-0001\n")
+    .stderr("");
+
+    ds().args(["check", "-"])
+        .args(missing)
+        .write_stdin("from 'orders.csv' | take 1")
+        .assert()
+        .success()
+        .stderr("");
+
+    // A missing host table file surfaces as DS3008 ("the file registered for this table does not
+    // exist") rather than DS3001, because `SourceError::NotFound` on `SourceRef::Table` means an
+    // unregistered table name (DS1002).
+    ds().args(["run", "-e", "from ghost"])
+        .args(missing)
+        .assert()
+        .code(1)
+        .stdout("")
+        .stderr(contains("error[DS3008]").and(contains(
+            "the file registered for this table does not exist",
+        )));
+}
+
+#[test]
+fn non_utf8_script_file_gives_ds3008_with_exit_2() {
+    let dir = tempfile::tempdir().unwrap();
+    let bad = dir.path().join("bad.ds");
+    std::fs::write(&bad, [0xff, 0xfe, 0x00]).unwrap();
+
+    ds().arg("run")
+        .arg(&bad)
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(contains("error[DS3008]").and(contains("not UTF-8 text")));
+
+    ds().arg("check")
+        .arg(&bad)
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(contains("error[DS3008]").and(contains("not UTF-8 text")));
 }

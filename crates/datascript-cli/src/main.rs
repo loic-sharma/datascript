@@ -156,7 +156,12 @@ fn unknown_table_format(table: &TableArg) -> Diagnostic {
 async fn check(args: CheckArgs, reporter: &Reporter) -> u8 {
     let session = match session(&args.tables.tables) {
         Ok(session) => session,
-        Err(d) => return reporter.fail_usage(&Sources::new(), &d),
+        Err(d) => {
+            return match report_check(args.format, reporter, &Sources::new(), &[d]) {
+                Ok(()) => EXIT_USAGE,
+                Err(code) => code,
+            };
+        }
     };
     let mut sources = Sources::new();
     let mut all = Vec::new();
@@ -176,13 +181,31 @@ async fn check(args: CheckArgs, reporter: &Reporter) -> u8 {
             .await;
         all.extend(analysis.diagnostics);
     }
-    match args.format {
-        CheckFormat::Human => reporter.report(&sources, &all),
-        CheckFormat::Json => {
-            println!("{}", JsonReport::new(&all, sources.map()).to_json_pretty());
-        }
+    if let Err(code) = report_check(args.format, reporter, &sources, &all) {
+        return code;
     }
     check_exit_code(unreadable, &all, args.deny_warnings)
+}
+
+/// Prints `ds check` diagnostics in the chosen format, handling write errors (including
+/// `BrokenPipe`) through [`output::write_stdout`].
+fn report_check(
+    format: CheckFormat,
+    reporter: &Reporter,
+    sources: &Sources,
+    diagnostics: &[Diagnostic],
+) -> Result<(), u8> {
+    match format {
+        CheckFormat::Human => {
+            reporter.report(sources, diagnostics);
+            Ok(())
+        }
+        CheckFormat::Json => {
+            let mut json = JsonReport::new(diagnostics, sources.map()).to_json_pretty();
+            json.push('\n');
+            output::write_stdout(json.as_bytes()).map_err(OutputError::exit_code)
+        }
+    }
 }
 
 /// 2 if a script could not be read, 1 for errors (and warnings with `--deny-warnings`), else 0.

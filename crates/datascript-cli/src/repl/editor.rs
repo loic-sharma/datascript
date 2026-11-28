@@ -431,28 +431,31 @@ fn is_table_position(text: &str, start: usize, files: Option<&FileCompletion>) -
 }
 
 /// Adds host tables (`--table name=path`) alongside tabular lets, skipping any name already
-/// shadowed by a `let` in scope.
+/// shadowed by a `let` in scope. Duplicate table names resolve last-wins.
 fn add_host_tables(items: &mut Vec<Completion>, tables: &[TableArg], shadowed: &HashSet<String>) {
-    let mut extra: Vec<Completion> = tables
-        .iter()
-        .filter_map(|t| {
-            if shadowed.contains(&t.name) {
-                return None;
-            }
-            let label = display_name(&t.name);
-            if items.iter().any(|i| i.label == label) {
-                return None;
-            }
-            Some(Completion {
-                insert: label.clone(),
-                label,
-                kind: CompletionKind::Table,
-                detail: Some(format!("host table ({})", t.path)),
-                documentation: None,
-                snippet: false,
-            })
-        })
-        .collect();
+    let mut extra: Vec<Completion> = Vec::new();
+    for t in tables {
+        if shadowed.contains(&t.name) {
+            continue;
+        }
+        let label = display_name(&t.name);
+        if items.iter().any(|i| i.label == label) {
+            continue;
+        }
+        let completion = Completion {
+            insert: label.clone(),
+            label,
+            kind: CompletionKind::Table,
+            detail: Some(format!("host table ({})", t.path)),
+            documentation: None,
+            snippet: false,
+        };
+        if let Some(existing) = extra.iter_mut().find(|c| c.label == completion.label) {
+            *existing = completion;
+        } else {
+            extra.push(completion);
+        }
+    }
     extra.sort_by(|a, b| a.label.cmp(&b.label));
     let insert_at = items
         .iter()
@@ -798,6 +801,47 @@ mod tests {
         let checked = rt.block_on(repl.check_input("let orders = 42;"));
         assert!(!checked.failed(), "{:?}", checked.diagnostics);
         assert!(values(&repl, &rt, "from ord").is_empty());
+    }
+
+    #[test]
+    fn duplicate_host_tables_complete_once_with_last_path() {
+        let rt = runtime();
+        let repl = repl_with_tables(&[
+            ("orders", "tests/data/orders.csv"),
+            ("orders", "tests/data/customers.csv"),
+        ]);
+
+        let line = "from ord";
+        let items = suggestions_at(&repl, &rt, line, line.len());
+        assert_eq!(
+            items.iter().map(|s| s.value.as_str()).collect::<Vec<_>>(),
+            ["orders"]
+        );
+        assert_eq!(
+            items[0].description.as_deref(),
+            Some("host table (tests/data/customers.csv)")
+        );
+        assert_eq!(values(&repl, &rt, "from orders | where na"), ["name"]);
+
+        // `add_host_tables` itself also deduplicates last-wins within `extra`.
+        let mut completions = Vec::new();
+        let dupes = [
+            TableArg {
+                name: "t".into(),
+                path: "first.csv".into(),
+            },
+            TableArg {
+                name: "t".into(),
+                path: "second.csv".into(),
+            },
+        ];
+        add_host_tables(&mut completions, &dupes, &HashSet::new());
+        assert_eq!(completions.len(), 1);
+        assert_eq!(completions[0].label, "t");
+        assert_eq!(
+            completions[0].detail.as_deref(),
+            Some("host table (second.csv)")
+        );
     }
 
     #[test]
