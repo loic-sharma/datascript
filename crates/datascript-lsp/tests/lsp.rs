@@ -223,6 +223,26 @@ impl Client {
         }
     }
 
+    /// Waits `quiet`, then takes every `publishDiagnostics` for `uri` received so far. For
+    /// asserting that nothing was published: call it after whatever could have published has
+    /// had its chance.
+    async fn publishes_within(&mut self, uri: &str, quiet: Duration) -> Vec<Published> {
+        tokio::time::sleep(quiet).await;
+        while let Ok(message) = self.incoming.try_recv() {
+            self.queued.push_back(message);
+        }
+        let mut found = Vec::new();
+        self.queued.retain(|m| {
+            let for_uri =
+                m["method"] == "textDocument/publishDiagnostics" && m["params"]["uri"] == uri;
+            if for_uri {
+                found.push(Published::from(m.clone()));
+            }
+            !for_uri
+        });
+        found
+    }
+
     /// Writes a file into the workspace folder and returns its URI.
     fn write(&self, name: &str, text: &str) -> String {
         let path = self.dir.path().join(name);
@@ -560,14 +580,18 @@ async fn changed_data_files_invalidate_the_schema_cache() {
     let mut client = Client::start(datafusion(), one_publish(20), true).await;
     let data = client.write("orders.csv", ORDERS);
     let uri = client.uri("query.ds");
+    let other = client.uri("other.ds");
     client
         .open(
             &uri,
             "from 'orders.csv' | project region;\nfrom 'later.csv' | take 1\n",
         )
         .await;
-    let published = client.diagnostics(&uri).await;
-    assert_eq!(published.codes(), ["DS1001", "DS3001"]);
+    assert_eq!(client.diagnostics(&uri).await.codes(), ["DS1001", "DS3001"]);
+    client
+        .open(&other, "from 'orders.csv' | project region\n")
+        .await;
+    assert_eq!(client.diagnostics(&other).await.codes(), ["DS1001"]);
     assert!(
         client
             .server_requests
@@ -587,14 +611,30 @@ async fn changed_data_files_invalidate_the_schema_cache() {
     client.edit(&uri, 2, (2, 0), (2, 0), "\n").await;
     assert_eq!(client.diagnostics(&uri).await.codes(), ["DS1001", "DS3001"]);
 
-    // A changed script is not data: nothing is re-checked for it.
+    // Changed scripts are not data, whatever the case of the extension: nothing is re-checked
+    // within many debounces...
     client
         .notify(
             "workspace/didChangeWatchedFiles",
-            json!({ "changes": [{ "uri": client.uri("other.ds"), "type": 2 }] }),
+            json!({ "changes": [
+                { "uri": client.uri("script.ds"), "type": 2 },
+                { "uri": client.uri("NOTES.DS"), "type": 1 }
+            ] }),
         )
         .await;
-    // Data files changed: the cache is cleared and open documents are checked again.
+    let quiet = Duration::from_millis(300);
+    let late = client.publishes_within(&uri, quiet).await;
+    assert!(late.is_empty(), "a script change re-checked: {late:?}");
+    let late = client.publishes_within(&other, Duration::ZERO).await;
+    assert!(late.is_empty(), "a script change re-checked: {late:?}");
+    // ...and the cache is kept: an edit is still checked against the old schemas.
+    client.edit(&uri, 3, (3, 0), (3, 0), "\n").await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(3));
+    assert_eq!(published.codes(), ["DS1001", "DS3001"]);
+
+    // Data files changed: the cache is cleared and every open document is checked again, at
+    // its latest version.
     client
         .notify(
             "workspace/didChangeWatchedFiles",
@@ -604,10 +644,26 @@ async fn changed_data_files_invalidate_the_schema_cache() {
     let published = client.diagnostics(&uri).await;
     assert_eq!(
         published.version,
-        Some(2),
+        Some(3),
         "the latest version is re-checked"
     );
     assert_eq!(published.codes(), Vec::<&str>::new());
+    let published = client.diagnostics(&other).await;
+    assert_eq!(published.version, Some(1));
+    assert_eq!(published.codes(), Vec::<&str>::new());
+
+    // A deleted data file is missing again for the document that reads it.
+    std::fs::remove_file(client.dir.path().join("later.csv")).unwrap();
+    client
+        .notify(
+            "workspace/didChangeWatchedFiles",
+            json!({ "changes": [{ "uri": later, "type": 3 }] }),
+        )
+        .await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(3));
+    assert_eq!(published.codes(), ["DS3001"]);
+    assert_eq!(client.diagnostics(&other).await.codes(), Vec::<&str>::new());
     client.shutdown().await;
 }
 
@@ -937,7 +993,16 @@ async fn runtime_errors_are_published_until_the_next_edit() {
     assert_eq!(published.codes(), ["DS4003"]);
     assert_eq!(published.version, Some(1));
 
-    // Running again publishes nothing new; the next check after an edit clears it.
+    // Running again fails the same way and publishes nothing new. The server publishes before
+    // it answers, so anything it published is in by now; the wait covers reordering.
+    let output = client.run(&uri, None).await.unwrap();
+    assert!(output.contains("error[DS4003]"), "{output}");
+    let again = client
+        .publishes_within(&uri, Duration::from_millis(200))
+        .await;
+    assert!(again.is_empty(), "the second run published: {again:?}");
+
+    // The next check after an edit clears it.
     client.edit(&uri, 2, (1, 32), (1, 48), "2").await;
     assert_eq!(client.diagnostics(&uri).await.codes(), Vec::<&str>::new());
     client.shutdown().await;
@@ -2876,5 +2941,310 @@ async fn syntax_only_mode_supports_navigation_rename_symbols_tokens_and_syntax_f
         "unambiguous `take limit` should have readonly modifier (2): {decoded:?}"
     );
 
+    client.shutdown().await;
+}
+
+// ── In-flight checks, UTF-16 and panics in Run (M3-10) ───────────────────────────────────────
+
+/// The notifications between a test and a [`Gated`] engine.
+#[derive(Debug, Clone, Default)]
+struct Gate {
+    /// The first schema read has started and is waiting.
+    entered: Arc<tokio::sync::Notify>,
+    /// Lets the first schema read go on.
+    release: Arc<tokio::sync::Notify>,
+    /// The first schema read has returned.
+    left: Arc<tokio::sync::Notify>,
+}
+
+/// An engine whose first schema read waits until the test releases it, so a check stays in
+/// flight for exactly as long as the test needs. Later reads go straight through.
+#[derive(Debug)]
+struct Gated {
+    inner: DataFusionEngine,
+    gate: Gate,
+    first: std::sync::atomic::AtomicBool,
+}
+
+impl Gated {
+    fn engine(gate: &Gate) -> Arc<dyn Engine> {
+        Arc::new(Gated {
+            inner: DataFusionEngine::default(),
+            gate: gate.clone(),
+            first: std::sync::atomic::AtomicBool::new(true),
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl Engine for Gated {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn capabilities(&self) -> &Capabilities {
+        self.inner.capabilities()
+    }
+
+    async fn schema_of(
+        &self,
+        source: &SourceRef,
+        ctx: &ExecContext,
+    ) -> Result<SchemaRef, SourceError> {
+        if !self.first.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            return self.inner.schema_of(source, ctx).await;
+        }
+        self.gate.entered.notify_one();
+        self.gate.release.notified().await;
+        let found = self.inner.schema_of(source, ctx).await;
+        self.gate.left.notify_one();
+        found
+    }
+
+    async fn execute(
+        &self,
+        plan: &QueryPlan,
+        ctx: &ExecContext,
+    ) -> Result<ResultStream, Diagnostic> {
+        self.inner.execute(plan, ctx).await
+    }
+}
+
+/// Timing for the in-flight tests: a short grace, so the held check's syntax-only publish
+/// comes due while it waits on the gate.
+fn short_grace() -> Config {
+    Config {
+        debounce: Duration::from_millis(10),
+        syntax_grace: Duration::from_millis(200),
+    }
+}
+
+/// Waits for `notify`, failing the test after [`TIMEOUT`].
+async fn wait_for(notify: &tokio::sync::Notify, what: &str) {
+    tokio::time::timeout(TIMEOUT, notify.notified())
+        .await
+        .unwrap_or_else(|_| panic!("timed out waiting until {what}"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_change_during_schema_resolution_supersedes_the_check() {
+    let gate = Gate::default();
+    let mut client = Client::start(Gated::engine(&gate), short_grace(), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("query.ds");
+    // Version 1 has a syntax error, so its syntax-only publish would not be empty.
+    client
+        .open(&uri, "from 'orders.csv' | where amount = 1\n")
+        .await;
+    wait_for(&gate.entered, "the check of version 1 reads the schema").await;
+
+    // Version 2 arrives while version 1's check waits on the schema; its own check reads
+    // through.
+    client
+        .replace_all(&uri, 2, "from 'orders.csv' | project amout\n")
+        .await;
+    let mut before = Vec::new();
+    loop {
+        let published = client.diagnostics(&uri).await;
+        if published.version == Some(2) && published.codes() == ["DS1001"] {
+            break;
+        }
+        before.push(published);
+    }
+    // Version 1's syntax-only publish may come first if the change took longer than the grace
+    // to arrive; that is in order. Anything else would be a stale publish.
+    assert!(
+        before
+            .iter()
+            .all(|p| p.version == Some(2) || p.codes() == ["DS0110"]),
+        "{before:?}"
+    );
+
+    // Let version 1's grace run out while its check is held, then let the check finish:
+    // neither its syntax-only publish nor its final one may overwrite version 2.
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    gate.release.notify_one();
+    wait_for(&gate.left, "the check of version 1 has its schema").await;
+    let late = client
+        .publishes_within(&uri, Duration::from_millis(300))
+        .await;
+    assert!(late.is_empty(), "a superseded check published: {late:?}");
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn closing_a_document_during_a_check_suppresses_its_late_publishes() {
+    let gate = Gate::default();
+    let mut client = Client::start(Gated::engine(&gate), short_grace(), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("query.ds");
+    client
+        .open(&uri, "from 'orders.csv' | where amount = 1\n")
+        .await;
+    wait_for(&gate.entered, "the check reads the schema").await;
+
+    client
+        .notify(
+            "textDocument/didClose",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    // The clear, possibly after the check's syntax-only publish (if the close took longer than
+    // the grace to arrive).
+    let mut before = Vec::new();
+    loop {
+        let published = client.diagnostics(&uri).await;
+        if published.version.is_none() && published.diagnostics.is_empty() {
+            break;
+        }
+        before.push(published);
+    }
+    assert!(
+        before
+            .iter()
+            .all(|p| p.version == Some(1) && p.codes() == ["DS0110"]),
+        "{before:?}"
+    );
+
+    // Nothing is published about the closed document after the clear: not the grace's
+    // syntax-only publish, not the check's final one.
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    gate.release.notify_one();
+    wait_for(&gate.left, "the check has its schema").await;
+    let late = client
+        .publishes_within(&uri, Duration::from_millis(300))
+        .await;
+    assert!(
+        late.is_empty(),
+        "a closed document got diagnostics: {late:?}"
+    );
+
+    // Opening it again checks it afresh.
+    client
+        .open(&uri, "from 'orders.csv' | project amout\n")
+        .await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(1));
+    assert_eq!(published.codes(), ["DS1001"]);
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn surrogate_pairs_count_as_two_utf16_units_on_the_same_line() {
+    let mut client = Client::start(datafusion(), one_publish(10_000), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("emoji.ds");
+
+    // `😀` is 4 bytes and 2 UTF-16 units. A diagnostic on it and one after it on the same line
+    // are both in UTF-16 units: `'😀'` is 33..37 and `amout` 52..57 (bytes: 33..39, 54..59).
+    client
+        .open(
+            &uri,
+            "from 'orders.csv' | extend bad = '😀' + 1 | project amout\n",
+        )
+        .await;
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.codes(), ["DS2003", "DS1001"]);
+    assert_eq!(published.ranges(), ["0:33-0:37", "0:52-0:57"]);
+
+    // A request position after `😀` on its line is read in UTF-16 units too, and the answer's
+    // range is given in them.
+    let hover = client
+        .at_cursor(
+            "textDocument/hover",
+            &uri,
+            2,
+            "from 'orders.csv' | extend e = '😀' | where amo‸unt > 1",
+        )
+        .await;
+    assert_eq!(
+        hover["contents"]["value"],
+        "```ds\namount: real\n```\ncolumn"
+    );
+    assert_eq!(
+        hover["range"],
+        json!({ "start": { "line": 0, "character": 44 }, "end": { "line": 0, "character": 50 } })
+    );
+    client.shutdown().await;
+}
+
+/// An engine whose first query panics as it starts; later queries run normally.
+#[derive(Debug)]
+struct PanicsOnce {
+    inner: DataFusionEngine,
+    armed: std::sync::atomic::AtomicBool,
+}
+
+#[async_trait::async_trait]
+impl Engine for PanicsOnce {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn capabilities(&self) -> &Capabilities {
+        self.inner.capabilities()
+    }
+
+    async fn schema_of(
+        &self,
+        source: &SourceRef,
+        ctx: &ExecContext,
+    ) -> Result<SchemaRef, SourceError> {
+        self.inner.schema_of(source, ctx).await
+    }
+
+    async fn execute(
+        &self,
+        plan: &QueryPlan,
+        ctx: &ExecContext,
+    ) -> Result<ResultStream, Diagnostic> {
+        if self.armed.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            panic!("synthetic engine crash");
+        }
+        self.inner.execute(plan, ctx).await
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_panic_during_run_becomes_ds9001_and_the_server_stays_up() {
+    let engine = Arc::new(PanicsOnce {
+        inner: DataFusionEngine::default(),
+        armed: std::sync::atomic::AtomicBool::new(true),
+    });
+    let mut client = Client::start(engine, one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("crash.ds");
+    client.open(&uri, "from 'orders.csv' | count\n").await;
+    assert_eq!(client.diagnostics(&uri).await.codes(), Vec::<&str>::new());
+
+    // The engine panics: the run fails with the bug report, not a JSON-RPC error, and the
+    // diagnostic is published like any runtime error.
+    let response = client
+        .request_response("datascript/run", json!({ "textDocument": { "uri": uri } }))
+        .await;
+    assert!(response.get("error").is_none(), "{response}");
+    let result = &response["result"];
+    assert_eq!(result["failed"], true);
+    let output = result["output"].as_str().unwrap();
+    assert!(output.contains("error[DS9001]"), "{output}");
+    assert!(output.contains("synthetic engine crash"), "{output}");
+    let published = client.diagnostics(&uri).await;
+    assert_eq!(published.version, Some(1));
+    assert_eq!(published.codes(), ["DS9001"]);
+
+    // The server is still up: the next run works and clears the bug report, and other
+    // requests are answered.
+    assert_eq!(
+        client.run(&uri, None).await.unwrap(),
+        "Count\nlong\n-----\n    2\n"
+    );
+    assert_eq!(client.diagnostics(&uri).await.codes(), Vec::<&str>::new());
+    let lenses = client
+        .request(
+            "textDocument/codeLens",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    assert_eq!(lenses.as_array().map(Vec::len), Some(1), "{lenses}");
     client.shutdown().await;
 }

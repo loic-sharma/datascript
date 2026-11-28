@@ -60,6 +60,21 @@ describe('in a trusted workspace', () => {
     await waitForCodes(document.uri, ['DS0110', 'DS2103']);
   });
 
+  it('shows diagnostics for an untitled document, reading files in the workspace folder', async () => {
+    const document = await vscode.workspace.openTextDocument({
+      language: 'datascript',
+      content: "from 'orders.csv' | project amout\n",
+    });
+    await vscode.window.showTextDocument(document);
+    assert.equal(document.uri.scheme, 'untitled');
+    try {
+      const [diagnostic] = await waitForCodes(document.uri, ['DS1001']);
+      assert.match(diagnostic.message, /^unknown column `amout`/);
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    }
+  });
+
   it('checks again when a data file changes on disk', async () => {
     // The server registers a file watcher with the client (dynamic registration, D-052).
     const document = await open('watch.ds', "from 'regions.csv' | project region\n");
@@ -124,6 +139,38 @@ describe('in a trusted workspace', () => {
       assert.match(scopeOf('orders.csv'), /\bstring\.quoted\./);
       assert.match(scopeOf('where'), /\bkeyword\.control\.operator\./);
       assert.match(scopeOf('10'), /\bconstant\.numeric\./);
+    } finally {
+      await updateServerSetting(api, 'path', undefined);
+    }
+    assert.ok(api.client(), 'server restarts after restoring datascript.server.path');
+  });
+
+  it('says the server is stopped when running the statement at the cursor without it', async () => {
+    const document = await open('stopped.ds', "from 'orders.csv' | count\n");
+    await waitForCodes(document.uri, []);
+    try {
+      await captureMessages('showErrorMessage', async () => {
+        await updateServerSetting(api, 'path', './no-such-ds-binary');
+      });
+      assert.equal(api.client(), undefined);
+      const editor = await vscode.window.showTextDocument(document);
+      editor.selection = new vscode.Selection(0, 5, 0, 5);
+      const previous = api.lastRun();
+      // The cursor is in a query, but there is no server to run it (or to find it with): the
+      // user hears that, not "Put the cursor in a query statement".
+      const infos = await captureMessages('showInformationMessage', async () => {
+        const errors = await captureMessages('showErrorMessage', async () => {
+          assert.equal(await vscode.commands.executeCommand('datascript.runStatement'), undefined);
+          assert.equal(await vscode.commands.executeCommand('datascript.runFile'), undefined);
+        });
+        const stopped = 'DataScript: the language server is not running, so nothing can run.';
+        assert.deepEqual(
+          errors.map((m) => m.message),
+          [stopped, stopped],
+        );
+      });
+      assert.deepEqual(infos, []);
+      assert.equal(api.lastRun(), previous);
     } finally {
       await updateServerSetting(api, 'path', undefined);
     }

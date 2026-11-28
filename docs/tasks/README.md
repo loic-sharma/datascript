@@ -124,7 +124,7 @@ Two shared files are touched by many tasks:
 | [M3-07](M3-07-repl-column-completion.md) | REPL column completion | M3-02 | done |
 | [M3-08](M3-08-lsp-test-gaps.md) | LSP integration test gaps | M3-05 | done |
 | [M3-09](M3-09-vscode-e2e-gaps.md) | VS Code extension E2E test gaps | M3-05 | done |
-| [M3-10](M3-10-lsp-vscode-test-improvements.md) | LSP and VS Code test improvements | M3-08, M3-09 | todo |
+| [M3-10](M3-10-lsp-vscode-test-improvements.md) | LSP and VS Code test improvements | M3-08, M3-09 | done |
 
 ## M4 — Local web UI
 

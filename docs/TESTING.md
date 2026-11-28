@@ -18,8 +18,8 @@ are behaviour, and they are reviewed in diffs like any other output.
 | CLI tests | `crates/datascript-cli/tests/cli.rs` | `ds check`, `ds run` and `ds explain` end to end: exit codes, output formats, stdin, `--table`, colors and help |
 | REPL tests | `crates/datascript-cli/tests/repl.rs` | `ds` in piped mode: submit rules, persistent `let`s, dot commands and exit status |
 | LSP tests (in-process) | `crates/datascript-lsp/tests/lsp.rs` | Request/response scripts against an in-process server |
-| LSP tests (stdio) | `crates/datascript-cli/tests/lsp_run.rs` | `ds lsp` binary over stdio JSON-RPC, checking `datascript/run` output parity with `ds run` |
-| Grammar tests | `editors/vscode/test/grammar` (`npm run test:grammar`) | The TextMate grammar against the lexer's tokens for the fixture files, in `tokens.json` (written by `datascript-syntax/tests/textmate_tokens.rs`, `DS_BLESS=1` to update), plus operator-name cases (D-053) |
+| LSP tests (stdio) | `crates/datascript-cli/tests/lsp_run.rs` | `ds lsp` binary over stdio JSON-RPC (Windows included), checking `datascript/run` output parity with `ds run`, an empty standard error, and a clean exit on `shutdown` + `exit` |
+| Grammar tests | `editors/vscode/test/grammar` (`npm run test:grammar`) | The TextMate grammar against the lexer's tokens for the fixture files, in `tokens.json` (written by `datascript-syntax/tests/textmate_tokens.rs`, `DS_BLESS=1` to update), plus operator-name, escape and contextual-word cases (D-053) |
 | Extension tests | `editors/vscode/test/e2e` (`npm run test:e2e`) | The extension in a real VS Code with `target/debug/ds`, once trusted and once in Restricted Mode |
 | Web/WASM tests | `web/` (Vitest + Playwright, M4/M5) | UI flows and runtime parity with the CLI |
 

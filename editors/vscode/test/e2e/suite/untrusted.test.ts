@@ -4,7 +4,18 @@
 import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
 import type { DataScriptApi } from '../../../src/extension';
-import { activate, codeLenses, codes, open, sleep, waitForCodes, write } from './helpers';
+import {
+  activate,
+  captureMessages,
+  codeLenses,
+  codes,
+  open,
+  sleep,
+  waitForCodes,
+  write,
+} from './helpers';
+
+const RESTRICTED = 'DataScript runs no queries in Restricted Mode. Trust the workspace to run it.';
 
 describe('in an untrusted workspace', () => {
   let api: DataScriptApi;
@@ -14,11 +25,13 @@ describe('in an untrusted workspace', () => {
     api = await activate();
   });
 
-  it('ignores the workspace setting for the server path', () => {
-    // The workspace's `.vscode/settings.json` names `./not-ds`; the server started anyway, from
-    // the user setting.
-    const inspected = vscode.workspace.getConfiguration('datascript.server').inspect('path');
-    assert.equal(inspected?.workspaceValue, undefined);
+  it('ignores the workspace settings for the server path and arguments', () => {
+    // The workspace's `.vscode/settings.json` names `./not-ds` with the argument `x`; the server
+    // started anyway, from the user setting and without the argument (`ds x lsp` would fail).
+    const config = vscode.workspace.getConfiguration('datascript.server');
+    assert.equal(config.inspect('path')?.workspaceValue, undefined);
+    assert.equal(config.inspect('extraArgs')?.workspaceValue, undefined);
+    assert.deepEqual(config.get('extraArgs'), []);
     assert.ok(api.client());
   });
 
@@ -54,15 +67,29 @@ describe('in an untrusted workspace', () => {
     assert.deepEqual(codes(document.uri), []);
   });
 
-  it('shows no Run CodeLens and runs nothing', async () => {
+  it('shows no Run CodeLens and runs nothing, saying why', async () => {
     const document = await open('run.ds', "from 'orders.csv' | count;\nfrom 'orders.csv' | take 1\n");
     await waitForCodes(document.uri, []);
     assert.deepEqual(await codeLenses(document.uri), []);
-    assert.equal(await vscode.commands.executeCommand('datascript.runFile'), undefined);
-    assert.equal(
-      await vscode.commands.executeCommand('datascript.runStatement', document.uri.toString(), 1),
-      undefined,
-    );
+    const editor = await vscode.window.showTextDocument(document);
+    editor.selection = new vscode.Selection(0, 5, 0, 5);
+    const infos = await captureMessages('showInformationMessage', async () => {
+      const warnings = await captureMessages('showWarningMessage', async () => {
+        assert.equal(await vscode.commands.executeCommand('datascript.runFile'), undefined);
+        assert.equal(
+          await vscode.commands.executeCommand('datascript.runStatement', document.uri.toString(), 1),
+          undefined,
+        );
+        // At the cursor, the reason is Restricted Mode, not a missing statement: the syntax-only
+        // server has no CodeLenses to find one with.
+        assert.equal(await vscode.commands.executeCommand('datascript.runStatement'), undefined);
+      });
+      assert.deepEqual(
+        warnings.map((m) => m.message),
+        [RESTRICTED, RESTRICTED, RESTRICTED],
+      );
+    });
+    assert.deepEqual(infos, []);
     assert.equal(api.lastRun(), undefined);
   });
 });

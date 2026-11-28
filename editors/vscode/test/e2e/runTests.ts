@@ -27,8 +27,11 @@ function dsPath(): string {
   return path.resolve(ds);
 }
 
-/** A fresh workspace, user data directory and extensions directory for one run. */
-function prepare(mode: Mode, ds: string): { workspace: string; userData: string; extensions: string } {
+/** A fresh workspace, user data directory and extensions directory for one run, all in `base`. */
+function prepare(
+  mode: Mode,
+  ds: string,
+): { base: string; workspace: string; userData: string; extensions: string } {
   // Short: VS Code's IPC socket lives in the user data directory, and macOS limits socket paths
   // to 103 bytes.
   const base = fs.mkdtempSync(path.join(os.tmpdir(), `ds-${mode[0]}-`));
@@ -63,11 +66,26 @@ function prepare(mode: Mode, ds: string): { workspace: string; userData: string;
   );
   const extensions = path.join(base, 'x');
   fs.mkdirSync(extensions);
-  return { workspace, userData, extensions };
+  return { base, workspace, userData, extensions };
 }
 
-function run(executable: string, mode: Mode, ds: string): Promise<number> {
-  const { workspace, userData, extensions } = prepare(mode, ds);
+async function run(executable: string, mode: Mode, ds: string): Promise<number> {
+  const { base, workspace, userData, extensions } = prepare(mode, ds);
+  try {
+    return await launch(executable, mode, workspace, userData, extensions);
+  } finally {
+    // Retries: on Windows, VS Code's helper processes may hold files for a moment after exit.
+    fs.rmSync(base, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  }
+}
+
+function launch(
+  executable: string,
+  mode: Mode,
+  workspace: string,
+  userData: string,
+  extensions: string,
+): Promise<number> {
   const args = [
     workspace,
     '--no-sandbox',
