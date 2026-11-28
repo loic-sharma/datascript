@@ -40,8 +40,16 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
     - A JSON number infers `Int64` only when it is an integer in the `i64` range with no fraction
       or exponent; any other number (`1.0`, `1.5`, `1e3`) infers `Float64`.
     - Integers outside the `i64` range (for example `u64` IDs and hashes) → `Utf8` +
-      `arrow.json`, which keeps their exact digits. This deliberately differs from `arrow-json`,
-      which infers `Float64` and silently rounds them; it also avoids surprising `DS4003` errors.
+      `arrow.json`, which keeps their exact digits. They have no exact numeric type, so storing
+      them as `Float64` (as `arrow-json` does) would round a column of such IDs in every row;
+      it also avoids surprising `DS4003` errors.
+    - **Accepted rounding:** integers inside the `i64` range but beyond ±2^53 lose precision
+      when they end up in a `Float64` column (`Int64` + `Float64` in one file's sample, a glob
+      merging `long` + `real`, or an in-range integer read past `infer_rows` into a `Float64`
+      column). That is how any `real` column behaves, and widening these to `arrow.json`
+      instead would make the glob merge depend on values the merge never sees. A column that
+      holds only integers stays `Int64` and exact. Record this in DECISIONS.md next to the
+      out-of-`i64` rule.
     - Numbers whose magnitude overflows `f64` (for example `1e400`) → `Utf8` + `arrow.json` for
       the same reason, rather than storing infinity.
     - Consistent scalar columns infer `Boolean`, `Int64`, `Float64`, or `Utf8`.
@@ -103,7 +111,7 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       |---|---|---|
       | `Boolean` | `true`, `false` | type mismatch (including the strings `"true"`/`"false"`) |
       | `Int64` | integers in the `i64` range, with no fraction or exponent | type mismatch (including `1.0`, `1.5`, `1e3` and integers outside `i64`) |
-      | `Float64` | any JSON number except integers outside the `i64` range and numbers that overflow `f64` (in-range integers are converted) | type mismatch (including integers outside `i64`, which would otherwise be rounded silently, and numbers such as `1e400`, which would become infinity; inference stores both as `arrow.json` for the same reason) |
+      | `Float64` | any JSON number except integers outside the `i64` range and numbers that overflow `f64` (in-range integers are converted, rounding beyond ±2^53 as described under "Accepted rounding") | type mismatch (including integers outside `i64` and numbers such as `1e400`, which would become infinity; inference stores both as `arrow.json`, so this keeps the type check consistent with inference) |
       | `Utf8` (no extension) | strings | type mismatch (objects, arrays, numbers, booleans) |
       | `Utf8` + `arrow.json` | anything | — |
       `null` is accepted in every column.
@@ -136,10 +144,13 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
     `ArrowError::{CsvError, JsonError, ParseError}` and Parquet errors; anything else falls
     through to `DS4002 "the query failed while running"`. Add a minimal match for the new error
     type in `crates/datascript-datafusion/src/errors.rs` so runtime JSON errors stay `DS3008` at
-    the scan: label `a value in this source is not valid JSON` for syntax and non-object errors,
-    and `a value in this source does not match its column's type` for type mismatches, with a
-    help that names `read_json(..., infer_rows = n)` (not `read_csv`). The note may still carry
-    the error's own text; M2-34 replaces it with structured notes.
+    the scan:
+    - syntax and non-object errors: label `a value in this source is not valid JSON`, no help
+      (`infer_rows` cannot fix them);
+    - type mismatches: label `a value in this source does not match its column's type`, with a
+      help that names `read_json(..., infer_rows = n)` (not `read_csv`).
+
+    The note may still carry the error's own text; M2-34 replaces it with structured notes.
 - **Schema merging (`crates/datascript-datafusion/src/sources.rs`):**
   - `Merged::Arrow` currently stores only `DataType` and strips field metadata in `Merged::field`.
     Add a dedicated `Merged::Json` variant: `Merged::of` maps a `Utf8` + `arrow.json` field to it
@@ -148,6 +159,9 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
     the extension first keeps the rules below working after [M2-03](M2-03-dynamic-type.md) makes
     `from_arrow_source` map `arrow.json` to `Type::Dynamic`; otherwise `Typed(String)` +
     `Typed(Dynamic)` would go through `Type::common` and turn working globs back into `DS3005`.
+  - **For every format** (Parquet files can carry `arrow.json` columns too): `Merged::Json` +
+    `Merged::Json` → `Merged::Json`, and `Merged::Null` + `Merged::Json` → `Merged::Json`.
+    `Merged::name()` shows `Merged::Json` as `dynamic` in `DS3005` messages.
   - **Glob merging for JSON sources** (the merge needs to know the source is JSON):
     - `Merged::Null` + `Merged::Json` → `Merged::Json`.
     - `Merged::Typed(_)` + `Merged::Json` → `Merged::Json`.
@@ -164,7 +178,8 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       Real globs (daily log files where one file holds only strings in a field and another holds
       numbers or objects) then work.
     - `Merged::Null` with no other type → `Merged::Json` (see "All-null columns").
-    - CSV, TSV and Parquet merging is unchanged (`Type::common`, else `DS3005`).
+    - CSV, TSV and Parquet merging is otherwise unchanged (`Type::common`, else `DS3005`; for
+      Parquet, `Merged::Typed(_)` + `Merged::Json` is still `DS3005`).
   - With one schema for all JSON files, `Resolved::uniform` / the per-file `UNION ALL` path in
     `lower.rs::scan` is no longer needed for JSON sources (keep it for CSV).
   - Until [M2-03](M2-03-dynamic-type.md) lands, `from_arrow_source` continues to report `Utf8`
@@ -194,7 +209,8 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
     "Null → `string`", which must say that for JSON sources an all-null column becomes
     `Utf8` + `arrow.json` instead) and record the inference, encoding and
     merging rules in [DECISIONS.md](../DECISIONS.md): mixed scalars → `arrow.json`, out-of-range
-    integers and `f64`-overflowing numbers → `arrow.json` (unlike `arrow-json`), all-null
+    integers and `f64`-overflowing numbers → `arrow.json` (unlike `arrow-json`), accepted
+    rounding of in-range integers beyond ±2^53 in `Float64` columns, all-null
     columns, per-file array-vs-NDJSON detection, leading BOM skipped, top-level duplicate keys →
     last wins, whitespace-only normalization of nested values, the type-check table, type checks
     only on projected columns, files read whole (no byte-range splitting), and the JSON glob
@@ -247,7 +263,8 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       - `read_json(..., infer_rows = n)` happy path and invalid option values (`DS2041`).
 - [ ] Unit tests for the custom JSON schema inference and streaming decoder (empty files, blank
       lines, a leading BOM, integers outside `i64` and `1e400` → `arrow.json`,
-      `1.0`/`1e3` → `Float64`, top-level
+      `1.0`/`1e3` → `Float64`, an integer beyond 2^53 alone staying exact in `Int64` and
+      rounded in an `Int64` + `Float64` column, top-level
       duplicate keys last-wins, nested duplicate keys
       kept, whitespace removal outside strings only, missing/extra keys, keys first seen past
       `infer_rows` dropped, every row of the type-check table, decoding into a wider target

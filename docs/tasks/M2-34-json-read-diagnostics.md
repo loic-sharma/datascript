@@ -33,21 +33,23 @@ structured diagnostics below.
   - **Location reporting:** report the 1-based **line number** for NDJSON files, and the 1-based
     **record index** (along with the 1-based line number where the record starts) for JSON-array
     files, so single-line minified JSON arrays still pinpoint the offending record.
-  - Distinguish the three failure modes clearly:
+  - **A JSON array read as NDJSON** (checked first, for both syntax errors and non-object
+    records): when the file's first non-whitespace character (after any UTF-8 BOM) is `[` while
+    reading as NDJSON (e.g. a `.jsonl`/`.ndjson` file or `read_json(..., format = "ndjson")`),
+    explain that the file holds a JSON array rather than one object per line and add a `help`
+    suggesting `read_json(..., format = "array")`. Both failure modes below can carry it: a
+    minified `[{...}, ...]` on one line parses as an array (a non-object record), but a
+    pretty-printed array has `[` alone on line 1, which is a syntax error. Auto-detected `.json`
+    files never hit this case, because M2-33 detects the layout per file and skips a leading
+    BOM; the help is only for an explicit NDJSON choice, where `format = "array"` applies to the
+    whole source.
+  - Otherwise, distinguish the three failure modes clearly:
     1. **Malformed JSON syntax** (inference or runtime): report the location in plain words
        (e.g. `"line 42 is not valid JSON"` for NDJSON, or `"record 3 (line 1) is not valid JSON"`
        for JSON arrays), with the concise parser reason in the note (no `Arrow error: Json error:`
        wrapper noise).
-    2. **Non-object top-level record** (inference or runtime):
-       - When the file's first non-whitespace character (after any UTF-8 BOM) is `[` while
-         reading as NDJSON (e.g. a `.jsonl`/`.ndjson` file or
-         `read_json(..., format = "ndjson")`), explain that the file holds a JSON array rather
-         than one object per line and add a `help` suggesting `read_json(..., format = "array")`.
-         Auto-detected `.json` files never hit this case, because M2-33 detects the layout per
-         file and skips a leading BOM; the help is only for an explicit NDJSON choice, where
-         `format = "array"` applies to the whole source.
-       - Otherwise report which line/record is not a JSON object and what JSON kind was found
-         (e.g. a string, number, boolean, or array).
+    2. **Non-object top-level record** (inference or runtime): report which line/record is not
+       a JSON object and what JSON kind was found (e.g. a string, number, boolean, or array).
     3. **Runtime type conflict past `infer_rows`:** when a top-level column inferred as a scalar
        type in the first `infer_rows` rows encounters an incompatible value later (as defined by
        the type-check table in [M2-33](M2-33-json-reader-arrow-json.md), e.g. a plain `Utf8`
@@ -69,8 +71,8 @@ structured diagnostics below.
 - [ ] Golden `check` and `run` `.dstest` cases covering:
       - malformed JSON syntax during schema inference and past `infer_rows` at runtime (reports
         the line number for NDJSON and record index + line number for JSON arrays),
-      - a JSON array file read as NDJSON (explains why and suggests
-        `read_json(..., format = "array")`),
+      - a JSON array file read as NDJSON, both minified on one line and pretty-printed with `[`
+        alone on line 1 (each explains why and suggests `read_json(..., format = "array")`),
       - a bare scalar or array line mid-file in NDJSON and a non-object element in a minified
         single-line JSON array (reports location and kind found),
       - a top-level column whose type changes past `infer_rows` at runtime (including a plain
