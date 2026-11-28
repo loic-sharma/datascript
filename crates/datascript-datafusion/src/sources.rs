@@ -274,20 +274,17 @@ async fn read(
                     file: shown.clone(),
                     problem: read_problem(&e),
                 })?;
-        files.push((
-            shown.clone(),
-            SourceFile {
-                url,
-                path,
-                shown,
-                raw,
-            },
-        ));
+        files.push(SourceFile {
+            url,
+            path,
+            shown,
+            raw,
+        });
     }
     let widened = merge(&files)?;
     Ok(Resolved {
         reader,
-        files: files.into_iter().map(|(_, file)| file).collect(),
+        files,
         widened,
     })
 }
@@ -361,7 +358,7 @@ fn read_problem(error: &DataFusionError) -> ReadProblem {
     ReadProblem::Malformed(error.strip_backtrace())
 }
 
-fn io_problem(error: &std::io::Error) -> ReadProblem {
+pub(crate) fn io_problem(error: &std::io::Error) -> ReadProblem {
     match error.kind() {
         std::io::ErrorKind::PermissionDenied => ReadProblem::PermissionDenied,
         std::io::ErrorKind::IsADirectory => ReadProblem::IsDirectory,
@@ -419,7 +416,7 @@ impl Merged {
 
 /// Merges the files' schemas by name: columns in order of first appearance, each widened to its
 /// DataScript type and to a common type across files.
-fn merge(files: &[(String, SourceFile)]) -> Result<SchemaRef, SourceError> {
+fn merge(files: &[SourceFile]) -> Result<SchemaRef, SourceError> {
     struct Column {
         name: String,
         ty: Merged,
@@ -427,11 +424,11 @@ fn merge(files: &[(String, SourceFile)]) -> Result<SchemaRef, SourceError> {
         first: FileType,
     }
     let mut columns: Vec<Column> = Vec::new();
-    for (shown, file) in files {
+    for file in files {
         for field in file.raw.fields() {
             let ty = Merged::of(field);
             let this = FileType {
-                file: shown.clone(),
+                file: file.shown.clone(),
                 ty: ty.name(),
             };
             let Some(column) = columns.iter_mut().find(|c| &c.name == field.name()) else {

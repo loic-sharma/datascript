@@ -1,4 +1,4 @@
-# A null key matches nothing, not even another null (LANGUAGE.md §3.3). `edge/nulls.csv` has a
+# A null key matches nothing, not even another null (LANGUAGE.md §3.2, `join`). `edge/nulls.csv` has a
 # null `name` in rows 2 and 5; `b` holds rows 2–5, so both sides have null keys. Inner and semi
 # joins drop the null-key rows, outer joins keep them unmatched (in `fullouter`, `b`'s two null
 # rows come out on their own), and anti joins keep them. The last query checks the same for a

@@ -26,5 +26,9 @@ that reads several sources (see "Carried over").
       one of the query's sources" at the query's last node, because DataFusion's error does not
       name the file. Find the file (e.g. a per-scan wrapper around the `ListingTable` stream) so
       the error names it and points at its scan.
+- [ ] (from M2-29) `DataFusionEngine::execute` checks that every checked file still exists before
+      planning, but a file deleted after that check and before DataFusion opens it still reads as
+      no rows (DataFusion lists a missing file as no files). The same per-scan wrapper could turn
+      a missing file at open time into the "moved or deleted" `DS3008`.
 
 ## Follow-ups

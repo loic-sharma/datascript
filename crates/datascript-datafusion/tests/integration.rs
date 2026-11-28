@@ -13,7 +13,7 @@ use datascript_datafusion::{DataFusionConfig, DataFusionEngine};
 use datascript_diagnostics::codes::{DS3001, DS3008, DS4003};
 use datascript_diagnostics::{Code, Diagnostic, FileId, SourceFile};
 use datascript_engine::table::format_table;
-use datascript_engine::{ExecContext, FixedClock, QueryResult, RunOutput, Session};
+use datascript_engine::{Engine, ExecContext, FixedClock, QueryResult, RunOutput, Session};
 use futures::StreamExt;
 use tempfile::TempDir;
 
@@ -190,6 +190,67 @@ fn a_file_deleted_between_check_and_run_is_a_diagnostic() {
     assert_eq!(d.message, "cannot read `data.csv`");
     assert!(said(d).contains("moved or deleted"), "{d:#?}");
     assert!(d.primary.is_some(), "{d:#?}");
+}
+
+#[test]
+fn a_file_deleted_before_another_engine_runs_the_plan_is_not_an_internal_error() {
+    // An engine that never read the source reads it again to run the plan, and finds it gone.
+    let dir = TempDir::new().unwrap();
+    let session = session();
+    let ctx = ctx(dir.path());
+    write(&dir, "data.csv", "a\n1\n");
+    let program = block_on(session.compile(&src("from 'data.csv'"), FileId(0), &ctx)).unwrap();
+    std::fs::remove_file(dir.path().join("data.csv")).unwrap();
+    let Err(d) = block_on(DataFusionEngine::default().execute(&program.queries[0], &ctx)) else {
+        panic!("expected an error");
+    };
+    assert_eq!(d.code, DS3008, "{d:#?}");
+    assert_eq!(d.message, "cannot read `data.csv`");
+    assert!(said(&d).contains("moved or deleted"), "{d:#?}");
+}
+
+/// Restores a directory's permissions when dropped, so the `TempDir` can be removed.
+#[cfg(unix)]
+struct Unlock(PathBuf);
+
+#[cfg(unix)]
+impl Drop for Unlock {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_file_locked_away_between_check_and_run_is_not_reported_as_deleted() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = TempDir::new().unwrap();
+    let sub = dir.path().join("sub");
+    std::fs::create_dir(&sub).unwrap();
+    std::fs::write(sub.join("data.csv"), "a\n1\n").unwrap();
+    let session = session();
+    let ctx = ctx(dir.path());
+    let query = "from 'sub/data.csv'";
+    let analysis = block_on(session.check(&src(query), FileId(0), &ctx));
+    assert!(
+        analysis.diagnostics.is_empty(),
+        "{:?}",
+        analysis.diagnostics
+    );
+
+    std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let _unlock = Unlock(sub.clone());
+    // Root can read anything; the check means nothing then.
+    if std::fs::metadata(sub.join("data.csv")).is_ok() {
+        return;
+    }
+    let output = run(&session, query, &ctx);
+    assert_fails_with(&output, DS3008);
+    let d = &output.diagnostics[0];
+    assert_eq!(d.message, "cannot read `sub/data.csv`");
+    assert!(said(d).contains("permission denied"), "{d:#?}");
+    assert!(!said(d).contains("moved or deleted"), "{d:#?}");
 }
 
 #[test]

@@ -27,9 +27,9 @@ use datafusion::arrow::compute::cast;
 use datafusion::prelude::{SessionConfig, SessionContext};
 use datascript_compiler::capabilities::FunctionSupport;
 use datascript_compiler::ir::{PlanNode, QueryPlan};
-use datascript_compiler::{Capabilities, SourceError, SourceRef};
-use datascript_diagnostics::Diagnostic;
+use datascript_compiler::{Capabilities, ReadProblem, SourceError, SourceRef};
 use datascript_diagnostics::codes::DS3008;
+use datascript_diagnostics::{Diagnostic, Span};
 use datascript_engine::{Engine, ExecContext, ResultStream};
 use futures::StreamExt;
 
@@ -201,17 +201,20 @@ impl Engine for DataFusionEngine {
             let PlanNode::Scan { source } = &scan.node else {
                 continue;
             };
-            let r = self.resolved(&session, source, ctx).await.map_err(|e| {
-                // The schema was read during checking, so the files changed since.
-                internal(
-                    scan.span,
-                    &format!("the source changed while the query ran: {e:?}"),
-                )
-            })?;
-            // DataFusion reads a listed file that no longer exists as no rows, which would
-            // print an empty result instead of saying the file is gone.
-            if let Some(gone) = r.files.iter().find(|f| !f.path.is_file()) {
-                return Err(file_gone(scan.span, &gone.shown));
+            let r = self
+                .resolved(&session, source, ctx)
+                .await
+                .map_err(|e| source_failed(scan.span, source, e))?;
+            // DataFusion reads a listed file that no longer exists as no rows, which would print
+            // an empty result instead of saying the file is gone. This runs before planning, so
+            // a file deleted after it, before DataFusion opens it, still reads as no rows.
+            for file in &r.files {
+                if let Err(e) = std::fs::metadata(&file.path) {
+                    return Err(match e.kind() {
+                        std::io::ErrorKind::NotFound => file_gone(scan.span, &file.shown),
+                        _ => unreadable(scan.span, &file.shown, &sources::io_problem(&e)),
+                    });
+                }
             }
             resolved.push(r);
         }
@@ -240,14 +243,48 @@ impl Engine for DataFusionEngine {
     }
 }
 
+/// The diagnostic for a source that fails when it is read again to run a query: its schema was
+/// read while checking, so its files changed since. That is the user's doing, not a bug, except
+/// for errors that only the checked program could have had.
+fn source_failed(span: Span, source: &SourceRef, error: SourceError) -> Diagnostic {
+    match error {
+        SourceError::NotFound { .. } | SourceError::NoMatches => {
+            file_gone(span, &lower::source_name(source))
+        }
+        SourceError::Unreadable { file, problem } => unreadable(span, &file, &problem),
+        other => internal(
+            span,
+            &format!("the source changed while the query ran: {other:?}"),
+        ),
+    }
+}
+
 /// `DS3008` for a file that was checked but is gone when the query runs.
-fn file_gone(span: datascript_diagnostics::Span, file: &str) -> Diagnostic {
+fn file_gone(span: Span, file: &str) -> Diagnostic {
     Diagnostic::error(DS3008, format!("cannot read `{file}`"))
         .primary(
             span,
             "this file was moved or deleted after the program was checked",
         )
-        .help("run the program again to check it against the files as they are now")
+        .help("restore the file, or check the program again with its sources reloaded")
+}
+
+/// `DS3008` for a file that was checked but cannot be read when the query runs.
+fn unreadable(span: Span, file: &str, problem: &ReadProblem) -> Diagnostic {
+    let d = Diagnostic::error(DS3008, format!("cannot read `{file}`"));
+    match problem {
+        ReadProblem::PermissionDenied => d
+            .primary(span, "permission denied")
+            .help("check that the file can be read by the user running DataScript"),
+        ReadProblem::IsDirectory => d.primary(span, "a directory, not a file"),
+        ReadProblem::Malformed(reason) => d
+            .primary(span, "this file could not be read")
+            .note(format!("the reader said: {reason}")),
+        ReadProblem::Io(reason) => d
+            .primary(span, "this file could not be read")
+            .note(format!("the system said: {reason}")),
+        _ => d.primary(span, "this file could not be read"),
+    }
 }
 
 /// `batch` with the plan's output schema: the canonical types and the field metadata that
