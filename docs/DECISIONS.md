@@ -956,14 +956,15 @@ box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
   top-level fence scanner/serializer and `StitchedProgram` live in `datascript-compiler` (M4-08,
   `wasm32`-compatible), reused across `datascript-server`, `ds run`/`ds check`/`ds lsp` (M4-06),
   `datascript-cli` (`ReplProgram`), and `datascript-wasm` (M5) — `web/` consumes structured cells
-  with opaque `originId`s via `Runtime` for lossless diff saves and never duplicates the parser.
+  via `Runtime` and never duplicates the parser; saves are lossless through a server-side content
+  diff against the on-disk file (unchanged cells keep their bytes; no cell IDs on the wire).
   Supersedes D-048's note that the web UI does not need a shared stitcher.
 - **Cross-cell `let` scope & `DS1085`**: top-to-bottom lexical order keeping `DS1003` no-shadowing
   (D-007) so `.dsnb` notebooks stay 1:1 with `.ds` scripts. Live `POST /api/check` checks the whole
   notebook in one pass; single-cell runs prepend only the cell's transitively referenced upstream
   `let`s, and `StitchedProgram` emits `DS1085` when the run is blocked by a broken referenced `let`
-  or, when the cell has a name the binder cannot resolve, by an upstream syntax error that may
-  define it. Warnings, upstream queries, and
+  (an upstream statement whose name cannot be recovered declares nothing, so it yields the
+  ordinary unknown-name error). Warnings, upstream queries, and
   unreferenced broken `let`s do not block. The exact rule, the deliberate over-approximation of
   references, and the diagnostic's shape are defined once in [WEB_UI.md §3](WEB_UI.md#transitive-upstream-let-prepending--ds1085). Lazy
   `let` re-scans are surfaced via distinct `SourceRef` counts (`PlanNode::Scan`) per result;
@@ -1011,9 +1012,9 @@ full result**. Exports send the immutable run-time cell snapshot (re-executing t
 current disk files) over a two-step cookie+ticket download (`POST /api/export` → one-shot
 `GET /api/export/<ticket>`, [WEB_UI.md §6](WEB_UI.md#server-auth-csp--api-contract-datascript-server-m4-01-m4-10-m4-04--m4-05))
 so `datascript_engine::writers` streams straight to disk without buffering in browser memory.
-v1 export formats are CSV, NDJSON, JSON (a new streaming array writer) and Arrow IPC (a new
-streaming writer), all added or reused in M4-10; Parquet and `.xlsx` appear once M2-27 and M2-28
-land, and the menu lists only what the server can write.
+v1 export formats are CSV and NDJSON (the existing streaming writers, so M4-10 adds none); JSON,
+Parquet and `.xlsx` appear once M2-26, M2-27 and M2-28 add or stream those writers for the `output`
+operator, and the menu lists only what the server can write.
 *(Web UI design session, 2026-11-27.)*
 
 ## Proposed (open questions)

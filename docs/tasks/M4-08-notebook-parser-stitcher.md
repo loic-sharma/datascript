@@ -19,7 +19,7 @@ REPL, and `datascript-wasm` (M5) all share one implementation
   dependencies so `wasm32` stays small):
   - Implement the top-level CommonMark fence scanner (0–3 leading spaces with content-indent
     stripping; fences inside blockquotes or lists stay Markdown), canonical layout, empty-Markdown
-    drop, and `originId`-based lossless diff serializer specified in
+    drop, and content-diff lossless serializer specified in
     [WEB_UI.md §2](../WEB_UI.md#serialization-grammar--canonical-layout):
     - YAML frontmatter preserved verbatim;
     - backtick and tilde fences (`ds`/`datascript`), nested fences per CommonMark, unclosed fences
@@ -34,15 +34,13 @@ REPL, and `datascript-wasm` (M5) all share one implementation
       stacking `:literal` escape on their tag, a fence left open at the end of any cell followed by
       another cell gets a closing fence appended, and a first Markdown cell starting with `---` (no
       frontmatter) gets a leading blank line;
-    - opaque per-cell `originId` (byte range + content hash) returned by the parser and matched on
-      serialize-with-base so untouched cells retain exact original bytes and line endings
-      unambiguously even with duplicate identical cells or reorders. Separators are recomputed
-      from each cell's new neighbours (original separator bytes reused only between the same two
-      untouched cells in the same order; `<!-- ds:cell -->` whenever two Markdown cells become
-      adjacent), and a repeated non-null `originId` is a reported error. Serializing also
-      returns the fresh `originId` of every cell in the written output (the server sends these back
-      from `PUT`), and an `originId` not found in the base is a reported mismatch, never silently
-      re-serialized.
+    - `serialize_with_base(base_text, cells)`: no cell IDs. It parses the base, matches incoming
+      cells to base cells by `(kind, text)` (an LCS diff, then each leftover incoming cell pairs
+      with the first leftover identical base cell, so moved cells match; duplicates pair in
+      document order), re-emits matched cells' exact original bytes and line endings, and
+      serializes unmatched cells canonically. Separators are recomputed from each cell's new
+      neighbours (original separator bytes reused only between the same two matched cells in the
+      same order; `<!-- ds:cell -->` whenever two Markdown cells become adjacent).
 - **Shared `StitchedProgram` & `DS1085`** (`datascript-compiler`, `datascript-diagnostics`):
   - Extract the pure segment-stitching and offset-mapping primitive from `datascript-cli`'s
     `ReplProgram`, supporting:
@@ -50,8 +48,8 @@ REPL, and `datascript-wasm` (M5) all share one implementation
     2. single-cell stitching that syntactically computes the target cell's **transitive upstream
        `let` dependencies** (parsing upstream cells with recovery, over-approximating references
        by identifier text), prepends only those `let` statements in document order, and emits
-       **`DS1085`** (register active in `codes.rs` & `DIAGNOSTICS.md`) exactly per rules (a) and
-       (b) in [WEB_UI.md §3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085), with the
+       **`DS1085`** (register active in `codes.rs` & `DIAGNOSTICS.md`) exactly per the rule in
+       [WEB_UI.md §3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085), with the
        message, primary span, secondary label, and help given there;
     3. single-statement stitching (Run statement at cursor, export): the same as 2, but keeping
        only the target query statement and the `let`s it transitively references from the target
@@ -71,39 +69,34 @@ REPL, and `datascript-wasm` (M5) all share one implementation
       cells with `<!-- ds:cell -->`, literal `<!-- ds:cell -->` **and** literal
       `<!-- ds:cell:literal -->` escaping, a Markdown cell holding a top-level ```` ```ds ```` block,
       a Markdown cell ending in an unclosed ```` ```json ```` fence followed by a DataScript cell, a
-      first Markdown cell starting with `---`, and `originId`
-      partial-edit diff preservation across duplicate identical cells and reorders.
+      first Markdown cell starting with `---`, and content-diff
+      preservation across partial edits, duplicate identical cells, and reorders.
 - [ ] Serialize-with-base boundary tests where only neighbours change: deleting the DataScript
       cell between two untouched Markdown cells (they stay two cells, joined by
       `<!-- ds:cell -->`), appending a cell after an untouched last cell with an unclosed
       DataScript or Markdown fence (not swallowed), moving an untouched Markdown cell starting with
-      `---` to the top of a file without frontmatter (not read as frontmatter), and a repeated
-      `originId` reported as an error.
+      `---` to the top of a file without frontmatter (not read as frontmatter).
 - [ ] Property test: `parse(serialize(cells)) == normalize(cells)` (empty Markdown cells dropped,
       Markdown cells' leading/trailing blank lines trimmed) for generated cell lists (random
       Markdown and DataScript text including fences, `---`, and `ds:cell` lines), apart from
       appended closing fences; also for serialize-with-base after random deletes, reorders, and
       inserts.
-- [ ] Repeated-save test: parse, edit cell A, serialize, re-parse to get fresh `originId`s, edit
-      cell B, serialize again. Cell A (CRLF, `~~~datascript` fence) and every untouched cell keep
-      their bytes after the second save, and a stale `originId` is reported as a mismatch rather
-      than silently canonicalized.
+- [ ] Repeated-save test: parse, edit cell A, serialize with base, then edit cell B and serialize
+      again against the first save's output. Every untouched cell (one with CRLF and a
+      `~~~datascript` fence) keeps its bytes after both saves.
 - [ ] Unit tests for `StitchedProgram` whole-notebook and transitive single-cell stitching, span
-      mapping (multi-byte UTF-8/UTF-16), and `DS1085`: fires under rule (a) (referenced `let` with
-      a type error; referenced name declared twice upstream, `DS1003`) and rule (b) (upstream
-      `let` with a missing name, and the target has a name the binder cannot resolve; `DS1085`
-      replaces that unknown-name error);
-      does *not* fire on an unreferenced broken `let`, a broken query next to a valid `let` in the
-      same cell, an upstream warning, or an undeclared name with no upstream syntax error (that is
-      the ordinary unknown-name diagnostic), or a target that uses only existing columns and
-      functions while an upstream `let` has a missing name; a column whose name matches an upstream `let`
+      mapping (multi-byte UTF-8/UTF-16), and `DS1085`: fires for a referenced `let` with a type
+      error and for a referenced name declared twice upstream (`DS1003`); does *not* fire on an
+      unreferenced broken `let`, a broken query next to a valid `let` in the same cell, an upstream
+      warning, or an upstream `let` whose name is missing (the target gets the ordinary
+      unknown-name error for a name it might have defined); a column whose name matches an upstream `let`
       prepends that `let` harmlessly. Single-statement stitching leaves out a broken neighbouring
       query statement in the target cell, and prefix stitching includes an unreferenced upstream
       `let`.
 - [ ] Rendered-output snapshot tests (error output is first-class behaviour, AGENTS.md): `.dsnb`
       fixtures under `crates/datascript-compiler/tests/notebooks/` whose expected output is the
       rendered diagnostic text (code, message, primary span, secondary label, help, `.dsnb` line
-      and column) for `DS1085` under both rules and for cross-cell `DS1003`. `.dstest` is not used
+      and column) for `DS1085` and for cross-cell `DS1003`. `.dstest` is not used
       because its `---- query` section models one snippet, not a multi-cell file; M4-06 adds the
       cross-cell `DS1003` case end to end through `ds check` (`ds check` checks the whole
       notebook, so it never emits `DS1085`; M4-10 covers `DS1085` end to end over `WS /api/ws`).

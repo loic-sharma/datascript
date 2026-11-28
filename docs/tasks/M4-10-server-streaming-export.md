@@ -53,11 +53,10 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
     runtime or I/O error after the headers are sent it **aborts the connection** (never a clean
     end, so the browser marks the download failed) and sends an `exportFailed` WS event with the
     `Diagnostic` ([WEB_UI.md §6](../WEB_UI.md#server-auth-csp--api-contract-datascript-server-m4-01-m4-10-m4-04--m4-05)).
-  - **Formats.** Today `writers.rs` has CSV, JSON and NDJSON, and `write_json` takes every batch
-    at once. v1 export offers `csv` and `ndjson` (existing row writers), `json` (add a streaming
-    JSON-array writer: `[`, rows with separators per batch, `]`) and `arrow` (add a streaming Arrow
-    IPC file writer). `parquet` is added by the M2-27 carried-over item below and `xlsx` by
-    M2-28's. `GET /api/info` lists the formats this server can write, and the UI shows only
+  - **Formats.** v1 export offers `csv` and `ndjson`, the existing streaming row writers in
+    `writers.rs`; this task adds no writer. `json` is added by the carried-over item below once
+    M2-26 makes `write_json` stream (today it takes every batch at once), `parquet` once M2-27
+    lands, and `xlsx` once M2-28 lands. `GET /api/info` lists the formats this server can write, and the UI shows only
     those.
 
 ## Acceptance criteria
@@ -66,7 +65,7 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
 - [ ] API/WS integration tests covering:
   - WS cookie + `Origin` auth, streaming batches, cancellation, `sourceCount`/`rowLimit`, `DS4060`
     truncation (default & custom `row_limit`), per-result `sourceCount` in a multi-statement
-    cell, `DS1085` propagation (rules a and b; not on an unreferenced broken `let` or upstream
+    cell, `DS1085` propagation (not on an unreferenced broken `let` or upstream
     query error), a statement run and an export succeeding while another query statement in the
     same cell has an error (and a whole-cell run of that cell blocked by it),
     `DS0004` suppression on `let`-only cells, workspace file-watch invalidation,
@@ -76,7 +75,7 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
   - export failures: a check or missing-source error returned by `POST /api/export` with no
     ticket, and an error mid-stream aborting the connection (the client sees an incomplete body,
     not a clean end) plus an `exportFailed` WS event;
-  - each v1 format (`csv`, `ndjson`, `json`, `arrow`) streaming a multi-batch result larger than
+  - each v1 format (`csv`, `ndjson`) streaming a multi-batch result larger than
     `row_limit`, read back and compared row for row.
 - [ ] Exact JSON/WebSocket wire contract documented alongside [WEB_UI.md](../WEB_UI.md) (shared
       with M5 WASM).
@@ -84,6 +83,6 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
 ## Carried over
 - [ ] (from M2-11) The streaming API exists: `Session::start` returns a `RunStream` (`Send`, owns its engine and context) whose `next_query()` yields a `QueryStream` per query, batches arriving as they are produced, behind the panic boundary (D-055). Use it for streaming and cancellation over WebSocket (dropping it cancels the query) instead of building another.
 - [ ] (from M1-07) `ExecContext::row_limit` is enforced by `collect` and sets `QueryResult::truncated` (D-043). Extend it with the streaming-limit helper above, implement D-064's `DS4060` truncation info diagnostic (from this task's block, DS4060–DS4064), and show it. Invalidate the session's schema cache when files under the root change, since failed lookups are cached too.
-- [ ] (from planning, 2026-11-24) D-064's "export the full result" should stream through `datascript_engine::writers`, the same writers the `output` operator uses (M2-25…M2-27, M2-28 for Excel), so the export offers every format they can write. If M2-27 is done, add `parquet` to the export formats with a read-back test (M2-27's "Hosts" note covers it if it lands after this task); likewise `xlsx` for M2-28.
+- [ ] (from planning, 2026-11-24) D-064's "export the full result" should stream through `datascript_engine::writers`, the same writers the `output` operator uses (M2-25…M2-27, M2-28 for Excel), so the export offers every format they can write. If M2-26 is done (`write_json` streams), add `json` to the export formats with a read-back test (M2-26's note covers it if it lands after this task). If M2-27 is done, add `parquet` likewise (M2-27's "Hosts" note covers it if it lands after this task); likewise `xlsx` for M2-28.
 
 ## Follow-ups

@@ -128,35 +128,30 @@ A `.dsnb` file is a sequence of cells parsed from and serialized to UTF-8 Markdo
 4. **Canonical separators & deterministic lossless round-trip**:
    - Blank lines between cells belong to the separator (canonical separator for newly serialized
      cells is one blank line `\n\n`, using the file's dominant line ending, defaulting to `\n`).
-   - `GET /api/file` attaches an opaque **`originId`** (derived from the cell's original byte range
-     and content hash in the on-disk file) to every parsed cell, and the client echoes each cell's
-     `originId` back on `PUT /api/file` (new cells have `originId: null`). Under the per-path lock
-     at `expectedVersion`, the server matches each incoming cell unambiguously by `originId`
-     (including duplicate identical cells and reorders): any cell whose `originId` matches
-     and whose text is unchanged re-emits its exact original bytes (preserving line endings, fence
-     style, and tag); modified or newly inserted cells are serialized in canonical form. A cell's
-     bytes never include the separator or a `<!-- ds:cell -->` delimiter: **separators are
-     recomputed from each cell's new neighbours**. The original separator bytes are reused only when
-     both neighbours are the same untouched cells, in the same order, as on disk; otherwise the
-     canonical separator is written, with `<!-- ds:cell -->` whenever two Markdown cells end up
-     adjacent (e.g. after deleting the DataScript cell between them).
-   - **Repeated `originId`s**: duplicating, copying, or pasting a cell gives the copy
-     `originId: null`. A `PUT` that carries the same non-null `originId` twice is rejected with
-     `400`, never guessed.
-   - Because `originId`s describe byte ranges in the file as it was on disk, every write makes the
-     client's `originId`s stale. A successful `PUT /api/file` therefore returns the new `version`
-     **and a fresh `originId` for every cell, in request order** (`WriteResult`); the client swaps
-     them in before its next save. A `PUT` carrying an `originId` that does not belong to the file
-     at `expectedVersion` is rejected with `409`, never silently canonicalized.
-   - **One save in flight per file**: because every save makes the previous `originId`s and
-     `version` stale, `ServerRuntime` never sends a second `PUT` for a path until the previous one
-     has answered. Edits made meanwhile are merged into one follow-up save, sent with the fresh
-     `originId`s and `version` from the `WriteResult` (or, after a failure, retried with the old
-     ones). Without this, a slow disk turns two quick auto-saves into a `409` and a false
-     "changed on disk" banner.
+   - **Content diff against the base file (no cell IDs)**: the client sends only `expectedVersion`
+     and its cells (`{ kind, text }`) on `PUT /api/file`. Under the per-path lock, after the `409`
+     check, the server re-parses the on-disk file (which is the file at `expectedVersion`) and
+     matches incoming cells to base cells by **content**: first a longest-common-subsequence diff
+     over the `(kind, text)` sequences, then each still-unmatched incoming cell pairs with the
+     first still-unmatched base cell of identical content (so a moved cell is matched too). The
+     match is deterministic, and identical duplicate cells pair up in document order. A matched
+     cell re-emits its exact original bytes (preserving line endings, fence style, and tag); an
+     unmatched (modified or new) cell is serialized in canonical form. A cell's bytes never
+     include the separator or a `<!-- ds:cell -->` delimiter: **separators are recomputed from
+     each cell's new neighbours**. The original separator bytes are reused only when both
+     neighbours are the same matched cells, in the same order, as on disk; otherwise the canonical
+     separator is written, with `<!-- ds:cell -->` whenever two Markdown cells end up adjacent
+     (e.g. after deleting the DataScript cell between them).
+   - Nothing the client holds goes stale except `version`: a successful `PUT` returns
+     `WriteResult { version }`, and the client sends that version with its next save.
+   - **One save in flight per file**: because every save changes `version`, `ServerRuntime` never
+     sends a second `PUT` for a path until the previous one has answered. Edits made meanwhile are
+     merged into one follow-up save, sent with the fresh `version` (or, after a failure, retried
+     with the old one). Without this, a slow disk turns two quick auto-saves into a `409` and a
+     false "changed on disk" banner.
    - **`expectedVersion` is required** on every `PUT` to an existing file: a `PUT` without it is
-     rejected with `428 Precondition Required`, because the `409` check and the `originId` match
-     both need a base version. Only `POST` (create) omits it.
+     rejected with `428 Precondition Required`, because the `409` check and the content diff both
+     need a base version. Only `POST` (create) omits it.
    - **Cell indexes**: `cellIndex` and `targetCellIndex` count **every** cell in document order,
      Markdown cells included, so the client can use the index of its own cell list directly.
      `statementIndex` counts only the query statements inside one DataScript cell (§3).
@@ -181,7 +176,7 @@ A `.dsnb` file is a sequence of cells parsed from and serialized to UTF-8 Markdo
   Obsidian-style), with full undo/redo history and immediate flush on `Cmd/Ctrl+S`.
 - **Scratchpads** stay in memory until explicitly saved.
 - **Atomic writes & serialization**: Every `PUT /api/file` runs under a per-path `tokio::sync::Mutex`
-  in the server so the `expectedVersion` check, `originId` diff, and write never interleave. Writes
+  in the server so the `expectedVersion` check, content diff, and write never interleave. Writes
   go to a temporary file in the same directory, call `sync_all()`, preserve existing Unix
   permissions, and atomically rename into place—so a crash or kill mid-auto-save never truncates a
   notebook.
@@ -238,30 +233,22 @@ This section is the single definition of when an interactive single-cell run is 
   binder would resolve it to a column. Prepending an unused `let` is harmless; missing a used one
   is not.
 - If two upstream statements declare the same name, both are prepended; the later one carries
-  `DS1003` (D-007), which blocks the run under rule (a) below.
-- `StitchedProgram` emits **`DS1085`** (error) if and only if:
-  - **(a)** a transitively referenced upstream `let` statement has an **error-severity**
-    diagnostic (lexical, syntax, or semantic, including `DS1003`), **or**
-  - **(b)** some upstream statement has a syntax error that prevents knowing what name it declares
-    (a statement starting with `let` whose name is missing, or a stretch of a cell whose statement
-    boundaries cannot be recovered), **and** binding cell $k$ with the prepended `let`s leaves a
-    name unresolved: the binder reports an unknown-name error (`DS1001` unknown column or `DS1002`
-    unknown name) for it. Rule (b) is decided **after** binding, not from the syntactic
-    over-approximation above, so identifiers that resolve to columns, functions, or prepended `let`s
-    never trigger it. A broken `let` whose name *was* recovered counts as declaring that name and
-    falls under rule (a). When rule (b) fires, `DS1085` replaces the unknown-name error for that
-    name rather than being reported next to it.
+  `DS1003` (D-007), which blocks the run under the rule below.
+- `StitchedProgram` emits **`DS1085`** (error) if and only if a transitively referenced upstream
+  `let` statement has an **error-severity** diagnostic (lexical, syntax, or semantic, including
+  `DS1003`). A broken `let` counts as declaring a name whenever recovery finds the name.
 
-  Otherwise an unresolved name is the ordinary unknown-name diagnostic in cell $k$, and errors in
-  unreferenced upstream `let`s, upstream query statements (including a broken query next to a
-  valid `let` in the same cell), and warnings anywhere **do not block** running cell $k$.
+  Nothing else blocks: errors in unreferenced upstream `let`s, upstream query statements
+  (including a broken query next to a valid `let` in the same cell), and warnings anywhere **do
+  not block** running cell $k$. An upstream statement so broken that its name cannot be recovered
+  (e.g. `let = …`, or a stretch whose statement boundaries are lost) declares nothing, so a name in
+  cell $k$ that it might have defined is the ordinary unknown-name error (`DS1001`/`DS1002`) in
+  cell $k$. Live check already shows the syntax error on the upstream cell, so no special
+  diagnostic is needed.
 - **`DS1085` shape** (DIAGNOSTICS.md style):
-  - message: ``cannot run this cell because `orders` (cell 2) has errors`` (rule a) or
-    ``cannot run this cell because cell 2 has a syntax error that may define `orders` `` (rule b);
-  - primary span: the first reference to the blocking name in cell $k$ (rule a), or the first
-    unresolved name (rule b);
-  - secondary label: the broken upstream statement (`` `orders` is defined here ``, or
-    `` this statement could not be parsed ``);
+  - message: ``cannot run this cell because `orders` (cell 2) has errors``;
+  - primary span: the first reference to the blocking name in cell $k$;
+  - secondary label: the broken upstream statement (`` `orders` is defined here ``);
   - help: ``fix the error in cell 2, then run this cell again``. The web UI renders the secondary
     label as a jump link to that cell.
 - **What the target cell contributes**: `Session::start` checks the whole stitched program and runs
@@ -340,10 +327,11 @@ as in live `check`.
   without buffering in browser memory, export uses a two-step ticketed download (`POST /api/export`
   → one-shot `GET /api/export/<ticket>`, §6) streaming uncapped rows through
   `datascript_engine::writers`; a failed export is reported, never saved as a file that looks
-  complete (§6). **v1 formats** are CSV and NDJSON (the existing row writers) and
-  JSON (M4-10 adds a streaming JSON-array writer, since today's `write_json` takes every batch at
-  once) and Arrow IPC (M4-10 adds a streaming IPC writer). Parquet is offered once M2-27 lands and
-  `.xlsx` once M2-28 lands; the export menu lists only the formats the running server can write.
+  complete (§6). **v1 formats** are CSV and NDJSON, the existing streaming row
+  writers, so M4-10 adds no writer. JSON is offered once M2-26 makes `write_json` stream (today it
+  takes every batch at once), Parquet once M2-27 lands, and `.xlsx` once M2-28 lands; new formats
+  come from the `output` operator's writers, never from export-only code. The export menu lists
+  only the formats the running server can write.
 
 ---
 
@@ -631,9 +619,9 @@ export interface Runtime {
 
   // Workspace files (when capabilities.workspaceFiles is true)
   listFiles(dir?: string): Promise<FileEntry[]>;
-  // Returns structured cells (with opaque originId, parsed by datascript-compiler) for `.dsnb`, or raw text for `.ds`, plus version/etag
+  // Returns structured cells ({ kind, text }, parsed by datascript-compiler) for `.dsnb`, or raw text for `.ds`, plus version/etag
   readFile(path: string): Promise<FileDocument>;
-  // expectedVersion is required (428 without it); at most one writeFile per path in flight (§2)
+  // expectedVersion is required (428 without it); at most one writeFile per path in flight (§2); WriteResult = { version }
   writeFile(path: string, doc: FileDocumentInput, expectedVersion: string): Promise<WriteResult>;
   createFile(path: string, doc?: FileDocumentInput): Promise<FileEntry>;
   // Added in M4-05:
@@ -704,15 +692,15 @@ How each target plugs in:
 | `GET /api/info` | M4-01 | Root folder name, capabilities, persisted preferences (`row_limit`, theme), registered host tables |
 | `PATCH /api/prefs` | M4-01 | Persist per-root UI preferences (`row_limit`, theme) in the user's OS config dir (`dirs::config_dir()`) |
 | `GET /api/files?dir=&includeHidden=` | M4-01 | Directory tree under root (sandboxed, D-016) |
-| `GET /api/file?path=` | M4-01 | Read a `.dsnb` (returned as canonical parsed cells with `originId` + frontmatter) or `.ds` text file + `version` (etag) |
-| `PUT /api/file` | M4-01 | Atomic save (per-path lock, required `expectedVersion` (`428` without it), `409` check, `originId` lossless `.dsnb` diff via `datascript-compiler`, temp file + `sync_all` + rename; refuses non-`.dsnb`/`.ds` paths and symlink components). Returns `WriteResult { version, originIds }` with a fresh `originId` per cell in request order |
+| `GET /api/file?path=` | M4-01 | Read a `.dsnb` (returned as parsed cells `{ kind, text }` + frontmatter) or `.ds` text file + `version` (etag) |
+| `PUT /api/file` | M4-01 | Atomic save (per-path lock, required `expectedVersion` (`428` without it), `409` check, lossless `.dsnb` content diff against the on-disk file via `datascript-compiler`, temp file + `sync_all` + rename; refuses non-`.dsnb`/`.ds` paths and symlink components). Returns `WriteResult { version }` |
 | `POST /api/file` | M4-01 | Create a new `.dsnb` or `.ds` file atomically (`O_CREAT\|O_EXCL`; refuses non-`.dsnb`/`.ds` paths, existing files, and symlink components) |
 | `POST /api/dir`, `PATCH /api/file`, `DELETE /api/file` | M4-05 | Create folders, rename (no-clobber: `rustix` no-replace rename / `MoveFileExW` for files and folders, `hard_link` fallback for files only), or delete `.dsnb`/`.ds` files or safe folders (verify the whole tree first, then per-file unlink + bottom-up `rmdir`; refuses symlinks and any folder containing files other than `.dsnb`/`.ds` and OS clutter such as `.DS_Store`) |
 | `GET /api/schema?source=` | M4-01 | Inspect schema of a file or host table via `Session` |
 | `POST /api/check` | M4-01 | Check a `.ds` script or whole `.dsnb` notebook in one pass (`{ path, cells }` → diagnostics grouped by `cellIndex` (every cell, Markdown included) in UTF-16 offsets + per-cell in-scope `let` summaries) |
 | `WS /api/ws` | M4-10 | Multiplexed stream for: (1) query execution (`run` with optional shared `nowMicros` for Run all / `cancel` → `started` with `nowMicros` and `rowLimit`, then per result its `statementIndex` and `sourceCount`, streaming capped Arrow IPC batches + `RenderSpec` + diagnostics incl. `DS4060`/`DS1085` + timing, suppressing `DS0004` on `let`-only cells), and (2) workspace file-change notifications |
 | `POST /api/export` | M4-10 | Accepts the run-time cell snapshot `{ path, cells, targetCellIndex, statementIndex, nowMicros, format }` (`statementIndex` is 0-based among the target cell's own query statements), checks, plans and starts the query (returning diagnostics instead of a ticket on failure), and returns a short-lived single-use download URL `/api/export/<ticket>` |
-| `GET /api/export/<ticket>` | M4-10 | Requires the session cookie + one-shot ticket (checks `Sec-Fetch-Site` when present) and streams the full uncapped result as `Content-Disposition: attachment`, aborting the connection on a mid-stream error (plus a WS `exportFailed` event) via `datascript_engine::writers` (v1: `csv`, `ndjson`, `json`, `arrow`; `parquet` once M2-27 lands, `xlsx` once M2-28 lands) |
+| `GET /api/export/<ticket>` | M4-10 | Requires the session cookie + one-shot ticket (checks `Sec-Fetch-Site` when present) and streams the full uncapped result as `Content-Disposition: attachment`, aborting the connection on a mid-stream error (plus a WS `exportFailed` event) via `datascript_engine::writers` (v1: `csv`, `ndjson`; `json` once M2-26 lands, `parquet` once M2-27 lands, `xlsx` once M2-28 lands) |
 | `POST /api/complete`, `/api/hover`, `/api/signature-help` | M4-04 | IDE helpers (`{ path, cells, targetCellIndex, offset }`) backed by `datascript_compiler::ide` over the whole-notebook `StitchedProgram` up to the target cell (every upstream `let` in scope, §3) |
 
 ### Cross-cell combined program & `.dsnb` parser (`datascript-compiler`, M4-08)

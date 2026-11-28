@@ -38,8 +38,8 @@ truncation-aware sorting + **Sort in query**, and two-step streaming export (D-0
     `statementIndex`) at run time and wire the **Export full result** menu to `POST /api/export` →
     `GET /api/export/<ticket>` (authenticated by session cookie + one-shot ticket; re-executes
     against current disk files), started from a programmatic `<a download>` click so the page
-    never unloads; show `POST` diagnostics and `exportFailed` WS events in the cell footer. The menu lists the formats the server reports (v1: CSV, NDJSON,
-    JSON, Arrow IPC; Parquet and `.xlsx` once M2-27 / M2-28 land).
+    never unloads; show `POST` diagnostics and `exportFailed` WS events in the cell footer. The menu lists the formats the server reports (v1: CSV, NDJSON;
+    JSON, Parquet and `.xlsx` once M2-26 / M2-27 / M2-28 land).
 
 ## Acceptance criteria
 - [ ] Vitest unit tests for transitive-`let` staleness fingerprinting, Run-statement-at-cursor

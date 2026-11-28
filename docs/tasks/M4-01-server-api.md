@@ -30,14 +30,13 @@ WebSocket streaming runs, row-limit capping, and export land in M4-10.
   - `GET /api/info` & `PATCH /api/prefs`: persist per-root UI preferences (`row_limit`, theme) in
     the user's OS config dir (`dirs::config_dir()`) so settings survive `ds ui`'s random port.
   - `GET /api/files?dir=&includeHidden=`, `GET /api/schema?source=`.
-  - `GET /api/file` (returns parsed cells with `originId` via M4-08 for `.dsnb`, or raw text for
+  - `GET /api/file` (returns parsed cells `{ kind, text }` via M4-08 for `.dsnb`, or raw text for
     `.ds`, plus `version`), `POST /api/file` (`OpenOptions::create_new(true)`), and `PUT /api/file`
-    (per-path `tokio::sync::Mutex`, `expectedVersion` `409` check, `originId` lossless diff via
-    M4-08, atomic temp-file + `sync_all` + rename preserving Unix permissions). `PUT` requires
-    `expectedVersion` (`428 Precondition Required` without it) and returns
-    `WriteResult { version, originIds }` with a fresh `originId` per cell in request order, rejects
-    an `originId` that doesn't belong to the file at `expectedVersion` with `409`, and records the
-    `version` it wrote per path so M4-10's watcher can ignore the server's own writes.
+    (per-path `tokio::sync::Mutex`, `expectedVersion` `409` check, lossless content diff against
+    the on-disk file via M4-08, atomic temp-file + `sync_all` + rename preserving Unix
+    permissions). `PUT` requires `expectedVersion` (`428 Precondition Required` without it),
+    returns `WriteResult { version }`, and records the `version` it wrote per path so M4-10's
+    watcher can ignore the server's own writes.
   - Refuse non-`.dsnb`/`.ds` paths and any path with a symlink component under the root
     (`symlink_metadata` + final `O_NOFOLLOW`).
 - **Whole-notebook check & embedded SPA**:
@@ -57,10 +56,10 @@ WebSocket streaming runs, row-limit capping, and export land in M4-10.
   - server-persisted preferences (`PATCH /api/prefs` → `GET /api/info` across server restarts);
   - path traversal and workspace safety: `.csv`/`.parquet` write rejection, in-root symlink
     rejection (`notes.ds -> data/orders.csv`), atomic `O_CREAT|O_EXCL` create refusal on existing
-    files, atomic save + `409` conflicts, and `originId` lossless `PUT` diffing including **two
-    consecutive saves** (edit cell A, save, use the returned `originId`s, edit cell B, save: cell A
-    and untouched cells stay byte-identical), a stale `originId` getting `409`, and a `PUT`
-    without `expectedVersion` getting `428`;
+    files, atomic save + `409` conflicts, and lossless content-diff `PUT`s including **two
+    consecutive saves** (edit cell A, save, use the returned `version`, edit cell B, save: cell A
+    and untouched cells stay byte-identical), a moved untouched cell keeping its bytes, and a
+    `PUT` without `expectedVersion` getting `428`;
   - whole-notebook `POST /api/check` with cross-cell `let`s and UTF-16 mapped spans.
 - [ ] Running `from '/etc/passwd' | take 1`, `from '../x.csv'` and a symlink pointing out of the
       root all fail with DS3007 (D-016, D-036).

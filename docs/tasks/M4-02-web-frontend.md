@@ -32,7 +32,7 @@ M4-04; power-user tabs/shortcuts/file management in M4-05. `Runtime.run` is decl
     [WEB_UI.md §2](../WEB_UI.md#plain-ds-scripts--scratchpads)), drag-and-drop cell reordering, and
     hover `+ DataScript` / `+ Markdown` dividers.
   - Right pane shell starting collapsed by default (populated in M4-04).
-  - Load/save structured `.dsnb` cells with opaque `originId` directly via `Runtime` (no duplicate
+  - Load/save structured `.dsnb` cells (`{ kind, text }`) directly via `Runtime` (no duplicate
     TS parser), with debounced auto-save (~500 ms), `Cmd/Ctrl+S` flush, and `409 Conflict` banner.
 - **Cells & diagnostics**:
   - **Markdown cells**: GFM rendered via DOMPurify (no external `http(s)://` or relative workspace
@@ -41,14 +41,12 @@ M4-04; power-user tabs/shortcuts/file management in M4-05. `Runtime.run` is decl
   - **DataScript cells**: CodeMirror 6 with DataScript highlighting (D-026), whole-notebook live
     checking (`POST /api/check`), inline squiggles, and rustc/Claude-Code-style diagnostic cards
     with one-click **Apply fix** and `DS1085` upstream jump links.
-  - Swap in the fresh `originId`s and `version` returned by every `PUT /api/file` before the next
-    auto-save, keeping **at most one `PUT` per path in flight** and merging edits made meanwhile
+  - Use the fresh `version` returned by every `PUT /api/file` for the next auto-save, keeping **at most one `PUT` per path in flight** and merging edits made meanwhile
     into one follow-up save ([WEB_UI.md §2](../WEB_UI.md#serialization-grammar--canonical-layout)).
 
 ## Acceptance criteria
-- [ ] Vitest unit tests for `ServerRuntime` (including `originId` swap after save, and edits made
-      while a slow `PUT` is in flight producing exactly one follow-up `PUT` with the fresh
-      `originId`s and no `409`), notebook-relative
+- [ ] Vitest unit tests for `ServerRuntime` (including edits made while a slow `PUT` is in
+      flight producing exactly one follow-up `PUT` with the fresh `version` and no `409`), notebook-relative
       path calculation (root notebook, nested subfolder notebook, Scratchpad save-location
       warning), and Markdown sanitization.
 - [ ] Playwright smoke test against a real `ds ui`: verifies strict CSP header, page reload
