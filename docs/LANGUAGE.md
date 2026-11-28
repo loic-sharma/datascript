@@ -152,7 +152,7 @@ from big | summarize count() by customerId                // query statement (pr
 
 ### 2.1 Notebooks (`.dsnb`)
 
-A DataScript notebook (`.dsnb`, D-062) is a plain-text Markdown file whose fenced `ds` /
+A DataScript notebook (`.dsnb`, D-064) is a plain-text Markdown file whose fenced `ds` /
 `datascript` code blocks form a sequence of DataScript cells (file grammar in
 [WEB_UI.md §2](WEB_UI.md#2-notebook-file-format-dsnb)). Semantically, a notebook follows the same
 rules as a single `.ds` program split into cells:

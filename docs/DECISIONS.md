@@ -466,7 +466,7 @@ and `ds ui` invalidate when files may have changed (M1-12, M3-01, M4-10). The ca
 base directory, the sandbox and the `SourceRef`, because the sandbox can refuse a path that is
 fine without it. **The row limit is enforced by the session**, not the backend: `ResultStream::
 collect` stops after `row_limit` rows, drops the stream (cancelling the query) once one more row
-arrives, and sets `QueryResult::truncated`. How frontends word that is D-064's (M4-10).
+arrives, and sets `QueryResult::truncated`. How frontends word that is D-066's (M4-10).
 **`QueryResult`** is `{ schema, batches, render, diagnostics, truncated }`: `render` is copied from
 the plan; `diagnostics` holds per-query warnings (none yet), while errors stop the run and go to
 `RunOutput::diagnostics` together with every non-error diagnostic from checking. **Panics**: every
@@ -588,7 +588,7 @@ own snippet (`<repl:N>`, lines from 1), so an error renders against what the use
 an error in a saved let (its file was deleted) against that let's own snippet. The alternative, a
 compiler API taking earlier inputs as a prelude, is cleaner but changes `datascript-compiler` for
 one frontend; the LSP and web UI work on whole documents and don't need it. *(Partly superseded by
-D-062: the web UI, CLI, and LSP now share `StitchedProgram` in `datascript-compiler` for `.dsnb`
+D-064: the web UI, CLI, and LSP now share `StitchedProgram` in `datascript-compiler` for `.dsnb`
 notebooks.)* **Saving**: an input's
 lets are saved once it checks without errors, before its queries run; a check error saves nothing,
 a runtime error or Ctrl-C undoes nothing. **Redefinition is allowed in the REPL** (≠ `DS1003` in
@@ -928,10 +928,175 @@ KQL rejects trailing commas, so queries that use them cannot be pasted verbatim 
   no constant, `severity: None`), never to be reused.
 *(M2-19, 2026-11-22.)*
 
-### D-061 — Web front-end stack: React, Vite, Tailwind CSS, CodeMirror 6, Apache ECharts
-**Accepted.** Closes Q-002. *(D-060 is M3-03.)* The shared `web/` SPA (used by `ds ui`, the M5
-WASM playground, M3-06's VS Code results panel via component reuse, and a potential future Tauri
-desktop shell) standardizes on:
+### D-060 — Quick fixes, `let` navigation, document symbols and semantic tokens (M3-03)
+**Accepted.**
+
+- **Shared in `datascript_compiler::ide` with `Option<&Analysis>`.** `goto_definition`,
+  `references`, `prepare_rename`, `rename`, `document_symbols` and `semantic_tokens` live in the
+  compiler so the LSP, `ds ui` and WASM give the same answers. Each takes `Option<&Analysis>`:
+  with `None` (syntax-only mode, D-053) document symbols, semantic tokens and no-column `let`
+  positions (`let` RHS, `from`, `join` right, `union`, `take`, `top` count, scalar `render`
+  properties) work from the syntax tree alone and read no files. In row-expression positions where
+  columns win over scalar `let`s (D-038), a name resolves to a `let` only when the operator's input
+  columns are known and do not contain it: when schemas are unavailable (syntax-only mode, or a
+  missing/unreadable source), those ambiguous sites are excluded from `goto_definition`,
+  `references` and `semantic_tokens` (`readonly`) so real columns are never mistaken for `let`s,
+  and `prepare_rename` / `rename` refuse rather than risk rewriting column references.
+- **Quick-fix code actions.** `textDocument/codeAction` checks the document's diagnostics whose
+  primary span overlaps the requested range (only lexical and syntax diagnostics in syntax-only
+  mode). `MachineApplicable` suggestions become preferred quick fixes (`isPreferred: true`);
+  `MaybeIncorrect` suggestions become non-preferred quick fixes (`isPreferred: false`), so the
+  user can still pick ambiguous rewrites such as `DS0106`'s `,` vs `;` or `DS3002`'s
+  `read_csv(...)` manually without auto-fix applying them. `HasPlaceholders` is skipped.
+- **`let` rename validation, quoting and LSP request errors.** Renaming a `let` to a name with
+  spaces or a reserved word quotes it with `['...']` (`display_name`); an already-quoted `['...']`
+  name is accepted too. Empty names, control characters/line breaks, collisions with another `let`
+  in the same document (`DS1003`), collisions with an in-scope column at any row-expression
+  reference (including columns made by earlier `extend` items, D-038/D-040), and ambiguous
+  unknown-schema row-expression sites are rejected with `InvalidParams`. Duplicate `let`
+  definitions are never merged into the first binding's references. LSP request-level refusals
+  (`prepareRename`/`rename` `ResponseError`s) carry plain one-line messages in DataScript's house
+  style rather than full `Diagnostic` structs, because JSON-RPC errors have no diagnostic span or
+  label structure.
+- **Document symbols.** Top-level `let` statements (`VARIABLE` for scalar, `STRUCT` for tabular,
+  matching completion) and query statements (`OBJECT`, named `query 1`, `query 2`, … with a
+  single-line source preview in `detail`).
+- **Semantic tokens and TextMate alignment.** The legend uses standard LSP token types (`comment`,
+  `keyword`, `operator`, `enumMember`, `function`, `type`, `variable`, `property`, `number`,
+  `string`) and modifiers (`declaration`, `readonly`, `defaultLibrary`). `editors/vscode/package.json`
+  maps them via `semanticTokenScopes` onto the TextMate scopes in `datascript.tmLanguage.json`
+  (`keyword.defaultLibrary` → `keyword.control.operator.datascript`, `keyword.declaration` →
+  `storage.type.let.datascript`, `variable` → `variable.other.datascript`,
+  `variable.defaultLibrary` → `variable.language.datascript`, `function` →
+  `entity.name.function.datascript`, …) so themes color both identically, while contextual keywords
+  (`by`, `on`, `has`, `in`, `kind`, `from`, …) used as column or `let` names get `variable`.
+  Multi-line tokens (such as block comments) are split per line when delta-encoding for the LSP.
+- **`extend` prior items and broken subqueries.** `bind_extend` records the cumulative schema
+  after each bound `extend` item in `Analysis::stage_schemas` so `Doc::columns_at` resolves prior
+  items without walking the HIR. When a trailing syntax error marks an `extend` or parenthesized
+  subquery broken, the binder still binds complete items / the inner pipeline under a
+  diagnostic-suppressing guard to populate `stage_schemas`, then returns `Op::Error` /
+  `Source::Error` so lints never fire inside syntactically broken nodes.
+*(M3-03, 2026-11-27.)*
+
+### D-061 — Custom JSON/NDJSON reader with `arrow.json` columns (M2-33)
+**Accepted.** DataFusion's built-in `JsonFormat` delegates to `arrow-json`'s strict recursive
+schema inference and `ReaderBuilder`, which fails on heterogeneous nested fields and creates a
+static Arrow `Struct` child for every key in map-like objects. `datascript-datafusion` replaces it
+with its own streaming JSON/NDJSON `FileFormat` and `FileSource` (`json.rs`):
+
+- **Top-level inference lattice.** Up to `infer_rows` records (default 1,000, configurable via
+  `read_json(..., infer_rows = n)`) are sampled from **each file**. Each column's type is the
+  lattice join of its sampled values: `Null` is bottom; `Int64` + `Float64` → `Float64`;
+  consistent scalars infer `Boolean`, `Int64`, `Float64`, or `Utf8`; objects, arrays, and any
+  other mix (including mixed scalars such as `Int64` + `Utf8` or `Boolean` + `Utf8`) infer
+  `Utf8` with canonical extension type `arrow.json` (preserving JSON types losslessly for M2
+  `dynamic`). Keys first seen past `infer_rows` are dropped silently.
+- **Number edge cases.** A JSON number infers `Int64` only if it is an integer in `i64::MIN..=i64::MAX`
+  with no fraction or exponent; `1.0` and `1e3` infer `Float64`. Unlike `arrow-json`, integers
+  outside `i64` (such as `u64` IDs) and numbers whose magnitude overflows `f64` (such as `1e400`)
+  infer `Utf8` + `arrow.json`, keeping their exact digits instead of rounding or storing infinity.
+  **Accepted rounding:** in-range `i64` integers beyond ±2^53 lose precision when placed in a
+  `Float64` column (`Int64` + `Float64` in a sample or an in-range integer past `infer_rows` in a
+  `Float64` column); integer-only columns stay `Int64` and exact.
+- **All-null columns.** `Null` is bottom during the join so another file's type wins. A column
+  that is all `null` in every file's sample becomes `Utf8` + `arrow.json` (not `string` as for
+  CSV, amending D-044), so objects or scalars past `infer_rows` are stored losslessly.
+- **One schema per JSON source (never `DS3005`).** A JSON glob's schema is the same lattice join
+  taken over every file's sample (columns in order of first appearance, files in path order).
+  JSON sources skip `sources.rs::merge` entirely, never report `DS3005`, and read the whole glob
+  through one `ListingTable` without post-read casts (amending D-044). Every file is decoded
+  directly into the joined target schema by key name.
+- **Layout detection and UTF-8 BOM.** A leading UTF-8 BOM (`EF BB BF`) is skipped before layout
+  detection and decoding. Auto-detected `.json` sources (and `*.json` globs) detect JSON array vs.
+  NDJSON **per file** through `ObjectStore` (no `std::fs` call in layout detection), so a `*.json`
+  glob mixing NDJSON and array files reads each file in its own layout. Explicit `format = "ndjson"`
+  / `"array"` and `.ndjson`/`.jsonl` apply to every file.
+- **Duplicate keys and `arrow.json` encoding.** Duplicate keys within one top-level object follow
+  **last wins** (matching `serde_json` and `JSON.parse`). Inside `arrow.json` columns, every
+  non-null value is stored as raw JSON text: strings with quotes, numbers/booleans as written, and
+  objects/arrays with insignificant JSON whitespace removed outside string literals. Escapes,
+  number spelling, key order, and nested duplicate keys are kept as written; M2-03 `dynamic`
+  equality, grouping, and duplicate-key resolution must therefore operate on parsed or
+  canonicalized values rather than raw text (since `"\u00e9"` and `"é"` are stored differently).
+- **Strict type-check table, independent of projection.** The decoder never coerces silently:
+  `Boolean` accepts only `true`/`false`; `Int64` only in-range integers without fraction/exponent;
+  `Float64` only in-range integers and finite floats (rejecting out-of-`i64` integers and
+  `f64`-overflowing numbers to stay consistent with inference); plain `Utf8` only strings;
+  `Utf8` + `arrow.json` anything; `null` is accepted everywhere. `FileSource::try_pushdown_projection`
+  skips building Arrow arrays and stripping whitespace for unprojected columns, but every column
+  in the target schema is still type-checked on every record (including for `count`). Unlike DuckDB,
+  whether a file reads never depends on which columns the query projects; `read_json(...,
+  infer_rows = n)` is the escape hatch.
+- **Files read whole.** `DataScriptJsonSource::supports_repartitioning` returns `false` so
+  DataFusion never splits large uncompressed files into byte ranges: JSON arrays cannot start
+  mid-file, and NDJSON needs 1-based line numbers from byte 0 for structured `JsonReadError`
+  diagnostics (M2-34, M2-12). Parallelism across the files of a glob is unaffected.
+*(M2-33, 2026-11-28.)*
+
+### D-062 — `describe` operator and snake_case summary columns (M2-23)
+**Accepted.** DataScript adds a `describe` operator (**≠ KQL**) that summarizes every input column
+with statistics, following pandas/Polars `describe()` and DuckDB's `SUMMARIZE` rather than SQL
+`DESCRIBE` (metadata only, which DataScript calls `getschema`). Because SQL users may expect
+`describe` to be metadata-only, LANGUAGE.md, completion, hover, and REPL `.help` explicitly state
+that `describe` reads every row and point to `getschema` for metadata without reading data.
+
+- **Output schema and snake_case naming exception.** Every other generated column name in
+  DataScript is PascalCase following KQL (`Count`, `ColumnName`, `ColumnOrdinal`, `DataType`,
+  `Column1`). DataScript-only summary operators inspired by DuckDB and pandas (`describe`, and
+  later `output` in M2-25) deliberately use `snake_case`: `column_name: string`,
+  `column_type: string`, `count: long`, `null_percentage: real`, `approx_unique: long`,
+  `min: string`, `max: string`, `avg: real`, `std: real`, `q25: string`, `q50: string`,
+  `q75: string`. LANGUAGE.md §3.3 records this convention so later operators follow the family
+  they belong to.
+- **Per-type statistics and formatting.** `min`, `max`, `q25`, `q50` and `q75` hold values of
+  different types across rows, so they are `string` columns formatted the way `tostring` formats
+  them (not `dynamic`, keeping `describe` independent of M2-03). Numeric quartiles (`q25`, `q50`,
+  `q75`), including for `int` and `long` columns, are continuous interpolated `real` values
+  formatted with `tostring` (so whole-number quartiles print without `.0` and fractional quartiles
+  print with decimals, matching pandas `describe()`). `avg` and `std` have type `real`
+  and apply to numbers only (`int`, `long`, `real`); `datetime`, `timespan`, `string` and `bool`
+  report `null` for `avg` and `std`. `std` is the sample standard deviation (matching `stdev`),
+  returning `null` for fewer than 2 non-null values. On an empty input (0 rows), `null_percentage`
+  is `null` (never `NaN`), and `count` and `approx_unique` are `0`. Columns with no DataScript type
+  (`DS2008`, such as `Binary` or M1 `arrow.json`) appear with `column_type` matching `getschema`'s
+  `DataType` and only `count` and `null_percentage` populated.
+- **Approximate distinct and hybrid quantiles.** `approx_unique` uses DataFusion's HyperLogLog
+  (`approx_distinct`, 16,384 registers, fixed seed 0, commutative/associative register max).
+  Because DataFusion 55's `approx_distinct` does not implement `Float64`, `real` columns are mapped
+  through a canonical 64-bit integer key (`-0.0` → `+0.0`, canonical `NaN`). `approx_unique` is
+  deterministic across runs and `target_partitions` settings; on small fixtures (`orders.csv`,
+  `all_types.parquet`) it is exact, though golden cases should rely on determinism rather than
+  exactness at arbitrary cardinalities (standard error ~0.81%). For `q25`–`q75`, DataFusion 55's
+  `TDigest::estimate_quantile` overshoots and clamps on small uneven sets where each value is its
+  own weight-1 centroid (for example, `[-5s, 0, 90m, 1d]` produced `q50 = 0` instead of `45m`).
+  `describe` therefore uses a hybrid UDAF (`DescribeQuantile`): it buffers up to 2,048 non-null
+  `f64` values (16 KiB per accumulator, matching one HLL sketch) and computes exact continuous
+  linear-interpolated quantiles (SQL `PERCENTILE_CONT`), spilling seamlessly into DataFusion's
+  bounded-memory t-digest (`ApproxPercentileAccumulator`) once a column exceeds 2,048 non-null
+  values (during either `update_batch` or `merge_batch`). `datetime` and `timespan` quartiles go
+  through microsecond `i64` → `f64` → rounded `i64` formatted as `tostring`. Golden tests run
+  single-partition (D-017), so outputs are deterministic both below and above the threshold.
+- **IR, capabilities, row order and lowering.** `describe` has its own IR node
+  (`PlanNode::Describe`) and `Capabilities::describe` (`DS4001`), so `explain` shows it as one
+  step and future SQL backends (M6-03) can lower it to DuckDB's `SUMMARIZE`. Rows come out in
+  input-column order, so `describe` defines row order (LANGUAGE.md §3.4 and the golden driver's
+  `output_order_defined`). The DataFusion backend lowers it as a single global aggregate pass
+  followed by an unpivot (`Values` × `CrossJoin` + `CASE` + `Sort` by column index), never one
+  scan per column.
+- **Arguments and REPL.** `describe` takes no arguments (`DS0290`, from M2-23's DS0290–DS0294
+  block); a column-subset form (`describe a, b`) is left as a follow-up if wanted. When the argument looks like a table source (a string literal or reader call), `DS0290` help
+  suggests `from <arg> | describe` (and `.describe <arg>` in the REPL). In the REPL,
+  `.describe <source>` prepares `from <source> | describe` via `MetaAction::Run` (separate from
+  `MetaOutcome` so `Printer::meta` cannot receive it) and executes it on the normal worker-thread
+  query path so Ctrl-C cancels it like any query, while `.schema` stays the cheap metadata-only
+  command.
+*(M2-23, 2026-11-28.)*
+
+### D-063 — Web front-end stack: React, Vite, Tailwind CSS, CodeMirror 6, Apache ECharts
+**Accepted.** Closes Q-002. The shared `web/` SPA (used by `ds ui`, the M5 WASM playground,
+M3-06's VS Code results panel via component reuse, and a potential future Tauri desktop shell)
+standardizes on:
 - **React + TypeScript + Vite + Tailwind CSS**: the React runtime (~45 KB gzipped) is negligible
   next to CodeMirror, ECharts, and the WASM engine (size not yet measured; M5-01), and provides the strongest ecosystem for
   virtualized grids (`@tanstack/react-virtual`), drag-and-drop cell reordering, and accessible UI
@@ -946,7 +1111,7 @@ desktop shell) standardizes on:
   overhead). See [WEB_UI.md §6](WEB_UI.md#6-architecture-stack--multi-target-reuse).
 *(Web UI design session, 2026-11-27.)*
 
-### D-062 — Notebook-first local web UI with `.dsnb` source-only Markdown format
+### D-064 — Notebook-first local web UI with `.dsnb` source-only Markdown format
 **Accepted.** `ds ui` is a notebook-first local data workbench rather than a single scratch query
 box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
 [LANGUAGE.md §2.1](LANGUAGE.md#21-notebooks-dsnb)). Key choices:
@@ -991,7 +1156,7 @@ box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
   `M4-16`; multi-file tabs & pinning and Outline/Scope tabs in `M4-17`.
 *(Web UI design session, 2026-11-27.)*
 
-### D-063 — Multi-statement cells use compact result sub-tabs
+### D-065 — Multi-statement cells use compact result sub-tabs
 **Accepted.** Closes Q-004. Running a DataScript cell (or `.ds` script / VS Code M3-06 run) executes
 all query statements in that cell and displays compact result sub-tabs (`Result 1`, `Result 2`, …,
 using each query's `render` title when present) whenever a run produces more than one output. A
@@ -1000,7 +1165,7 @@ cursor. `let`-only cells validate bindings (suppressing `DS0004`) and display a 
 line rather than an empty grid.
 *(Web UI design session, 2026-11-27.)*
 
-### D-064 — UI result display cap of 10,000 rows with full streaming export
+### D-066 — UI result display cap of 10,000 rows with full streaming export
 **Accepted.** Closes Q-007. Interactive UI runtimes (`ds ui`, VS Code M3-06 results panel, and WASM
 M5) cap streamed results at `10_000` rows by default (configurable per workspace root in the user's
 OS config dir for `ds ui` or `localStorage` for WASM, plus per-run override), enforced on streaming

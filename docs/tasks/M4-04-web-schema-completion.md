@@ -25,7 +25,7 @@ Scope tabs follow in M4-17.)*
   file click, or grid column-header stats click):
   - **Live Result Profile**: client-side profiling over loaded Arrow batches (distinct count, null
     %, distributions, search/sort, labelling `"of first {N} rows"` using the run's actual `rowLimit`
-    when truncated per D-064).
+    when truncated per D-066).
   - **Source Schema**: file/host-table columns & types plus **Insert `from '<rel>'`** (relative to
     the active notebook's parent directory), **New preview cell**, and **Describe** (once M2-23
     lands).

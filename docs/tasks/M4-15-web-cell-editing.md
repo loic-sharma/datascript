@@ -8,7 +8,7 @@
 ## Goal
 Turn M4-02's plain cell list into the real notebook editor: DataScript and Markdown cells,
 reordering, and whole-notebook live checking with diagnostic cards
-([WEB_UI.md §4.2](../WEB_UI.md#42-center-pane--notebook-canvas), D-062). Split out of M4-02.
+([WEB_UI.md §4.2](../WEB_UI.md#42-center-pane--notebook-canvas), D-064). Split out of M4-02.
 
 ## Scope
 - **Markdown cells**: GFM rendered via DOMPurify (no external `http(s)://` or relative workspace

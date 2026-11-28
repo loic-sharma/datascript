@@ -7,14 +7,14 @@
 
 ## Goal
 Let users export the full, uncapped result behind a truncated grid, streamed straight to disk
-through `datascript_engine::writers` (D-064,
-[WEB_UI.md §3](../WEB_UI.md#result-size-limits--streaming-export-d-064-closes-q-007),
+through `datascript_engine::writers` (D-066,
+[WEB_UI.md §3](../WEB_UI.md#result-size-limits--streaming-export-d-066-closes-q-007),
 [§6](../WEB_UI.md#server-auth-csp--api-contract-datascript-server-m4-01-m4-10-m4-14-m4-04--m4-16)).
 Split out of M4-10 and M4-09: export is one feature across server and UI, and it is off the path
 to running a cell and seeing a grid.
 
 ## Scope
-- **Server: two-step zero-buffering streaming export** (`datascript-server`, D-064):
+- **Server: two-step zero-buffering streaming export** (`datascript-server`, D-066):
   - `POST /api/export` (cookie + `Origin`) accepts the run-time cell snapshot
     `{ path, cells, targetCellIndex, statementIndex, nowMicros, format }` (`statementIndex` 0-based
     among the target cell's own query statements), stitches it exactly like a
@@ -31,7 +31,7 @@ to running a cell and seeing a grid.
     M2-26 makes `write_json` stream (today it takes every batch at once), `parquet` once M2-27
     lands, and `xlsx` once M2-28 lands. Add `exportFormats` to `GET /api/info`: the formats this
     server can write.
-- **UI: Export full result** (`web/`, D-064):
+- **UI: Export full result** (`web/`, D-066):
   - Capture the immutable cell snapshot (`cells`, `targetCellIndex`, `nowMicros`, cell-relative
     `statementIndex`) at run time and wire the **Export full result** menu to `POST /api/export` →
     `GET /api/export/<ticket>` (authenticated by session cookie + one-shot ticket; re-executes
@@ -59,6 +59,6 @@ to running a cell and seeing a grid.
       the server's `exportFormats` (Parquet appears only when the server reports it).
 
 ## Carried over
-- [ ] (from planning, 2026-11-24) D-064's "export the full result" should stream through `datascript_engine::writers`, the same writers the `output` operator uses (M2-25…M2-27, M2-28 for Excel), so the export offers every format they can write. If M2-26 is done (`write_json` streams), add `json` to the export formats with a read-back test (M2-26's note covers it if it lands after this task). If M2-27 is done, add `parquet` likewise (M2-27's "Hosts" note covers it if it lands after this task); likewise `xlsx` for M2-28.
+- [ ] (from planning, 2026-11-24) D-066's "export the full result" should stream through `datascript_engine::writers`, the same writers the `output` operator uses (M2-25…M2-27, M2-28 for Excel), so the export offers every format they can write. If M2-26 is done (`write_json` streams), add `json` to the export formats with a read-back test (M2-26's note covers it if it lands after this task). If M2-27 is done, add `parquet` likewise (M2-27's "Hosts" note covers it if it lands after this task); likewise `xlsx` for M2-28.
 
 ## Follow-ups

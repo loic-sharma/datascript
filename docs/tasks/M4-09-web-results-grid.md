@@ -8,8 +8,8 @@
 ## Goal
 Wire cell execution over M4-10's WebSocket (`ServerRuntime.run`) and build the decoupled
 `web/src/components/results/` package (reused directly by VS Code's M3-06 results webview)
-implementing the virtualized Arrow grid, multi-statement sub-tabs (D-063),
-and truncation-aware sorting + **Sort in query** (D-064; export is M4-14,
+implementing the virtualized Arrow grid, multi-statement sub-tabs (D-065),
+and truncation-aware sorting + **Sort in query** (D-066; export is M4-14,
 [WEB_UI.md §3–§4.2](../WEB_UI.md#42-center-pane--notebook-canvas)).
 
 ## Scope
@@ -29,10 +29,10 @@ and truncation-aware sorting + **Sort in query** (D-064; export is M4-14,
   - Row index gutter, compact monochrome column headers (type glyph + subtle null indicator whose
     click opens the right-hand profiler), italic `NULL` cell styling, column resizing, click-to-copy
     cell/row, and fullscreen expand.
-- **Multi-statement sub-tabs** (D-063):
+- **Multi-statement sub-tabs** (D-065):
   - Compact output sub-tabs (`Result 1`, `Result 2`, …, or `render` title) whenever a cell run
     produces more than one result.
-- **Truncation UX & "Sort in query"** (D-064):
+- **Truncation UX & "Sort in query"** (D-066):
   - `DS4060` truncation notice and client-side sort label using the run's actual `rowLimit`
     (`"Showing first {N} rows"` / `"sorted first {N} rows"`).
   - Column-header **Sort in query** action that inserts `| sort by <col> desc` (or `asc`, always

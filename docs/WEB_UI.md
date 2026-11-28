@@ -7,7 +7,7 @@ result grid and chart components (`web/src/components/results/`) with the VS Cod
 rewriting the UI.
 
 Related documents: [ARCHITECTURE.md](ARCHITECTURE.md), [LANGUAGE.md §2.1](LANGUAGE.md#21-notebooks-dsnb),
-[DECISIONS.md](DECISIONS.md) (D-061–D-064), [DIAGNOSTICS.md](DIAGNOSTICS.md), and
+[DECISIONS.md](DECISIONS.md) (D-063–D-066), [DIAGNOSTICS.md](DIAGNOSTICS.md), and
 [tasks/README.md](tasks/README.md).
 
 ---
@@ -48,7 +48,7 @@ best ergonomics of five tools:
 ## 2. Notebook File Format (`.dsnb`)
 
 Notebooks are stored on disk as **strictly source-only, plain-text Markdown files** with the
-`.dsnb` extension (D-062). Language-level scoping rules are specified in
+`.dsnb` extension (D-064). Language-level scoping rules are specified in
 [LANGUAGE.md §2.1](LANGUAGE.md#21-notebooks-dsnb).
 
 ### Why `.dsnb` Markdown?
@@ -207,7 +207,7 @@ A `.dsnb` file is a sequence of cells parsed from and serialized to UTF-8 Markdo
 
 ## 3. Execution Model & Cross-Cell State
 
-### Top-to-bottom lexical `let` scope (D-062)
+### Top-to-bottom lexical `let` scope (D-064)
 
 A notebook behaves identically to a single DataScript program split into cells
 ([LANGUAGE.md §2.1](LANGUAGE.md#21-notebooks-dsnb)):
@@ -233,7 +233,7 @@ A notebook behaves identically to a single DataScript program split into cells
 ### Upstream `let` prepending & `DS1085`
 
 This section is the single definition of what an interactive run of one cell compiles and when it
-is blocked. [LANGUAGE.md §2.1](LANGUAGE.md#21-notebooks-dsnb) and D-062 link here rather than
+is blocked. [LANGUAGE.md §2.1](LANGUAGE.md#21-notebooks-dsnb) and D-064 link here rather than
 restating it.
 
 - During live **`check`**, errors in an upstream cell are reported on that upstream cell itself;
@@ -298,7 +298,7 @@ restating it.
   - **Cancel / Stop** (`Cmd/Ctrl+.`, or the inline Stop button) — cancels the active `RunStream`
     immediately (D-055).
 
-### `let`-only cells & multi-statement cells (D-063, closes Q-004)
+### `let`-only cells & multi-statement cells (D-065, closes Q-004)
 
 - **`let`-only cell**: Running a cell that defines only `let` statements validates its bindings,
   **suppresses `DS0004`** ("program has no query to run"), and displays a compact status line
@@ -307,7 +307,7 @@ restating it.
   sub-tabs (`Result 1`, `Result 2`, … — labelled with the `render` title if present) inside the
   cell's output frame.
 
-### Result size limits & streaming export (D-064, closes Q-007)
+### Result size limits & streaming export (D-066, closes Q-007)
 
 - UI executions cap streamed output at `row_limit = 10_000` by default. Users can configure a
   per-workspace default (stored server-side in the user's OS config dir via `PATCH /api/prefs`,
@@ -485,7 +485,7 @@ clicking a column header's stats trigger.
       null indicator (clicking opens the column in the right-hand profiler), subtle italic `NULL`
       cell styling, column resizing, click-to-copy cell/row, and quick export menu.
     - **Truncation-aware sorting**: client-side column sort clearly labels *"sorted first {N}
-      rows"* using the run's actual `rowLimit` whenever the result is truncated (D-064), and every
+      rows"* using the run's actual `rowLimit` whenever the result is truncated (D-066), and every
       column header offers a **Sort in query** action that inserts `| sort by <col> desc` (or
       `asc`, always explicit so `DS2103` never fires, D-005) **before any trailing `| render ...`**
       (or updates an existing `sort` in place) and re-runs over all rows so code remains the single
@@ -498,7 +498,7 @@ clicking a column header's stats trigger.
       `scatterchart`, and `card` (KPI summary card).
     - Plain table queries without `| render` stay in Table view by default; a quiet
       **Visualize (`| render`)** helper can append a starter `| render ...` line to the query so
-      DataScript code remains the single source of truth (D-062).
+      DataScript code remains the single source of truth (D-064).
     - Unrenderable specs (e.g. >500 distinct series or empty chart data) degrade gracefully with a
       clear explanatory banner and one-click switch to Table view—never hanging the tab.
 
@@ -512,7 +512,7 @@ a column header's stats badge. It provides contextual views (with Outline and Sc
 1. **Inspector (default contextual tab, M4-04)**:
    - **When a cell with results is focused → Live Result Profile (DuckDB UI style)**:
      - Header: total rows (explicitly labelled `"of first {N} rows"` using the run's actual
-       `rowLimit` when truncated per D-064), column count, copy-schema button, column search input,
+       `rowLimit` when truncated per D-066), column count, copy-schema button, column search input,
        and sort selector (`Default`, `Name`, `Null %`, `Distinct`).
      - Per-column row: monochrome type glyph, column name, distinct count, null % pill, and compact
        distribution summary (inline sparkbar / top values / min–max on expand).
@@ -535,7 +535,7 @@ a column header's stats badge. It provides contextual views (with Outline and Sc
 
 ## 5. Keyboard Shortcuts & Command Mode
 
-The UI uses a **hybrid modeless + cell Command Mode** model (D-062). Shortcuts are chosen to avoid
+The UI uses a **hybrid modeless + cell Command Mode** model (D-064). Shortcuts are chosen to avoid
 CodeMirror 6 editing bindings (`Alt+Up/Down` move line, `Cmd/Ctrl+Shift+Up/Down` selection), OS
 dead keys / `AltGr`, and browser-reserved chords (`Ctrl+W`, `Ctrl+Shift+N`, Firefox's
 `Cmd/Ctrl+Shift+P`). Because browser chord reservation varies across platforms (for example,
@@ -583,7 +583,7 @@ ignores `AltGraph` events on Windows European layouts.
 
 ## 6. Architecture, Stack & Multi-Target Reuse
 
-### Frontend stack (D-061, closes Q-002)
+### Frontend stack (D-063, closes Q-002)
 
 - **UI Framework**: React + TypeScript + Vite
 - **Styling**: Tailwind CSS with semantic CSS custom properties (`--surface-*`, `--border-*`,

@@ -12,9 +12,9 @@ available (D-054).
 ## Scope
 - `datascript/run` gains a way to ask for data instead of text, e.g. `format: "arrow"`, returning
   each result as Arrow IPC with its `RenderSpec`. Follow the 10,000-row UI display limit decided in
-  D-064 (closed Q-007).
+  D-066 (closed Q-007).
 - A setting chooses where results go: the terminal (M3-05) or the panel.
-- The panel shows several results as compact sub-tabs as the web UI does (D-063, closed Q-004), and
+- The panel shows several results as compact sub-tabs as the web UI does (D-065, closed Q-004), and
   runtime errors as the web UI does.
 
 ## Acceptance criteria

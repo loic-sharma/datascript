@@ -16,9 +16,9 @@ are UTF-16 (D-025).
 The sketch above (and the one in ARCHITECTURE.md § WASM constraints) is the minimum. The API must
 also cover what `web/` (M4-02's `Runtime` interface, M5-03) and the parity tests (M5-04) need:
 - programs with several statements: `run` yields one result per query, with its statement index,
-  and can run one statement by index (D-063). The index form checks the whole program, as
+  and can run one statement by index (D-065). The index form checks the whole program, as
   `Session::run_statement` does, so it is for plain `.ds` scripts only;
-- **notebooks** (D-062), all through M4-13's `.dsnb` parser and M4-08's `StitchedProgram`, matching
+- **notebooks** (D-064), all through M4-13's `.dsnb` parser and M4-08's `StitchedProgram`, matching
   `ds ui` exactly ([WEB_UI.md §3](../WEB_UI.md#upstream-let-prepending--ds1085)):
   `parseNotebook(text)` / `serializeNotebook(cells, baseText?)` (the same content-diff
   serializer), `checkNotebook(cells)` (whole-notebook check, diagnostics grouped by `cellIndex`),
@@ -27,7 +27,7 @@ also cover what `web/` (M4-02's `Runtime` interface, M5-03) and the parity tests
   suppression, so a broken neighbouring statement never blocks a statement run.
   `complete`/`hover`/`signatureHelp` also accept `(cells, cellIndex, offset)` over the same
   stitching;
-- the 10,000-row UI display limit decided in D-064 (closed Q-007), and the `truncated` flag;
+- the 10,000-row UI display limit decided in D-066 (closed Q-007), and the `truncated` flag;
 - `schema(source)`, `hover(text, offset)`, `signatureHelp(text, offset)`, `explain(text)`;
 - `registerTable` for host tables, and listing and removing registered files;
 - an injected `now` (core crates read no clock, ARCHITECTURE.md) so `now()`/`ago()` work and

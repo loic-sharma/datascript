@@ -7,7 +7,7 @@
 
 ## Goal
 Draw every render kind from [LANGUAGE.md §6](../LANGUAGE.md#6-render) from a `RenderSpec` using
-tree-shaken **Apache ECharts** (D-061) plus a custom KPI component for `card`, with a Chart/Table
+tree-shaken **Apache ECharts** (D-063) plus a custom KPI component for `card`, with a Chart/Table
 toggle and reusable exports in `web/src/components/results/` for VS Code's M3-06 results panel
 ([WEB_UI.md §4.2](../WEB_UI.md#42-center-pane--notebook-canvas)).
 
@@ -18,7 +18,7 @@ toggle and reusable exports in `web/src/components/results/` for VS Code's M3-06
   and `stacking`.
 - Default `| render` queries to Chart view with a Chart/Table toggle, fullscreen expand, zoom/hover
   tooltips, PNG export (Canvas) and SVG export (off-screen `SVGRenderer` re-render), and matching dark/light themes; keep plain table queries in Table view
-  with a quiet **Visualize (`| render`)** helper that appends a starter `| render ...` line (D-062).
+  with a quiet **Visualize (`| render`)** helper that appends a starter `| render ...` line (D-064).
 - Gracefully degrade unrenderable inputs (e.g. >500 distinct series, empty or all-null series) with
   a clear message and one-click switch to Table view.
 

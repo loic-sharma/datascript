@@ -144,8 +144,8 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS2320–DS2329 | M2-20 conversions that can never succeed |
 | DS3060–DS3064 | M2-12 runtime read errors (none expected; DS3008 is reused) |
 | DS3065–DS3069 | M4-12 path sandbox hardening (DS3007 above) |
-| DS4060–DS4064 | M4-10 local web UI streaming (`DS4060` results truncated per D-064) |
-| DS1085–DS1089 | M4-08 notebook `StitchedProgram` (`DS1085` upstream cell has errors, D-062) |
+| DS4060–DS4064 | M4-10 local web UI streaming (`DS4060` results truncated per D-066) |
+| DS1085–DS1089 | M4-08 notebook `StitchedProgram` (`DS1085` upstream cell has errors, D-064) |
 | DS3070–DS3074 | M2-22 CSV sniffing |
 | DS0290–DS0294 | M2-23 `describe` operator |
 | DS3080–DS3084 | M2-24 Excel reader |
@@ -225,7 +225,7 @@ design decision and implemented by the task named in the allocation table.
 | DS1030 | error | `join` condition that is not a column name or `$left.a == $right.b` |
 | DS1031 | error | `$left`/`$right` used outside a `join` condition |
 | DS1032 | error | `distinct` given an expression instead of a column name |
-| DS1085 | error | cannot run notebook cell because an upstream `let` has errors *(planned, M4-08, D-062)* |
+| DS1085 | error | cannot run notebook cell because an upstream `let` has errors *(planned, M4-08, D-064)* |
 | DS2001 | error | predicate is not `bool` |
 | DS2002 | error | wrong number of arguments |
 | DS2003 | error | operator not defined for these types |
@@ -260,7 +260,7 @@ design decision and implemented by the task named in the allocation table.
 | DS4002 | error | engine runtime error |
 | DS4003 | error | arithmetic error: integer division by zero, overflow, or out-of-range value (D-014) |
 | DS4004 | error | invalid argument value: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100 (reported by `check` when the argument is a constant, D-049) |
-| DS4060 | info | query result truncated at the UI row limit *(planned, M4-10, D-064)* |
+| DS4060 | info | query result truncated at the UI row limit *(planned, M4-10, D-066)* |
 | DS5001 | info | chart not drawn in this runtime (once per program run, not for `render table`) |
 | DS5002 | error | chart role cannot be filled: no column of the type the kind needs, or an explicit column of the wrong type (names the role and lists the result's columns) |
 | DS5003 | error | unknown render kind (did-you-mean; a KQL kind DataScript does not support yet says so instead) |

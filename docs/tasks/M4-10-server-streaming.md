@@ -3,7 +3,7 @@
 **Status:** todo
 **Depends on:** M4-01
 **Crates:** `datascript-server`, `datascript-engine`, `datascript-diagnostics`
-**Diagnostic codes:** DS4060–DS4064 (`DS4060` results truncated per D-064) (D-018)
+**Diagnostic codes:** DS4060–DS4064 (`DS4060` results truncated per D-066) (D-018)
 
 ## Goal
 Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit helper in
@@ -11,7 +11,7 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
 [§6](../WEB_UI.md#server-auth-csp--api-contract-datascript-server-m4-01-m4-10-m4-14-m4-04--m4-16)).
 
 ## Scope
-- **Streaming row-limit helper** (`datascript-engine`, D-064):
+- **Streaming row-limit helper** (`datascript-engine`, D-066):
   - `ExecContext::row_limit` is currently enforced only inside `ResultStream::collect`
     (`crates/datascript-engine/src/lib.rs`), which buffers. **Extract** that logic into a streaming
     helper that counts rows as batches arrive, slices the final batch at `row_limit`, drops the
@@ -35,7 +35,7 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
     union across the cell). `cellIndex`/`targetCellIndex` count every cell, Markdown included
     ([WEB_UI.md §2](../WEB_UI.md#serialization-grammar--canonical-layout)).
   - Streams Arrow IPC batches, `RenderSpec`, timing, and diagnostics (`DS4060` when truncated, with
-    the message, span and help in [WEB_UI.md §3](../WEB_UI.md#result-size-limits--streaming-export-d-064-closes-q-007)
+    the message, span and help in [WEB_UI.md §3](../WEB_UI.md#result-size-limits--streaming-export-d-066-closes-q-007)
     — mark active in `codes.rs` & `DIAGNOSTICS.md`; **suppress `DS0004`** when validating a
     `let`-only cell).
   - Dropping/cancelling the run drops `RunStream` immediately (D-055).
@@ -61,6 +61,6 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
 
 ## Carried over
 - [ ] (from M2-11) The streaming API exists: `Session::start` returns a `RunStream` (`Send`, owns its engine and context) whose `next_query()` yields a `QueryStream` per query, batches arriving as they are produced, behind the panic boundary (D-055). Use it for streaming and cancellation over WebSocket (dropping it cancels the query) instead of building another.
-- [ ] (from M1-07) `ExecContext::row_limit` is enforced by `collect` and sets `QueryResult::truncated` (D-043). Extend it with the streaming-limit helper above, implement D-064's `DS4060` truncation info diagnostic (from this task's block, DS4060–DS4064), and show it. Invalidate the session's schema cache when files under the root change, since failed lookups are cached too.
+- [ ] (from M1-07) `ExecContext::row_limit` is enforced by `collect` and sets `QueryResult::truncated` (D-043). Extend it with the streaming-limit helper above, implement D-066's `DS4060` truncation info diagnostic (from this task's block, DS4060–DS4064), and show it. Invalidate the session's schema cache when files under the root change, since failed lookups are cached too.
 
 ## Follow-ups

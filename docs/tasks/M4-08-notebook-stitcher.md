@@ -3,7 +3,7 @@
 **Status:** todo
 **Depends on:** M1-13, M2-13
 **Crates:** `datascript-compiler`, `datascript-diagnostics`, `datascript-cli`
-**Diagnostic codes:** DS1085–DS1089 (`DS1085` upstream cell has errors, D-062) (D-018)
+**Diagnostic codes:** DS1085–DS1089 (`DS1085` upstream cell has errors, D-064) (D-018)
 
 ## Goal
 Build the pure, `wasm32`-compatible `StitchedProgram` helper in `datascript-compiler` (including
@@ -12,7 +12,7 @@ Build the pure, `wasm32`-compatible `StitchedProgram` helper in `datascript-comp
 on a list of cells (`{ kind, text }`), so it does not need the `.dsnb` parser (M4-13), and the two
 tasks can run in parallel
 ([WEB_UI.md §3](../WEB_UI.md#upstream-let-prepending--ds1085),
-[§6](../WEB_UI.md#cross-cell-combined-program--dsnb-parser-datascript-compiler-m4-08--m4-13), D-062).
+[§6](../WEB_UI.md#cross-cell-combined-program--dsnb-parser-datascript-compiler-m4-08--m4-13), D-064).
 
 ## Scope
 - **Shared `StitchedProgram` & `DS1085`** (`datascript-compiler`, `datascript-diagnostics`):

@@ -9,7 +9,7 @@
 Build the single canonical, pure, `wasm32`-compatible `.dsnb` Markdown parser and lossless
 serializer in `datascript-compiler`, so `datascript-server` (M4-01), `ds run`/`ds check`/`ds lsp`
 (M4-06), and `datascript-wasm` (M5-02) all share one implementation
-([WEB_UI.md §2](../WEB_UI.md#2-notebook-file-format-dsnb), D-062). Split out of M4-08, which
+([WEB_UI.md §2](../WEB_UI.md#2-notebook-file-format-dsnb), D-064). Split out of M4-08, which
 builds `StitchedProgram`; the two can run in parallel.
 
 ## Scope

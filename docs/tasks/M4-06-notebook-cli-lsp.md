@@ -7,7 +7,7 @@
 
 ## Goal
 Make `.dsnb` notebooks first-class citizens outside the browser ([LANGUAGE.md §2.1](../LANGUAGE.md#21-notebooks-dsnb),
-D-062) by reusing `datascript-compiler`'s canonical `.dsnb` parser (M4-13) and `StitchedProgram` (M4-08),
+D-064) by reusing `datascript-compiler`'s canonical `.dsnb` parser (M4-13) and `StitchedProgram` (M4-08),
 independent of `datascript-server`.
 
 ## Scope

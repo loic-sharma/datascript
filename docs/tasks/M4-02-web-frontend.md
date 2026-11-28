@@ -6,7 +6,7 @@
 **Diagnostic codes:** none
 
 ## Goal
-Scaffold the shared React + Vite + Tailwind + CodeMirror 6 notebook SPA (`D-061`, `D-062`), wire
+Scaffold the shared React + Vite + Tailwind + CodeMirror 6 notebook SPA (`D-063`, `D-064`), wire
 `Runtime` / `ServerRuntime`, and ship the M4 v1 workspace shell: file tree, Scratchpad, a cell
 list with plain CodeMirror editors, and auto-save ([WEB_UI.md §1–§4.2](../WEB_UI.md)). This task
 needs only M4-01's HTTP API, so it runs in parallel with M4-10 (WebSocket runs). Cell editing

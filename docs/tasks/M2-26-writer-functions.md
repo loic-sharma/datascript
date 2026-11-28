@@ -79,7 +79,7 @@ Reader names win over DuckDB's where a reader option exists.
 
 `write_json(…, format = "array")` needs a streaming JSON array writer: `writers::write_json` still
 collects every row into a `Vec<Value>`. Make it stream (sharing the code with `printer.rs`). If
-M4-14 is done, add `json` to its export formats (D-064) with a read-back test. (M4-14's "Carried
+M4-14 is done, add `json` to its export formats (D-066) with a read-back test. (M4-14's "Carried
 over" item covers it if M4-14 lands after this task.)
 
 Excel output (`write_xlsx`) is M2-28's. Partitioned output (`partition_by`) is not planned yet;

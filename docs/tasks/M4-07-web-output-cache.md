@@ -8,7 +8,7 @@
 ## Goal
 Optionally persist each cell's last rendered result locally outside the repository so reopening a
 `.dsnb` notebook shows previous outputs immediately (marked **Stale** until re-run) while keeping
-`.dsnb` files strictly source-only on disk (D-062). *Optional for M4 "done".*
+`.dsnb` files strictly source-only on disk (D-064). *Optional for M4 "done".*
 
 ## Scope
 - **Storage by runtime** (surviving `ds ui`'s random port across launches):
