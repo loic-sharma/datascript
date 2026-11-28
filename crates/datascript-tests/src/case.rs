@@ -544,7 +544,7 @@ pub fn normalize_body(text: &str) -> String {
     lines.join("\n")
 }
 
-/// Parses `without: function strlen, join fullouter, format parquet`.
+/// Parses `without: function strlen, join fullouter, format parquet, operator describe`.
 fn parse_without(value: &str) -> Result<Capabilities, String> {
     let mut caps = Capabilities::full();
     let catalog = FunctionCatalog::builtin();
@@ -555,8 +555,8 @@ fn parse_without(value: &str) -> Result<Capabilities, String> {
     for entry in entries {
         let shape = || {
             format!(
-                "`without` entry `{entry}` must look like `function <name>`, `join <kind>` or \
-                 `format <name>`"
+                "`without` entry `{entry}` must look like `function <name>`, `join <kind>`, \
+                 `format <name>` or `operator <name>`"
             )
         };
         let (what, name) = entry.split_once(char::is_whitespace).ok_or_else(shape)?;
@@ -585,6 +585,10 @@ fn parse_without(value: &str) -> Result<Capabilities, String> {
                     .ok_or_else(|| format!("`without`: unknown format `{name}`"))?;
                 caps.formats.remove(&format);
             }
+            "operator" => match name {
+                "describe" => caps.describe = false,
+                _ => return Err(format!("`without`: unknown operator `{name}`")),
+            },
             _ => return Err(shape()),
         }
     }

@@ -32,6 +32,7 @@ const GLUE: &str = "\n;\n";
 pub const COMMANDS: &[&str] = &[
     ".help",
     ".schema",
+    ".describe",
     ".tables",
     ".format",
     ".max-rows",
@@ -267,7 +268,7 @@ impl fmt::Display for Mistake {
     }
 }
 
-/// What a meta command did.
+/// What a finished meta command produced.
 #[derive(Debug)]
 pub enum MetaOutcome {
     /// Text for standard output (possibly empty).
@@ -276,6 +277,16 @@ pub enum MetaOutcome {
     Diagnostics(Vec<Diagnostic>),
     Mistake(Mistake),
     Quit,
+}
+
+/// What [`ReplSession::meta`] asks the REPL loop to do next.
+#[derive(Debug)]
+pub enum MetaAction {
+    /// The meta command finished; print or apply its outcome.
+    Done(MetaOutcome),
+    /// The meta command (`.describe`) prepared a query to check and run through the normal
+    /// query path so Ctrl-C cancels it like any other query.
+    Run(Prepared),
 }
 
 /// The REPL's state: the engine session, the host tables, every input so far (for rendering
@@ -379,6 +390,7 @@ impl ReplSession {
     ///
     /// The same as [`prepare`](Self::prepare), awaiting [`check_task`](Self::check_task) and
     /// [`commit`](Self::commit), which a frontend calls itself to check on another thread.
+    #[cfg(test)]
     pub async fn check_input(&mut self, text: &str) -> Checked {
         let prepared = self.prepare(text);
         let analysis = self.check_task(&prepared).await;
@@ -565,33 +577,41 @@ impl ReplSession {
     }
 
     /// Runs a meta command: `text` starts with `.`.
-    pub async fn meta(&mut self, text: &str) -> MetaOutcome {
+    pub async fn meta(&mut self, text: &str) -> MetaAction {
         let trimmed = text.trim();
         let (name, arg) = match trimmed.split_once(char::is_whitespace) {
             Some((name, arg)) => (name, arg.trim()),
             None => (trimmed, ""),
         };
         let no_argument = |command: &str| {
-            MetaOutcome::Mistake(Mistake::new(
+            MetaAction::Done(MetaOutcome::Mistake(Mistake::new(
                 format!("`{command}` takes no argument"),
                 format!("type `{command}` on its own"),
-            ))
+            )))
         };
         match name {
-            ".help" if arg.is_empty() => MetaOutcome::Print(HELP.to_string()),
-            ".quit" | ".exit" if arg.is_empty() => MetaOutcome::Quit,
-            ".tables" if arg.is_empty() => MetaOutcome::Print(self.tables_listing()),
+            ".help" if arg.is_empty() => MetaAction::Done(MetaOutcome::Print(HELP.to_string())),
+            ".quit" | ".exit" if arg.is_empty() => MetaAction::Done(MetaOutcome::Quit),
+            ".tables" if arg.is_empty() => {
+                MetaAction::Done(MetaOutcome::Print(self.tables_listing()))
+            }
             ".help" | ".quit" | ".exit" | ".tables" => no_argument(name),
-            ".format" => self.set_format(arg),
-            ".max-rows" => self.set_max_rows_command(arg),
+            ".format" => MetaAction::Done(self.set_format(arg)),
+            ".max-rows" => MetaAction::Done(self.set_max_rows_command(arg)),
             ".schema" => {
                 // The argument's offset in the input, for mapping spans onto it.
                 let lead = text.len() - text.trim_start().len();
                 let rest = &trimmed[name.len()..];
                 let offset = lead + name.len() + (rest.len() - rest.trim_start().len());
-                self.schema(text, arg, len32(&text[..offset])).await
+                MetaAction::Done(self.schema(text, arg, len32(&text[..offset])).await)
             }
-            _ => MetaOutcome::Mistake(unknown_command(name)),
+            ".describe" => {
+                let lead = text.len() - text.trim_start().len();
+                let rest = &trimmed[name.len()..];
+                let offset = lead + name.len() + (rest.len() - rest.trim_start().len());
+                self.describe(text, arg, len32(&text[..offset]))
+            }
+            _ => MetaAction::Done(MetaOutcome::Mistake(unknown_command(name))),
         }
     }
 
@@ -683,6 +703,35 @@ impl ReplSession {
                 "check that it is a table, such as a file path, a host table or a tabular let",
             )),
         }
+    }
+
+    /// `.describe <source>`: builds `from <source> | describe` after the saved lets so it runs
+    /// through the normal query path (with worker-thread execution and Ctrl-C cancellation).
+    fn describe(&mut self, text: &str, arg: &str, arg_offset: u32) -> MetaAction {
+        if arg.is_empty() {
+            return MetaAction::Done(MetaOutcome::Mistake(Mistake::new(
+                "`.describe` needs a source",
+                "give anything that can follow `from`, such as `.describe 'orders.csv'` or \
+                 `.describe orders`",
+            )));
+        }
+        self.session.invalidate_schemas();
+        let file = self.sources.add_snippet("<repl>", text);
+        let mut program = ReplProgram::new(file);
+        for saved in &self.saved {
+            self.push_saved(&mut program, saved);
+        }
+        program.push_glue("from ", file, arg_offset);
+        program.push(arg, file, arg_offset);
+        program.push_glue(" | describe", file, arg_offset + len32(arg));
+        MetaAction::Run(Prepared {
+            file,
+            new_lets: Vec::new(),
+            removed: vec![false; self.saved.len()],
+            has_queries: true,
+            program,
+            ctx: self.session.exec_context(&self.base_dir),
+        })
     }
 
     fn tables_listing(&self) -> String {
@@ -971,7 +1020,8 @@ blank line. Lets are kept for the rest of the session; entering `let x = ...` ag
 
 Commands:
   .help               show this help
-  .schema <source>    the columns of a file, host table or tabular let
+  .schema <source>    the columns of a file, host table or tabular let (reads no data)
+  .describe <source>  summary statistics for every column (reads every row)
   .tables             the host tables and saved lets
   .format [table|csv|json]
                       set the output format, or show it
@@ -1207,12 +1257,16 @@ mod tests {
     #[test]
     fn unknown_commands_get_did_you_mean() {
         let mut repl = repl();
-        let MetaOutcome::Mistake(m) = runtime().block_on(repl.meta(".shema 'x.csv'")) else {
+        let MetaAction::Done(MetaOutcome::Mistake(m)) =
+            runtime().block_on(repl.meta(".shema 'x.csv'"))
+        else {
             panic!("expected a mistake");
         };
         assert_eq!(m.message, "unknown command `.shema`");
         assert_eq!(m.tip, "a command with a similar name exists: `.schema`");
-        let MetaOutcome::Mistake(m) = runtime().block_on(repl.meta(".frobnicate")) else {
+        let MetaAction::Done(MetaOutcome::Mistake(m)) =
+            runtime().block_on(repl.meta(".frobnicate"))
+        else {
             panic!("expected a mistake");
         };
         assert_eq!(m.tip, "`.help` lists the commands");
@@ -1222,20 +1276,39 @@ mod tests {
     fn schema_lists_columns_and_maps_errors_onto_the_argument() {
         let mut repl = repl();
         let path = fixture("orders.csv");
-        let MetaOutcome::Print(text) = runtime().block_on(repl.meta(&format!(".schema {path}")))
+        let MetaAction::Done(MetaOutcome::Print(text)) =
+            runtime().block_on(repl.meta(&format!(".schema {path}")))
         else {
             panic!("expected a table");
         };
         assert!(text.contains("column") && text.contains("type"), "{text}");
         submit(&mut repl, &format!("let things = from {};", orders()));
-        let MetaOutcome::Print(text) = runtime().block_on(repl.meta(".schema things")) else {
+        let MetaAction::Done(MetaOutcome::Print(text)) =
+            runtime().block_on(repl.meta(".schema things"))
+        else {
             panic!("expected a table");
         };
         assert!(text.contains("amount") && text.contains("real"), "{text}");
-        let MetaOutcome::Diagnostics(ds) = runtime().block_on(repl.meta(".schema  thing")) else {
+        let MetaAction::Done(MetaOutcome::Diagnostics(ds)) =
+            runtime().block_on(repl.meta(".schema  thing"))
+        else {
             panic!("expected diagnostics");
         };
         assert_eq!(location(&repl, &ds[0]), ("<repl>".to_string(), 1, 10));
+    }
+
+    #[test]
+    fn describe_meta_returns_run_action_or_mistake() {
+        let mut repl = repl();
+        let rt = runtime();
+        let MetaAction::Done(MetaOutcome::Mistake(m)) = rt.block_on(repl.meta(".describe")) else {
+            panic!("expected a mistake");
+        };
+        assert_eq!(m.message, "`.describe` needs a source");
+        assert!(matches!(
+            rt.block_on(repl.meta(&format!(".describe {}", orders()))),
+            MetaAction::Run(_)
+        ));
     }
 
     #[test]
@@ -1243,20 +1316,22 @@ mod tests {
         let mut repl = repl();
         let rt = runtime();
         assert_eq!(repl.max_rows(), 100);
-        assert!(
-            matches!(rt.block_on(repl.meta(".max-rows 5")), MetaOutcome::Print(s) if s.is_empty())
-        );
+        assert!(matches!(
+            rt.block_on(repl.meta(".max-rows 5")),
+            MetaAction::Done(MetaOutcome::Print(s)) if s.is_empty()
+        ));
         assert_eq!(repl.max_rows(), 5);
-        let MetaOutcome::Print(s) = rt.block_on(repl.meta(".max-rows")) else {
+        let MetaAction::Done(MetaOutcome::Print(s)) = rt.block_on(repl.meta(".max-rows")) else {
             panic!()
         };
         assert_eq!(s, "tables show 5 rows\n");
         rt.block_on(repl.meta(".max-rows 0"));
-        let MetaOutcome::Print(s) = rt.block_on(repl.meta(".max-rows")) else {
+        let MetaAction::Done(MetaOutcome::Print(s)) = rt.block_on(repl.meta(".max-rows")) else {
             panic!()
         };
         assert_eq!(s, "tables show every row\n");
-        let MetaOutcome::Mistake(m) = rt.block_on(repl.meta(".max-rows lots")) else {
+        let MetaAction::Done(MetaOutcome::Mistake(m)) = rt.block_on(repl.meta(".max-rows lots"))
+        else {
             panic!()
         };
         assert_eq!(m.message, "`.max-rows` needs a whole number, found `lots`");
@@ -1266,15 +1341,17 @@ mod tests {
     fn format_is_set_and_shown() {
         let mut repl = repl();
         let rt = runtime();
-        assert!(
-            matches!(rt.block_on(repl.meta(".format csv")), MetaOutcome::Print(s) if s.is_empty())
-        );
+        assert!(matches!(
+            rt.block_on(repl.meta(".format csv")),
+            MetaAction::Done(MetaOutcome::Print(s)) if s.is_empty()
+        ));
         assert_eq!(repl.format(), RunFormat::Csv);
-        let MetaOutcome::Print(s) = rt.block_on(repl.meta(".format")) else {
+        let MetaAction::Done(MetaOutcome::Print(s)) = rt.block_on(repl.meta(".format")) else {
             panic!()
         };
         assert_eq!(s, "the output format is `csv`\n");
-        let MetaOutcome::Mistake(m) = rt.block_on(repl.meta(".format jsno")) else {
+        let MetaAction::Done(MetaOutcome::Mistake(m)) = rt.block_on(repl.meta(".format jsno"))
+        else {
             panic!()
         };
         assert_eq!(m.tip, "did you mean `.format json`?");

@@ -439,7 +439,9 @@ fn classify(doc: &Doc<'_>, cursor: &Cursor) -> Context {
                 Context::Nothing
             }
         }
-        SyntaxKind::COUNT_OP | SyntaxKind::GETSCHEMA_OP => Context::Nothing,
+        SyntaxKind::COUNT_OP | SyntaxKind::GETSCHEMA_OP | SyntaxKind::DESCRIBE_OP => {
+            Context::Nothing
+        }
         SyntaxKind::PROJECT_AWAY_OP => {
             if after_keyword || prev.kind() == SyntaxKind::COMMA {
                 Context::Columns {

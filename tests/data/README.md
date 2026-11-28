@@ -133,6 +133,21 @@ wrong columns, which the tests catch.
 | `dec` | Decimal128(10, 2) | 12345.67, -0.01, 0.00 | `real` in M1 |
 | `bin` | Binary | `00 01`, empty, `ff` | No DataScript type: projectable only, `DS2008` in expressions |
 
+## `all_types.parquet`
+
+5 rows covering every M1 DataScript type plus an unsupported `Binary` column, with one null per
+column and repeated values, for `describe` (M2-23).
+
+| Column | Arrow type | DataScript type | Values (row 5 or 4 is null) |
+|---|---|---|---|
+| `flag` | Boolean | `bool` | `true`, `false`, `true`, null, `false` |
+| `whole` | Int64 | `long` | `-10`, `0`, `10`, `20`, null |
+| `frac` | Float64 | `real` | `1.5`, `2.5`, `2.5`, `10.0`, null |
+| `label` | Utf8 | `string` | `alpha`, `beta`, `alpha`, `gamma`, null |
+| `when` | Timestamp(µs, UTC) | `datetime` | `2024-01-01T00:00:00Z` … `2024-01-04T00:00:00Z`, null |
+| `span` | Duration(µs) | `timespan` | `-5s`, `0s`, `90m`, `1d`, null |
+| `raw` | Binary | none (`DS2008`) | `00 01`, empty, `ff`, null, `00 01` |
+
 ## Source test files (M1-08)
 
 Small files for reading sources: glob merging, compression, JSON layouts, reader options and

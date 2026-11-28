@@ -1032,6 +1032,65 @@ with its own streaming JSON/NDJSON `FileFormat` and `FileSource` (`json.rs`):
   diagnostics (M2-34, M2-12). Parallelism across the files of a glob is unaffected.
 *(M2-33, 2026-11-28.)*
 
+### D-062 — `describe` operator and snake_case summary columns (M2-23)
+**Accepted.** DataScript adds a `describe` operator (**≠ KQL**) that summarizes every input column
+with statistics, following pandas/Polars `describe()` and DuckDB's `SUMMARIZE` rather than SQL
+`DESCRIBE` (metadata only, which DataScript calls `getschema`). Because SQL users may expect
+`describe` to be metadata-only, LANGUAGE.md, completion, hover, and REPL `.help` explicitly state
+that `describe` reads every row and point to `getschema` for metadata without reading data.
+
+- **Output schema and snake_case naming exception.** Every other generated column name in
+  DataScript is PascalCase following KQL (`Count`, `ColumnName`, `ColumnOrdinal`, `DataType`,
+  `Column1`). DataScript-only summary operators inspired by DuckDB and pandas (`describe`, and
+  later `output` in M2-25) deliberately use `snake_case`: `column_name: string`,
+  `column_type: string`, `count: long`, `null_percentage: real`, `approx_unique: long`,
+  `min: string`, `max: string`, `avg: real`, `std: real`, `q25: string`, `q50: string`,
+  `q75: string`. LANGUAGE.md §3.3 records this convention so later operators follow the family
+  they belong to.
+- **Per-type statistics and formatting.** `min`, `max`, `q25`, `q50` and `q75` hold values of
+  different types across rows, so they are `string` columns formatted the way `tostring` formats
+  them (not `dynamic`, keeping `describe` independent of M2-03). Numeric quartiles (`q25`, `q50`,
+  `q75`), including for `int` and `long` columns, are continuous interpolated `real` values
+  formatted with `tostring` (so whole-number quartiles print without `.0` and fractional quartiles
+  print with decimals, matching pandas `describe()`). `avg` and `std` have type `real`
+  and apply to numbers only (`int`, `long`, `real`); `datetime`, `timespan`, `string` and `bool`
+  report `null` for `avg` and `std`. `std` is the sample standard deviation (matching `stdev`),
+  returning `null` for fewer than 2 non-null values. On an empty input (0 rows), `null_percentage`
+  is `null` (never `NaN`), and `count` and `approx_unique` are `0`. Columns with no DataScript type
+  (`DS2008`, such as `Binary` or M1 `arrow.json`) appear with `column_type` matching `getschema`'s
+  `DataType` and only `count` and `null_percentage` populated.
+- **Approximate distinct and hybrid quantiles.** `approx_unique` uses DataFusion's HyperLogLog
+  (`approx_distinct`, 16,384 registers, fixed seed 0, commutative/associative register max).
+  Because DataFusion 55's `approx_distinct` does not implement `Float64`, `real` columns are mapped
+  through a canonical 64-bit integer key (`-0.0` → `+0.0`, canonical `NaN`). `approx_unique` is
+  deterministic across runs and `target_partitions` settings; on small fixtures (`orders.csv`,
+  `all_types.parquet`) it is exact, though golden cases should rely on determinism rather than
+  exactness at arbitrary cardinalities (standard error ~0.81%). For `q25`–`q75`, DataFusion 55's
+  `TDigest::estimate_quantile` overshoots and clamps on small uneven sets where each value is its
+  own weight-1 centroid (for example, `[-5s, 0, 90m, 1d]` produced `q50 = 0` instead of `45m`).
+  `describe` therefore uses a hybrid UDAF (`DescribeQuantile`): it buffers up to 2,048 non-null
+  `f64` values (16 KiB per accumulator, matching one HLL sketch) and computes exact continuous
+  linear-interpolated quantiles (SQL `PERCENTILE_CONT`), spilling seamlessly into DataFusion's
+  bounded-memory t-digest (`ApproxPercentileAccumulator`) once a column exceeds 2,048 non-null
+  values (during either `update_batch` or `merge_batch`). `datetime` and `timespan` quartiles go
+  through microsecond `i64` → `f64` → rounded `i64` formatted as `tostring`. Golden tests run
+  single-partition (D-017), so outputs are deterministic both below and above the threshold.
+- **IR, capabilities, row order and lowering.** `describe` has its own IR node
+  (`PlanNode::Describe`) and `Capabilities::describe` (`DS4001`), so `explain` shows it as one
+  step and future SQL backends (M6-03) can lower it to DuckDB's `SUMMARIZE`. Rows come out in
+  input-column order, so `describe` defines row order (LANGUAGE.md §3.4 and the golden driver's
+  `output_order_defined`). The DataFusion backend lowers it as a single global aggregate pass
+  followed by an unpivot (`Values` × `CrossJoin` + `CASE` + `Sort` by column index), never one
+  scan per column.
+- **Arguments and REPL.** `describe` takes no arguments (`DS0290`, from M2-23's DS0290–DS0294
+  block); a column-subset form (`describe a, b`) is left as a follow-up if wanted. When the argument looks like a table source (a string literal or reader call), `DS0290` help
+  suggests `from <arg> | describe` (and `.describe <arg>` in the REPL). In the REPL,
+  `.describe <source>` prepares `from <source> | describe` via `MetaAction::Run` (separate from
+  `MetaOutcome` so `Printer::meta` cannot receive it) and executes it on the normal worker-thread
+  query path so Ctrl-C cancels it like any query, while `.schema` stays the cheap metadata-only
+  command.
+*(M2-23, 2026-11-28.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

@@ -18,6 +18,7 @@ use datafusion::arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, Float64Array, Int64Array, StringArray,
 };
 use datafusion::arrow::compute::cast;
+use datafusion::arrow::datatypes::Float64Type;
 use datafusion::error::{DataFusionError, Result};
 use datafusion::logical_expr::{
     ColumnarValue, ScalarFunctionArgs, ScalarUDF, ScalarUDFImpl, Signature, Volatility,
@@ -840,6 +841,62 @@ fn to_text(array: &ArrayRef) -> Result<Vec<Option<String>>> {
 
 pub(crate) fn k_tostring(arrays: &[ArrayRef], _: &DataType) -> Result<ArrayRef> {
     Ok(out_str(to_text(&arrays[0])?))
+}
+
+/// Canonical 64-bit integer key for `Float64` values fed to `approx_distinct`: `-0.0` maps to
+/// `+0.0` and all `NaN`s share one bit pattern so HyperLogLog counts distinct floats consistently.
+pub(crate) fn k_f64_hll_key(arrays: &[ArrayRef], _: &DataType) -> Result<ArrayRef> {
+    let a = arrays[0].as_primitive::<Float64Type>();
+    let out: Vec<Option<i64>> = (0..a.len())
+        .map(|i| {
+            a.is_valid(i).then(|| {
+                let v = a.value(i);
+                let bits = if v == 0.0 {
+                    0.0_f64.to_bits()
+                } else if v.is_nan() {
+                    f64::NAN.to_bits()
+                } else {
+                    v.to_bits()
+                };
+                bits as i64
+            })
+        })
+        .collect();
+    Ok(Arc::new(Int64Array::from(out)))
+}
+
+fn f64_micros(x: f64) -> Option<i64> {
+    let r = x.round();
+    const LIMIT: f64 = 9_223_372_036_854_775_808.0;
+    (r.is_finite() && (-LIMIT..LIMIT).contains(&r)).then_some(r as i64)
+}
+
+/// Formats an approximate quantile (microseconds as `Float64`) as a `datetime` string.
+pub(crate) fn k_f64_to_datetime_str(arrays: &[ArrayRef], _: &DataType) -> Result<ArrayRef> {
+    let a = arrays[0].as_primitive::<Float64Type>();
+    let out = (0..a.len())
+        .map(|i| {
+            a.is_valid(i)
+                .then(|| a.value(i))
+                .and_then(f64_micros)
+                .map(datascript_engine::table::format_datetime)
+        })
+        .collect();
+    Ok(out_str(out))
+}
+
+/// Formats an approximate quantile (microseconds as `Float64`) as a `timespan` string.
+pub(crate) fn k_f64_to_timespan_str(arrays: &[ArrayRef], _: &DataType) -> Result<ArrayRef> {
+    let a = arrays[0].as_primitive::<Float64Type>();
+    let out = (0..a.len())
+        .map(|i| {
+            a.is_valid(i)
+                .then(|| a.value(i))
+                .and_then(f64_micros)
+                .map(datascript_engine::table::format_timespan)
+        })
+        .collect();
+    Ok(out_str(out))
 }
 
 /// An integer from any value: strings in integer syntax, reals truncated toward zero, bools as

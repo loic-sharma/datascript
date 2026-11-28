@@ -840,6 +840,59 @@ impl Parser<'_> {
         self.errors.push(d);
     }
 
+    /// DS0290: `describe` given arguments (`describe x`, `describe a, b`, `describe 'orders.csv'`).
+    pub(super) fn describe_arguments(&mut self, arg_pos: usize, start: u32, end: u32) {
+        let span = self.span(start, end);
+        let help = match self.snippet(start, end) {
+            Some(args) if self.source_like_args(arg_pos) => format!(
+                "put the table after `from` instead: `from {args} | describe` \
+                 (or `.describe {args}` in the REPL)"
+            ),
+            Some(args) if self.plain_column_list(arg_pos) => format!(
+                "remove `{args}` to summarize every column, or select columns first with \
+                 `project`: `project {args} | describe`"
+            ),
+            _ => "remove the arguments to summarize every column, or select columns first with \
+                  `project` before `describe`"
+                .to_string(),
+        };
+        let d = Diagnostic::error(codes::DS0290, "`describe` takes no arguments")
+            .primary(span, "not accepted here")
+            .help(help);
+        self.errors.push(d);
+    }
+
+    /// Whether the tokens in `start..self.pos` look like a table source: a single string literal
+    /// (`'orders.csv'`) or a single reader call (`read_csv(...)`).
+    fn source_like_args(&self, start: usize) -> bool {
+        let slice = &self.tokens[start.min(self.pos)..self.pos];
+        match slice {
+            [only] => only.kind == STRING,
+            [first, second, .., last]
+                if first.kind == IDENT
+                    && crate::READERS.contains(&first.text(self.text))
+                    && second.kind == L_PAREN
+                    && last.kind == R_PAREN =>
+            {
+                let mut depth = 0usize;
+                for (k, tok) in slice[1..].iter().enumerate() {
+                    match tok.kind {
+                        L_PAREN => depth += 1,
+                        R_PAREN => {
+                            depth = depth.saturating_sub(1);
+                            if depth == 0 {
+                                return k + 2 == slice.len();
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+
     /// DS0121: `sort` or `top` with no `by`. `at` is the token index where `by` belongs, and
     /// `rest` the source range of what follows it (the sort keys), if anything.
     pub(super) fn missing_by(

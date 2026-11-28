@@ -60,7 +60,10 @@ pub fn operator_doc(name: &str) -> Option<&'static str> {
         "join" => "Joins the rows with another table on key columns.",
         "union" => "Appends the rows of other tables, matching columns by name.",
         "render" => "Draws the result as a chart. It must be the last operator.",
-        "getschema" => "One row per input column: its name, position and type.",
+        "getschema" => "One row per input column: its name, position and type (reads no data).",
+        "describe" => {
+            "Summary statistics for every input column (reads every row; use `getschema` for column names and types without reading data)."
+        }
         _ => return None,
     })
 }
@@ -317,9 +320,9 @@ pub(crate) fn name_text(token: &SyntaxToken) -> Option<String> {
     }
 }
 
-/// Whether `kind` is an operator node (`WHERE_OP` … `GETSCHEMA_OP`).
+/// Whether `kind` is an operator node (`WHERE_OP` … `DESCRIBE_OP`).
 pub(crate) fn is_operator(kind: SyntaxKind) -> bool {
-    (SyntaxKind::WHERE_OP..=SyntaxKind::GETSCHEMA_OP).contains(&kind)
+    (SyntaxKind::WHERE_OP..=SyntaxKind::DESCRIBE_OP).contains(&kind)
 }
 
 /// The operator node a token belongs to: its nearest ancestor that is an operator of a pipeline.

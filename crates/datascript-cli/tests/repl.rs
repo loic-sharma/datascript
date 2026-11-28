@@ -565,3 +565,54 @@ fn failed_let_redefinition_rolls_back_and_plural_removal_lists_dependents() {
         "info: removed `y`, `z` and `w`, which used `x`; enter them again to use the new definition",
     ));
 }
+
+#[test]
+fn describe_meta_command_summarizes_sources_and_reports_errors() {
+    // `.describe` on a file path.
+    repl(".describe 'orders.csv'\n")
+        .success()
+        .stdout(contains(
+            "column_name | column_type | count | null_percentage",
+        ))
+        .stdout(contains(
+            "orderId     | string      |    50 |             0.0",
+        ))
+        .stdout(contains(
+            "amount      | real        |    49 |             2.0",
+        ))
+        .stderr("");
+
+    // `.describe` on a saved tabular let and a host table.
+    ds().args(["--table", "orders=orders.csv"])
+        .write_stdin("let small = from orders | project orderId, amount;\n.describe small\n.describe orders\n")
+        .assert()
+        .success()
+        .stdout(contains("orderId"))
+        .stdout(contains("customerId"))
+        .stderr("");
+
+    // `.describe` honors `.format csv`.
+    repl(".format csv\n.describe 'orders.csv'\n")
+        .success()
+        .stdout(contains(
+            "column_name,column_type,count,null_percentage,approx_unique,min,max,avg,std,q25,q50,q75\n",
+        ))
+        .stderr("");
+
+    // `.describe` with no argument gives a mistake with a tip.
+    repl(".describe\n")
+        .code(1)
+        .stderr(contains("error: `.describe` needs a source\n  tip: "));
+
+    // `.describe` on a missing file points the diagnostic at the argument.
+    repl(".describe 'ordrs.csv'\n")
+        .code(1)
+        .stderr(contains("error[DS3001]: file `ordrs.csv` not found"))
+        .stderr(contains("--> <repl>:1:11"))
+        .stderr(contains("a file with a similar name exists: `orders.csv`"));
+
+    // `.help` lists `.describe`.
+    repl(".help\n")
+        .success()
+        .stdout(contains(".describe <source>"));
+}

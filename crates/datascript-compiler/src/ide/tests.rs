@@ -1619,3 +1619,62 @@ fn semantic_tokens_classify_contextual_keywords_and_syntax() {
         SemanticTokenModifiers::NONE,
     )));
 }
+
+#[test]
+fn describe_completion_hover_and_semantic_tokens() {
+    // Completion after `|` offers `describe` with docs mentioning that it reads every row and
+    // pointing at `getschema`.
+    let ops = completions("from 'orders.csv' | ‸");
+    let desc_item = ops.items.iter().find(|i| i.label == "describe").unwrap();
+    assert_eq!(desc_item.kind, CompletionKind::Operator);
+    let detail = desc_item.detail.as_deref().unwrap();
+    assert!(detail.contains("reads every row"), "{detail}");
+    assert!(detail.contains("getschema"), "{detail}");
+
+    // Nothing is offered as arguments right after `describe`.
+    assert!(
+        completions("from 'orders.csv' | describe ‸")
+            .items
+            .is_empty()
+    );
+
+    // Downstream operators see `describe`'s 12 snake_case columns.
+    let cols = completions("from 'orders.csv' | describe | where ‸");
+    let col_names: Vec<&str> = cols
+        .items
+        .iter()
+        .filter(|i| i.kind == CompletionKind::Column)
+        .map(|i| i.label.as_str())
+        .collect();
+    assert_eq!(
+        col_names,
+        [
+            "column_name",
+            "column_type",
+            "count",
+            "null_percentage",
+            "approx_unique",
+            "min",
+            "max",
+            "avg",
+            "std",
+            "q25",
+            "q50",
+            "q75",
+        ]
+    );
+
+    // Hover on `describe` shows its documentation.
+    let h = hover_at("from 'orders.csv' | des‸cribe").unwrap();
+    assert!(h.contains("reads every row"), "{h}");
+    assert!(h.contains("getschema"), "{h}");
+
+    // Semantic tokens mark `describe` as a built-in keyword (operator).
+    let src = SourceFile::new("d.ds", "from 'orders.csv' | describe");
+    let tokens = semantic_tokens(&src, None);
+    assert!(tokens.iter().any(|t| {
+        &src.text()[t.start..t.end] == "describe"
+            && t.kind == SemanticTokenKind::Keyword
+            && t.modifiers == SemanticTokenModifiers::DEFAULT_LIBRARY
+    }));
+}

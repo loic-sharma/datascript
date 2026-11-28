@@ -1,0 +1,12 @@
+# A backend whose `Capabilities::describe` is false reports DS4001 at check time.
+mode: check
+schema: 'orders.csv'(orderId: string, amount: real)
+without: operator describe
+---- query
+from 'orders.csv' | describe
+---- expected
+error[DS4001]: `describe` is not supported by this engine
+  --> query:1:21
+  |
+1 | from 'orders.csv' | describe
+  |                     ^^^^^^^^ this engine does not implement `describe`

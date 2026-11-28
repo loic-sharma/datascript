@@ -13,6 +13,7 @@ use crate::SyntaxKind::*;
 /// The operators of the language today, in alphabetical order.
 pub(crate) const OPERATORS: &[&str] = &[
     "count",
+    "describe",
     "distinct",
     "extend",
     "getschema",
@@ -838,6 +839,10 @@ fn operator_named(
             TAKE_OP
         }
         "count" => COUNT_OP,
+        "describe" => {
+            describe_body(p);
+            DESCRIBE_OP
+        }
         "getschema" => GETSCHEMA_OP,
         "distinct" => {
             let star = p.pos;
@@ -874,6 +879,36 @@ fn operator_named(
     };
     m.complete(p, kind);
     kind
+}
+
+/// `describe` takes no arguments (DS0290). Any unexpected tokens before the next operator,
+/// statement, or closing delimiter are wrapped in an `ERROR` node so recovery stays clean.
+fn describe_body(p: &mut Parser<'_>) {
+    let at_end = |p: &Parser<'_>| {
+        p.at(PIPE)
+            || p.at_double_pipe()
+            || p.at(SEMICOLON)
+            || p.at(LET_KW)
+            || p.at(EOF)
+            || (p.depth > 0 && (p.at(R_PAREN) || (p.in_arg_list && p.at(COMMA))))
+            || p.at_known_operator()
+            || p.at_sql_clause()
+            || p.at_new_statement()
+            || (p.depth == 0 && p.at_from_kw())
+            || (p.depth > 0 && p.at_statement_after_unclosed())
+            || (p.depth == 0 && is_close_bracket(p.current()))
+    };
+    if at_end(p) {
+        return;
+    }
+    let arg_pos = p.pos;
+    let arg_start = p.offset();
+    let suppress = p.at(ERROR) || p.last_error_at == Some(arg_pos);
+    p.recover(at_end);
+    if !suppress {
+        let arg_end = p.prev_end();
+        p.describe_arguments(arg_pos, arg_start, arg_end);
+    }
 }
 
 /// `where a, b` (DS0115): further conditions after commas, outside a call's arguments where the

@@ -121,6 +121,8 @@ pub const DS0151: Code = Code::new(151);
 pub const DS0152: Code = Code::new(152);
 /// SQL clause order: a SQL keyword after the table without `|` (`from t select a`), or `FROM` after the column list (`| project a from t`)
 pub const DS0153: Code = Code::new(153);
+/// `describe` takes no arguments
+pub const DS0290: Code = Code::new(290);
 /// unknown column
 pub const DS1001: Code = Code::new(1001);
 /// unknown name (let/table)
@@ -446,6 +448,12 @@ pub const REGISTRY: &[CodeInfo] = &[
         code: DS0153,
         severity: Some(Severity::Error),
         summary: "SQL clause order: a SQL keyword after the table without `|` (`from t select a`), or `FROM` after the column list (`| project a from t`)",
+        status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS0290,
+        severity: Some(Severity::Error),
+        summary: "`describe` takes no arguments",
         status: CodeStatus::Active,
     },
     CodeInfo {

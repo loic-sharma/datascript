@@ -5,9 +5,10 @@
 use std::sync::Arc;
 
 use arrow_schema::{DataType, Field, FieldRef};
-use datafusion::arrow::array::{Array, ArrayRef, AsArray};
+use datafusion::arrow::array::{Array, ArrayRef, AsArray, Float64Array};
 use datafusion::arrow::compute::cast;
 use datafusion::error::{DataFusionError, Result};
+use datafusion::functions_aggregate::approx_percentile_cont::ApproxPercentileAccumulator;
 use datafusion::logical_expr::function::{AccumulatorArgs, StateFieldsArgs};
 use datafusion::logical_expr::utils::format_state_name;
 use datafusion::logical_expr::{
@@ -338,6 +339,218 @@ impl Accumulator for PercentileAccumulator {
     }
 }
 
+/// Maximum number of non-null `f64` values kept in an exact buffer before spilling to
+/// DataFusion's t-digest (16 KiB per accumulator, matching one HyperLogLog sketch).
+///
+/// DataFusion 55's `TDigest::estimate_quantile` overshoots and clamps on small, uneven value
+/// sets (where each value is its own weight-1 centroid). Keeping an exact buffer up to this
+/// threshold gives exact continuous linear-interpolated quantiles on small inputs while keeping
+/// memory strictly bounded on large files.
+const DESCRIBE_EXACT_LIMIT: usize = 2048;
+
+/// Hybrid continuous quantile for `describe`: exact linear interpolation (SQL `PERCENTILE_CONT`)
+/// up to [`DESCRIBE_EXACT_LIMIT`] non-null values, spilling to DataFusion's t-digest above it.
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub(crate) struct DescribeQuantile {
+    name: String,
+    /// Quantile in basis points (0..=10_000), e.g. `2500` for `q25`.
+    percentile_bps: u16,
+    signature: Signature,
+}
+
+pub(crate) fn describe_quantile(percentile_bps: u16) -> AggregateUDF {
+    AggregateUDF::from(DescribeQuantile {
+        name: format!("ds_describe_q{percentile_bps}"),
+        percentile_bps,
+        signature: Signature::exact(vec![DataType::Float64], Volatility::Immutable),
+    })
+}
+
+impl DescribeQuantile {
+    fn percentile(&self) -> f64 {
+        f64::from(self.percentile_bps) / 10_000.0
+    }
+}
+
+impl AggregateUDFImpl for DescribeQuantile {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn signature(&self) -> &Signature {
+        &self.signature
+    }
+
+    fn return_type(&self, _arg_types: &[DataType]) -> Result<DataType> {
+        Ok(DataType::Float64)
+    }
+
+    fn accumulator(&self, _args: AccumulatorArgs) -> Result<Box<dyn Accumulator>> {
+        Ok(Box::new(DescribeQuantileAccumulator::new(
+            self.percentile(),
+        )))
+    }
+
+    fn state_fields(&self, args: StateFieldsArgs) -> Result<Vec<FieldRef>> {
+        Ok(vec![
+            Arc::new(Field::new_list(
+                format_state_name(args.name, "exact"),
+                Field::new_list_field(DataType::Float64, true),
+                true,
+            )),
+            Arc::new(Field::new(
+                format_state_name(args.name, "max_size"),
+                DataType::UInt64,
+                false,
+            )),
+            Arc::new(Field::new(
+                format_state_name(args.name, "sum"),
+                DataType::Float64,
+                false,
+            )),
+            Arc::new(Field::new(
+                format_state_name(args.name, "count"),
+                DataType::Float64,
+                false,
+            )),
+            Arc::new(Field::new(
+                format_state_name(args.name, "max"),
+                DataType::Float64,
+                false,
+            )),
+            Arc::new(Field::new(
+                format_state_name(args.name, "min"),
+                DataType::Float64,
+                false,
+            )),
+            Arc::new(Field::new_list(
+                format_state_name(args.name, "centroids"),
+                Field::new_list_field(DataType::Float64, true),
+                false,
+            )),
+        ])
+    }
+}
+
+#[derive(Debug)]
+struct DescribeQuantileAccumulator {
+    /// Exact non-null values while count <= `DESCRIBE_EXACT_LIMIT`; `None` once spilled to `digest`.
+    exact: Option<Vec<f64>>,
+    digest: ApproxPercentileAccumulator,
+    percentile: f64,
+}
+
+impl DescribeQuantileAccumulator {
+    fn new(percentile: f64) -> Self {
+        Self {
+            exact: Some(Vec::new()),
+            digest: ApproxPercentileAccumulator::new(percentile, DataType::Float64),
+            percentile,
+        }
+    }
+
+    /// Moves any buffered exact values into `self.digest` and switches to t-digest mode.
+    fn spill(&mut self) -> Result<()> {
+        if let Some(buf) = self.exact.take()
+            && !buf.is_empty()
+        {
+            let arr: ArrayRef = Arc::new(Float64Array::from(buf));
+            self.digest.update_batch(&[arr])?;
+        }
+        Ok(())
+    }
+
+    fn add_array(&mut self, array: &ArrayRef) -> Result<()> {
+        let non_null = array.len() - array.null_count();
+        if non_null == 0 {
+            return Ok(());
+        }
+        if let Some(buf) = &mut self.exact
+            && buf.len() + non_null <= DESCRIBE_EXACT_LIMIT
+        {
+            let floats = array.as_primitive::<datafusion::arrow::datatypes::Float64Type>();
+            buf.extend(floats.iter().flatten());
+            return Ok(());
+        }
+        self.spill()?;
+        self.digest.update_batch(std::slice::from_ref(array))
+    }
+}
+
+impl Accumulator for DescribeQuantileAccumulator {
+    fn update_batch(&mut self, values: &[ArrayRef]) -> Result<()> {
+        self.add_array(&values[0])
+    }
+
+    fn merge_batch(&mut self, states: &[ArrayRef]) -> Result<()> {
+        let exact_lists = states[0].as_list::<i32>();
+        for i in 0..exact_lists.len() {
+            if exact_lists.is_valid(i) {
+                let values = exact_lists.value(i);
+                self.add_array(&values)?;
+            } else {
+                self.spill()?;
+                let digest_row: Vec<ArrayRef> =
+                    states[1..].iter().map(|col| col.slice(i, 1)).collect();
+                self.digest.merge_batch(&digest_row)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn state(&mut self) -> Result<Vec<ScalarValue>> {
+        let exact = match &self.exact {
+            Some(buf) => {
+                let scalars: Vec<ScalarValue> =
+                    buf.iter().map(|&v| ScalarValue::Float64(Some(v))).collect();
+                ScalarValue::List(ScalarValue::new_list_nullable(&scalars, &DataType::Float64))
+            }
+            None => ScalarValue::try_from(&DataType::List(Arc::new(Field::new_list_field(
+                DataType::Float64,
+                true,
+            ))))?,
+        };
+        let mut out = Vec::with_capacity(7);
+        out.push(exact);
+        out.extend(self.digest.state()?);
+        Ok(out)
+    }
+
+    fn evaluate(&mut self) -> Result<ScalarValue> {
+        let Some(buf) = &mut self.exact else {
+            return self.digest.evaluate();
+        };
+        if buf.is_empty() {
+            return Ok(ScalarValue::Float64(None));
+        }
+        buf.sort_by(f64::total_cmp);
+        let n = buf.len();
+        let pos = self.percentile * (n - 1) as f64;
+        let lo = (pos.floor() as usize).min(n - 1);
+        let hi = (pos.ceil() as usize).min(n - 1);
+        let frac = pos - lo as f64;
+        let val = if lo == hi || buf[lo] == buf[hi] {
+            buf[lo]
+        } else {
+            let diff = buf[hi] - buf[lo];
+            if diff.is_finite() {
+                buf[lo] + frac * diff
+            } else {
+                (1.0 - frac) * buf[lo] + frac * buf[hi]
+            }
+        };
+        Ok(ScalarValue::Float64(Some(val)))
+    }
+
+    fn size(&self) -> usize {
+        let exact_bytes = self
+            .exact
+            .as_ref()
+            .map_or(0, |v| v.capacity() * size_of::<f64>());
+        size_of_val(self) + exact_bytes + self.digest.size()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::hash::{DefaultHasher, Hash, Hasher};
@@ -362,5 +575,94 @@ mod tests {
         assert_eq!(sumif.name(), "ds_sumif");
         assert_ne!(sum, sumif);
         assert_ne!(hash_of(&sum), hash_of(&sumif));
+    }
+
+    fn eval_quantile(percentile: f64, values: &[Option<f64>]) -> Option<f64> {
+        let mut acc = DescribeQuantileAccumulator::new(percentile);
+        let arr: ArrayRef = Arc::new(Float64Array::from(values.to_vec()));
+        acc.update_batch(&[arr]).unwrap();
+        match acc.evaluate().unwrap() {
+            ScalarValue::Float64(v) => v,
+            other => panic!("expected Float64, got {other:?}"),
+        }
+    }
+
+    fn merge_states(percentile: f64, parts: &[Vec<f64>]) -> Option<f64> {
+        let mut states: Vec<Vec<ScalarValue>> = Vec::with_capacity(parts.len());
+        for part in parts {
+            let mut acc = DescribeQuantileAccumulator::new(percentile);
+            let arr: ArrayRef = Arc::new(Float64Array::from(part.clone()));
+            acc.update_batch(&[arr]).unwrap();
+            states.push(acc.state().unwrap());
+        }
+        let field_count = states[0].len();
+        let state_arrays: Vec<ArrayRef> = (0..field_count)
+            .map(|col| {
+                let col_vals = states.iter().map(|row| row[col].clone());
+                ScalarValue::iter_to_array(col_vals).unwrap()
+            })
+            .collect();
+        let mut merged = DescribeQuantileAccumulator::new(percentile);
+        merged.merge_batch(&state_arrays).unwrap();
+        match merged.evaluate().unwrap() {
+            ScalarValue::Float64(v) => v,
+            other => panic!("expected Float64, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn describe_quantile_exact_on_small_uneven_input() {
+        // Matches `span` in `all_types.parquet`: [-5s, 0, 90m, 1d] in microseconds.
+        let span = [
+            Some(-5_000_000.0),
+            Some(0.0),
+            None,
+            Some(5_400_000_000.0),
+            Some(86_400_000_000.0),
+        ];
+        assert_eq!(eval_quantile(0.25, &span), Some(-1_250_000.0));
+        assert_eq!(eval_quantile(0.50, &span), Some(2_700_000_000.0));
+        assert_eq!(eval_quantile(0.75, &span), Some(25_650_000_000.0));
+
+        // Matches `id` in `nulls.csv`: [1, 2, 3, 4, 5].
+        let ids = [Some(5.0), Some(1.0), None, Some(4.0), Some(2.0), Some(3.0)];
+        assert_eq!(eval_quantile(0.25, &ids), Some(2.0));
+        assert_eq!(eval_quantile(0.50, &ids), Some(3.0));
+        assert_eq!(eval_quantile(0.75, &ids), Some(4.0));
+    }
+
+    #[test]
+    fn describe_quantile_empty_and_single() {
+        assert_eq!(eval_quantile(0.50, &[]), None);
+        assert_eq!(eval_quantile(0.50, &[None, None]), None);
+        assert_eq!(eval_quantile(0.25, &[Some(42.0)]), Some(42.0));
+        assert_eq!(eval_quantile(0.50, &[Some(42.0)]), Some(42.0));
+        assert_eq!(eval_quantile(0.75, &[Some(42.0)]), Some(42.0));
+    }
+
+    #[test]
+    fn describe_quantile_spills_past_limit_and_merges_across_modes() {
+        // Stay exact when merged total <= DESCRIBE_EXACT_LIMIT.
+        let p1: Vec<f64> = (0..1000).map(|x| x as f64).collect();
+        let p2: Vec<f64> = (1000..2000).map(|x| x as f64).collect();
+        assert_eq!(merge_states(0.50, &[p1, p2]), Some(999.5));
+
+        // Single-partition spill (> DESCRIBE_EXACT_LIMIT).
+        let big: Vec<Option<f64>> = (0..5000).map(|x| Some(x as f64)).collect();
+        let q50 = eval_quantile(0.50, &big).unwrap();
+        assert!((q50 - 2500.0).abs() < 25.0, "q50={q50}");
+
+        // Exact + exact spilling past DESCRIBE_EXACT_LIMIT during merge.
+        let a: Vec<f64> = (0..1500).map(|x| x as f64).collect();
+        let b: Vec<f64> = (1500..3000).map(|x| x as f64).collect();
+        let q50 = merge_states(0.50, &[a, b]).unwrap();
+        assert!((q50 - 1500.0).abs() < 20.0, "q50={q50}");
+
+        // Exact + digest and digest + digest merges.
+        let small: Vec<f64> = (0..100).map(|x| x as f64).collect();
+        let large1: Vec<f64> = (100..3000).map(|x| x as f64).collect();
+        let large2: Vec<f64> = (3000..6000).map(|x| x as f64).collect();
+        let q50 = merge_states(0.50, &[small, large1, large2]).unwrap();
+        assert!((q50 - 3000.0).abs() < 30.0, "q50={q50}");
     }
 }
