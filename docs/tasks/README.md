@@ -124,7 +124,7 @@ Two shared files are touched by many tasks:
 | [M3-03](M3-03-lsp-navigation-fixes.md) | LSP quick fixes, navigation, semantic tokens | M3-01, M2-13 | done |
 | [M3-04](M3-04-vscode-extension.md) | VS Code extension | M3-01 | done |
 | [M3-05](M3-05-vscode-run.md) | VS Code Run CodeLens with CLI-style output | M3-04 | done |
-| [M3-06](M3-06-vscode-results-panel.md) | VS Code results panel (grid and charts) | M3-05, M4-02, M4-03, M2-13 | todo |
+| [M3-06](M3-06-vscode-results-panel.md) | VS Code results panel (grid and charts) | M3-05, M4-09, M4-03, M2-13 | todo |
 | [M3-07](M3-07-repl-column-completion.md) | REPL column completion | M3-02 | done |
 | [M3-08](M3-08-lsp-test-gaps.md) | LSP integration test gaps | M3-05 | done |
 | [M3-09](M3-09-vscode-e2e-gaps.md) | VS Code extension E2E test gaps | M3-05 | done |
@@ -134,13 +134,15 @@ Two shared files are touched by many tasks:
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
-| [M4-01](M4-01-server-api.md) | Local server (`ds ui`), `.dsnb` parser & cell stitcher | M1-13, M2-13 | todo |
-| [M4-02](M4-02-web-frontend.md) | Web UI: notebook shell, `.dsnb` engine, editor & results grid (v1) | M4-01, M2-13 | todo |
-| [M4-03](M4-03-web-charts.md) | Charts from `RenderSpec` (Apache ECharts) | M4-02, M1-10 | todo |
-| [M4-04](M4-04-web-schema-completion.md) | Result profiler, source schema inspector & IDE completion | M4-02, M3-02, M2-13 | todo |
-| [M4-05](M4-05-web-shortcuts-polish.md) | Power-user shortcuts, tabs, file management & inspector polish | M4-02, M4-03, M4-04 | todo |
-| [M4-06](M4-06-notebook-cli-lsp.md) | `.dsnb` notebooks in CLI (`ds run`/`ds check`) and LSP / VS Code | M4-01, M3-01, M3-02 | todo |
-| [M4-07](M4-07-web-output-cache.md) | Web UI: local output cache across reloads *(future enhancement)* | M4-02, M4-03 | todo |
+| [M4-08](M4-08-notebook-parser-stitcher.md) | `.dsnb` notebook parser/serializer & shared `StitchedProgram` | M1-13, M2-13 | todo |
+| [M4-01](M4-01-server-api.md) | Local server (`ds ui`) & streaming row-limit helper | M4-08 | todo |
+| [M4-02](M4-02-web-frontend.md) | Web UI: notebook shell, `Runtime`, editor & execution (v1) | M4-01, M2-13 | todo |
+| [M4-09](M4-09-web-results-grid.md) | Web UI: virtualized Arrow grid, multi-result tabs & export | M4-02 | todo |
+| [M4-03](M4-03-web-charts.md) | Charts from `RenderSpec` (Apache ECharts) | M4-09, M1-10 | todo |
+| [M4-04](M4-04-web-schema-completion.md) | Result profiler, source schema inspector & IDE completion | M4-09, M3-02, M2-13 | todo |
+| [M4-05](M4-05-web-shortcuts-polish.md) | Power-user shortcuts, tabs, file management & inspector polish | M4-02, M4-09, M4-03, M4-04 | todo |
+| [M4-06](M4-06-notebook-cli-lsp.md) | `.dsnb` notebooks in CLI (`ds run`/`ds check`) and LSP / VS Code | M4-08, M3-01, M3-02 | todo |
+| [M4-07](M4-07-web-output-cache.md) | Web UI: local output cache across reloads *(optional for M4 "done")* | M4-09, M4-03 | todo |
 
 ## M5 — In-browser runtime (WASM)
 
@@ -148,7 +150,7 @@ Two shared files are touched by many tasks:
 |---|---|---|---|
 | [M5-01](M5-01-wasm-build.md) | Build the engine for wasm32 | M1-13, M2-13 | todo |
 | [M5-02](M5-02-wasm-js-api.md) | JS/TS API (`@datascript/wasm`) | M5-01, M3-02, M2-13 | todo |
-| [M5-03](M5-03-wasm-playground.md) | WASM runtime adapter and playground | M5-02, M4-02, M4-03, M4-04, M2-13 | todo |
+| [M5-03](M5-03-wasm-playground.md) | WASM runtime adapter and playground | M5-02, M4-02, M4-09, M4-03, M4-04, M2-13 | todo |
 | [M5-04](M5-04-parity-tests.md) | CLI ↔ WASM parity tests | M5-02 | todo |
 
 ## M6 — Release readiness

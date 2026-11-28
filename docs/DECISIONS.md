@@ -585,9 +585,10 @@ Settled before implementation so the task stays inside `datascript-cli`. **Lets 
 text**: each submission is checked and run as one program, the saved let statements followed by
 the new input, and every diagnostic span is mapped back to the input it came from. Each input is its
 own snippet (`<repl:N>`, lines from 1), so an error renders against what the user just typed, and
-an error in a saved let (its file was deleted) against that let's own snippet. The alternative, a
-compiler API taking earlier inputs as a prelude, is cleaner but changes `datascript-compiler` for
-one frontend; the LSP and web UI work on whole documents and don't need it. **Saving**: an input's
+an error in a saved let (its file was deleted) against that let's own snippet. The alternative, a compiler API taking earlier inputs as a prelude, is cleaner but changes
+`datascript-compiler` for one frontend; the LSP and web UI work on whole documents and don't need
+it. *(Partly superseded by D-062: the web UI, CLI, and LSP now share `StitchedProgram` in
+`datascript-compiler` for `.dsnb` notebooks.)* **Saving**: an input's
 lets are saved once it checks without errors, before its queries run; a check error saves nothing,
 a runtime error or Ctrl-C undoes nothing. **Redefinition is allowed in the REPL** (≠ `DS1003` in
 programs, LANGUAGE.md §2): a new `let x` removes the old one and every saved let that uses it,
@@ -945,76 +946,58 @@ desktop shell) standardizes on:
 
 ### D-062 — Notebook-first local web UI with `.dsnb` source-only Markdown format
 **Accepted.** `ds ui` is a notebook-first local data workbench rather than a single scratch query
-box (see [WEB_UI.md](WEB_UI.md)). Key rules:
-- **Format (`.dsnb`) & cross-surface reuse**: strictly source-only plain-text Markdown (CommonMark
-  fenced ` ```ds ` blocks are DataScript cells, saved with a fence strictly longer than any
-  backtick run in the cell; prose between them are Markdown cells, separated by `<!-- ds:cell -->`
-  when adjacent, escaping any literal `<!-- ds:cell -->` line to `<!-- ds:cell:literal -->`; no
-  cached query outputs on disk so git diffs stay spotless; optional local client-side output
-  caching outside the repo is deferred to M4-07). Dedicated `.dsnb` extension avoids colliding with
-  repo docs (`README.md`) and supports clean OS file associations in a future desktop app. The
-  single canonical `.dsnb` parser/serializer and `StitchedProgram` live in `datascript-compiler`
-  (pure, `wasm32`-compatible) so `datascript-server` (returning/accepting structured cells via
-  `/api/file`), `ds run`/`ds check`, `ds lsp`/VS Code (M4-06), and `datascript-wasm` (M5) all share
-  one implementation without duplicating the parser in TypeScript. Plain `.ds` scripts also open in
-  `ds ui`, and launching `ds ui` in a folder opens an unsaved Scratchpad with a dismissible
-  quick-preview strip for discovered data files.
-- **Cross-cell `let` scope & shared stitcher**: top-to-bottom document lexical order, keeping
-  DataScript's `DS1003` no-shadowing rule (D-007) across cells so `.dsnb` notebooks stay 1:1 with
-  `.ds` scripts and reordering cells never silently changes a `let`'s meaning. Every DataScript
-  cell sees all `let` bindings from cells above it via `datascript_compiler::StitchedProgram`
-  (extracted from `ReplProgram` in `datascript-cli`; supersedes D-048's note that the web UI works
-  only on whole documents and does not need one). Live diagnostics, completion, hover, and schemas
-  work across cells without running upstream cells first. Trying to run a downstream cell while an
-  upstream cell has errors emits `DS4061` with a secondary label pointing at the broken upstream
-  cell. Because `let` bindings are lazy (not yet materialized), each cell's status bar shows the
-  number of sources scanned.
-- **Execution & staleness**: queries never auto-run on edit; cells whose code or upstream `let`
-  dependencies changed since their last run show a subtle Stale badge, with Run cell, Run & advance,
-  Run statement at cursor, Run cell & below, Run all, and Cancel (`Cmd/Ctrl+.`) actions.
-- **Workspace, staging & saving**: M4 v1 (`M4-01`–`M4-04`) ships a focused single-notebook view
-  with a read-only working-directory tree + atomic `.dsnb` creation (`O_CREAT|O_EXCL`), DataScript
-  & Markdown cells, virtualized Arrow grid (with dynamic truncation sort labels and "Sort in
-  query"), ECharts, debounced auto-save (~500 ms) with `409` external-edit conflict detection,
-  refusal of writes/renames/deletes through in-root symlink components, and a right-hand Result
-  Profiler & Source Schema inspector that starts collapsed by default. Power-user & workspace
-  features (multi-file tabs & pinning, atomic no-clobber file/folder rename and race-free
-  per-file+`rmdir` folder delete with strict non-`.dsnb`/`.ds` data-file guards, Cell Command Mode,
-  Command Palette, Quick Open, and Outline/Scope tabs) follow in `M4-05`.
-- **Shortcuts & aesthetic**: hybrid modeless chords (`Cmd/Ctrl+Enter`, `Shift+Enter`,
-  `Cmd/Ctrl+Alt+Enter` ignoring `AltGraph`, `Cmd/Ctrl+.`, `Cmd/Ctrl+K` primary Command Palette
-  with `Cmd/Ctrl+Shift+P` alias where browsers allow, `Cmd/Ctrl+P` Quick Open, `Cmd/Ctrl+B` /
-  `Cmd/Ctrl+Shift+B` sidebars, `Alt+W`/`Alt+N` outside text inputs in browser with native
-  `Cmd/Ctrl+W`/`Cmd/Ctrl+Shift+N` in a future desktop shell) plus `Esc` Cell Command Mode (`j/k`,
-  `Shift+Up/Down` & `Shift+K/J` reorder, `a/b`, `m/y`, `dd`, `z`, `?`), matching on `event.code`
-  to avoid CodeMirror, OS dead-key/`AltGr`, and browser collisions; calm, dark-first
-  Claude-Code-inspired monochrome aesthetic with light theme support.
+box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
+[LANGUAGE.md §2.1](LANGUAGE.md#21-notebooks-dsnb)). Key choices:
+- **Single canonical `.dsnb` format & parser**: strictly source-only plain-text Markdown (no
+  persisted cell metadata in v1, no cached outputs on disk; optional local `IndexedDB` caching is
+  deferred to M4-07). A small, dependency-free CommonMark fence scanner/serializer and
+  `StitchedProgram` live in `datascript-compiler` (M4-08, `wasm32`-compatible), reused across
+  `datascript-server`, `ds run`/`ds check`/`ds lsp` (M4-06), `datascript-cli` (`ReplProgram`), and
+  `datascript-wasm` (M5) — `web/` consumes structured cells via `Runtime` and never duplicates the
+  parser. Supersedes D-048's note that the web UI does not need a shared stitcher.
+- **Cross-cell `let` scope & `DS4061`**: top-to-bottom lexical order keeping `DS1003` no-shadowing
+  (D-007) so `.dsnb` notebooks stay 1:1 with `.ds` scripts. Live `POST /api/check` checks the whole
+  notebook in one pass; running a cell fails with `DS4061` only when an upstream cell has a
+  lexical/syntax error or a prepended upstream `let` has an error (warnings and upstream query
+  errors do not block, [WEB_UI.md §3](WEB_UI.md#upstream-error-handling-ds4061)). Lazy `let`
+  re-scans are surfaced via distinct `SourceRef` counts in the cell status bar.
+- **Staged delivery & workspace safety**: M4 v1 (`M4-08`, `M4-01`–`M4-04`, `M4-09`) ships a single-
+  notebook view, read-only tree + atomic `.dsnb` creation, Scratchpad quick previews, grid +
+  ECharts (plain table queries stay in Table view by default with a **Visualize** helper that
+  appends `| render ...` so code stays the source of truth), auto-save with `409` conflicts, and
+  a right-hand inspector starting collapsed by default. Power-user/workspace features (multi-file
+  tabs & pinning, atomic no-clobber rename & race-free per-file+`rmdir` folder delete, Outline/
+  Scope tabs, Cell Command Mode, Command Palette, Quick Open) follow in `M4-05`. The workspace file
+  API never writes or deletes data files and rejects in-root symlink components
+  ([WEB_UI.md §4.1](WEB_UI.md#41-left-pane--working-directory-tree--attached-tables)).
+- **Shortcuts & aesthetic**: hybrid modeless chords (`Cmd/Ctrl+K` primary Command Palette) plus
+  `Esc` Cell Command Mode (`M4-05`), dark-first monochrome Claude-Code-inspired palette with light
+  theme ([WEB_UI.md §1](WEB_UI.md#1-product-vision--aesthetic-direction),
+  [§5](WEB_UI.md#5-keyboard-shortcuts--command-mode)).
 *(Web UI design session, 2026-11-27.)*
 
 ### D-063 — Multi-statement cells use compact result sub-tabs
 **Accepted.** Closes Q-004. Running a DataScript cell (or `.ds` script / VS Code M3-06 run) executes
 all query statements in that cell and displays compact result sub-tabs (`Result 1`, `Result 2`, …,
 using each query's `render` title when present) whenever a run produces more than one output. A
-secondary shortcut (`Cmd/Ctrl+Alt+Enter`) runs only the statement at the cursor. `let`-only cells
-display a compact validation line rather than an empty grid.
+secondary shortcut (`Cmd/Ctrl+Alt+Enter`, plus cell gutter action) runs only the statement at the
+cursor. `let`-only cells display a compact validation line rather than an empty grid.
 *(Web UI design session, 2026-11-27.)*
 
 ### D-064 — UI result display cap of 10,000 rows with full streaming export
 **Accepted.** Closes Q-007. Interactive UI runtimes (`ds ui`, VS Code M3-06 results panel, and WASM
-M5) cap streamed results at `10_000` rows by default (configurable), enforced on streaming runs via
-a shared row-limiting helper in `datascript-engine` that slices the final batch and drops the stream
-to cancel execution. When truncated, the runtime emits a `DS4060` info diagnostic, both client-side
-grid sorting and Result Profiler stats explicitly label `"of first {N} rows"` using the run's
-actual `row_limit`, column headers offer a **Sort in query** action (`| sort by <col> desc/asc`,
-inserted before any trailing `| render ...` or updating an existing `sort` in place) that re-runs
-over all rows, and the footer offers one-click **Export full result**. Exports send the immutable
-cell snapshot captured at run time, re-executing the chosen `statementIndex` (0-based among the
-target cell's own query statements) with the original run's `now_micros` clock (preserving
-`now()`/`ago()` per D-015) and upstream-`let` cell context, using a two-step ticketed download
-(`POST /api/export` → one-shot `GET /api/export/<ticket>`) so `datascript_engine::writers` streams
-straight to disk without buffering in browser memory (CSV, JSON, NDJSON, Parquet, Arrow IPC, and
-Excel once M2-28 lands). Plain table queries stay in Table view by default (with an optional helper
-to append `| render ...` so the query code remains the single source of truth).
+M5) cap streamed results at `10_000` rows by default (configurable in `localStorage` per workspace
+root or per run), enforced on streaming runs via a shared row-limiting helper in
+`datascript-engine` that slices the final batch and drops the stream to cancel execution. When
+truncated, the runtime emits `DS4060`, client-side grid sorting and Result Profiler stats label
+`"of first {N} rows"` using the run's actual `rowLimit`, column headers offer **Sort in query**
+(`| sort by <col> desc/asc`, inserted before any trailing `| render ...` or updating an existing
+`sort` in place), and the footer offers one-click **Export full result**. Exports send the
+immutable run-time cell snapshot (re-executing the cell-relative `statementIndex` with the original
+`now_micros` clock per D-015 and upstream `let` context) over a two-step ticketed download
+(`POST /api/export` → one-shot `GET /api/export/<ticket>`,
+[WEB_UI.md §6](WEB_UI.md#server-api-contract-datascript-server-m4-01-m4-04--m4-05)) so
+`datascript_engine::writers` streams straight to disk without buffering in browser memory.
 *(Web UI design session, 2026-11-27.)*
 
 ## Proposed (open questions)

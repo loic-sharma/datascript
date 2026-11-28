@@ -1,123 +1,68 @@
-# M4-01 — Local web UI server (`ds ui`), `.dsnb` parser & cell stitcher
+# M4-01 — Local web UI server (`ds ui`)
 
 **Status:** todo
-**Depends on:** M1-13, M2-13
-**Crates:** `datascript-server`, `datascript-cli`, `datascript-compiler`, `datascript-engine`, `datascript-diagnostics`
+**Depends on:** M4-08
+**Crates:** `datascript-server`, `datascript-cli`, `datascript-engine`, `datascript-diagnostics`
 **Diagnostic codes:** DS3007 (planned, D-016), DS3065–DS3069 (sources), DS4060–DS4064 (`DS4060`
 results truncated per D-064; `DS4061` upstream cell has errors per D-062) (D-018)
 
 ## Goal
 `ds ui [dir]` starts an axum server on 127.0.0.1 with a random port, prints the URL and opens the
-browser. Access requires a per-launch token in the URL; check the `Origin` header on API/WS
-requests. Implements the M4 v1 server API specified in
-[WEB_UI.md §6](../WEB_UI.md#server-api-contract-datascript-server-m4-01-m4-04--m4-05) (file rename/delete
-lands in M4-05).
+browser. Access requires a per-launch token in the URL and `Origin` checks on API/WS requests.
+Implements the M4 v1 server endpoints specified in
+[WEB_UI.md §6](../WEB_UI.md#server-api-contract-datascript-server-m4-01-m4-04--m4-05) (file/folder
+create-dir, rename, and delete land in M4-05).
 
 ## Scope
-- **Shared `.dsnb` parser & cross-cell program stitcher** (`datascript-compiler`, D-062):
-  - Implement the single canonical, pure, `wasm32`-compatible `.dsnb` Markdown parser/serializer
-    in `datascript-compiler` so `datascript-server` (M4-01/M4-04), `ds run`/`ds check` and
-    `ds lsp` (M4-06), and `datascript-wasm` (M5) all reuse it—`web/` never duplicates the parser.
-    Follow CommonMark fenced-code-block rules (nested ` ```ds ` inside a longer non-`ds` fence
-    stays prose), serialize DataScript cells with a backtick fence strictly longer than any
-    backtick run in the cell, and escape/unescape any literal standalone `<!-- ds:cell -->` line
-    inside a Markdown cell (`<!-- ds:cell:literal -->`) for lossless round-trips.
-  - Extract the pure segment-stitching and span-mapping primitive (`StitchedProgram`) from
-    `datascript-cli`'s `ReplProgram` into `datascript-compiler`, have `ReplProgram` delegate to it,
-    and use it in `datascript-server` so upstream `let` statements (`0..targetCellIndex`) prepend
-    cleanly ahead of the target cell and every UTF-16 span (D-025) maps back to
-    `{ cellIndex, start, end, line, column }`.
-  - Relative paths resolve against the `.dsnb`/`.ds` file's parent directory (or root for
-    Scratchpads), inside the D-016 sandbox.
 - **Streaming row-limit helper** (`datascript-engine`, D-064):
-  - `ExecContext::row_limit` is currently enforced only in `ResultStream::collect` /
-    `QueryStream::collect`, not when forwarding raw batches from `RunStream`. Add a reusable
-    streaming-limit helper in `datascript-engine` that counts rows as batches arrive, slices the
-    final batch at `row_limit`, drops the `QueryStream` on the next row to cancel execution, and
-    reports `truncated = true` (reused by `datascript-server`, M3-06, and M5).
-- **Server info & M4 v1 workspace files API** (all confined to root per D-016):
-  - `GET /api/info`: root folder name, capabilities, default `row_limit` (`10_000`, D-064),
-    registered `--table` host tables.
-  - `GET /api/files?dir=&includeHidden=`: full working-directory tree (hiding `.git`,
-    `node_modules`, `target`, dotfiles unless `includeHidden=true`; no path traversal).
-  - `GET /api/file?path=`, `POST /api/file` (create `.dsnb`/`.ds`), `PUT /api/file` (save
-    `.dsnb`/`.ds`): `GET` returns canonical parsed cells (+ frontmatter) for `.dsnb` and raw text
-    for `.ds`, plus `version` (etag); `PUT` accepts structured cells for `.dsnb` (serialized via
-    `datascript-compiler`) with optional `expectedVersion` and returns `409 Conflict` if changed on
-    disk (D-062). Strictly enforce read-only data files:
-    - Refuse creating or writing any path whose extension is not `.dsnb` or `.ds`, or where the
-      path or any parent component under the root is a **symlink** (`symlink_metadata`/`O_NOFOLLOW`,
-      blocking in-root symlinks like `notes.ds -> data/orders.csv`).
-    - Create files atomically with `OpenOptions::create_new(true)` (`O_CREAT|O_EXCL`) so `POST`
-      can never race to overwrite an existing file.
-    *(Folder create `POST /api/dir`, rename `PATCH /api/file`, and delete `DELETE /api/file` are
-    added in M4-05.)*
-  - `GET /api/schema?source=`: inspect a file or host table schema via `Session`.
-- **Notebook-aware check, streaming run, cancellation & ticketed streaming export**:
-  - `POST /api/check`: checks a script or notebook cell via `StitchedProgram`; returns per-cell
-    UTF-16 JSON diagnostics and active `let` scope summaries.
-  - `WS /api/ws`: multiplexed WebSocket for (1) streaming query runs (`run` / `cancel` using
-    `Session::start` + the streaming row-limit helper → `started` event carrying `nowMicros`,
-    `rowLimit`, and scanned `sourceCount` from the `QueryPlan`, capped Arrow IPC batches +
-    `RenderSpec` + diagnostics + timing; emits `DS4060` info on truncation per D-064, and `DS4061`
-    — `"cannot run cell because an upstream cell has errors"` with a secondary label pointing at
-    the broken upstream cell — when running a cell whose upstream `let` cell has errors; supports
-    running a whole cell or a single statement index) and (2) filesystem watch events (updating the
-    tree and invalidating `Session`'s schema cache).
-  - **Two-step zero-buffering streaming export** (D-064):
-    - `POST /api/export` (standard Bearer token + `Origin` check) accepts the run-time cell
-      snapshot `{ path, cells, targetCellIndex, statementIndex, nowMicros, format }` (where
-      `statementIndex` is 0-based among the target cell's own query statements, ignoring upstream
-      and local `let` statements), validates the request, and mints a short-lived single-use
-      download URL `/api/export/<ticket>`.
-    - `GET /api/export/<ticket>` skips `Origin` (omitted by browsers on GET navigations), checks
-      `Sec-Fetch-Site: same-origin` when present, consumes the one-shot ticket atomically, and
-      streams the full uncapped result as `Content-Disposition: attachment` via
-      `datascript_engine::writers` (`csv`, `json`, `ndjson`, `parquet`, `arrow`) using the
-      original run's `nowMicros` (D-015), `statementIndex`, and upstream-`let` cell context.
-- Serve the built `web/` assets embedded in the binary (`rust-embed`), with a dev mode that proxies
-  to Vite. `rust-embed` fails to build if its folder is missing, and `web/` does not exist until
-  M4-02: commit a placeholder `web/dist/index.html` (or embed behind a feature) so the workspace
-  builds.
-- `POST /api/complete`, `POST /api/hover`, and `POST /api/signature-help` are M4-04's, not this
-  task's.
-
-Design-review additions:
-- D-016: every path a query resolves must canonicalize under the root directory, otherwise DS3007.
-  `--allow-outside-root` disables this. Symlinks that leave the root count as outside.
-- D-064 (closed Q-007): default UI `row_limit` is `10_000`; emit `DS4060` info diagnostic when
-  truncated and stream full results via ticketed export.
-- One shared `Arc<Session>` serves concurrent requests (D-011).
+  - `ExecContext::row_limit` is currently enforced only inside `ResultStream::collect` /
+    `QueryStream::collect`. Add a reusable streaming-limit helper in `datascript-engine` that counts
+    rows as batches arrive, slices the final batch at `row_limit`, drops the `QueryStream` on the
+    next row to cancel execution, and reports `truncated = true` (shared by `datascript-server`,
+    M3-06, and M5).
+- **M4 v1 workspace files API** (all confined to root per D-016; safety rules in
+  [WEB_UI.md §4.1](../WEB_UI.md#41-left-pane--working-directory-tree--attached-tables)):
+  - `GET /api/info`, `GET /api/files?dir=&includeHidden=`, `GET /api/schema?source=`.
+  - `GET /api/file`, `POST /api/file` (`O_CREAT|O_EXCL`), `PUT /api/file` (`expectedVersion` `409`
+    conflict check, diffing against on-disk `.dsnb` via M4-08's serializer to preserve untouched
+    cells/separators). Refuse non-`.dsnb`/`.ds` paths and any path with a symlink component under
+    the root (`symlink_metadata`/`O_NOFOLLOW`).
+- **Whole-notebook check, streaming run, `DS4061` & ticketed export**:
+  - `POST /api/check`: checks the entire notebook or `.ds` script in one pass via M4-08's
+    `StitchedProgram`, returning diagnostics grouped by `cellIndex` (UTF-16, D-025) and per-cell
+    in-scope `let` summaries.
+  - `WS /api/ws`: streaming query execution (`Session::start` + streaming row-limit helper) and
+    workspace file-watch invalidations. Emits `started` with `nowMicros` (accepting an optional
+    shared `nowMicros` for Run all), `rowLimit`, and `sourceCount` (count of distinct `SourceRef`s
+    computed by walking `Plan::Scan` nodes in `QueryPlan::root`), `DS4060` on truncation, and
+    `DS4061` per the exact trigger in [WEB_UI.md §3](../WEB_UI.md#upstream-error-handling-ds4061).
+  - Two-step zero-buffering export (`POST /api/export` → one-shot `GET /api/export/<ticket>`,
+    [WEB_UI.md §3](../WEB_UI.md#result-size-limits--streaming-export-d-064-closes-q-007),
+    [§6](../WEB_UI.md#server-api-contract-datascript-server-m4-01-m4-04--m4-05)).
+- Embed built `web/` assets (`rust-embed`, with placeholder `web/dist/index.html` until M4-02) plus
+  a dev proxy to Vite. One shared `Arc<Session>` serves concurrent requests (D-011).
+- `POST /api/complete`, `/api/hover`, and `/api/signature-help` are M4-04's.
 
 ## Acceptance criteria
 - [ ] API integration tests covering:
   - auth (missing/wrong token, bad `Origin` on API/WS, one-shot ticket replay/expiry and
-    `Sec-Fetch-Site` check on `GET /api/export/<ticket>`);
-  - path traversal and workspace safety: read-only rejection on `.csv`/`.parquet` creates/writes,
-    in-root symlink rejection (e.g. `notes.ds -> data/orders.csv` refused by `PUT`/`POST`),
-    atomic `O_CREAT|O_EXCL` refusal to create over an already-existing file, and `409` version
-    conflicts;
-  - `.dsnb` parser round-trip tests (including a DataScript cell containing ```` ``` ````, a
-    ` ```ds ` block nested inside a 4-backtick non-`ds` fence, and a Markdown cell containing a
-    literal `<!-- ds:cell -->` line) and `StitchedProgram` cross-cell `let` checking/execution with
-    mapped UTF-16 spans and `DS4061` when running a cell with a broken upstream cell;
-  - WebSocket streaming + cancellation + `sourceCount` / `rowLimit` metadata + streaming row-cap
-    slicing/truncation (`DS4060`) over a result exceeding both default and custom `row_limit`;
-  - two-step streaming export reusing the run-time cell snapshot, `nowMicros` (verified with
-    `now()`/`ago()`), exact cell-relative `statementIndex` on a multi-statement cell with local
-    and upstream `let`s.
-- [ ] `datascript-cli`'s REPL tests pass unchanged after delegating `ReplProgram` to
-      `datascript-compiler`'s `StitchedProgram`, and `datascript-compiler` still passes the
-      `wasm32-unknown-unknown` check.
-- [ ] The exact JSON/WebSocket wire contract is documented alongside [WEB_UI.md](../WEB_UI.md)
-      (shared with the M5 WASM runtime adapter).
+    `Sec-Fetch-Site` on `GET /api/export/<ticket>`);
+  - path traversal and workspace safety: `.csv`/`.parquet` write rejection, in-root symlink
+    rejection (`notes.ds -> data/orders.csv`), atomic `O_CREAT|O_EXCL` create refusal on existing
+    files, `409` conflicts, and lossless `PUT` diffing;
+  - whole-notebook `POST /api/check`, single-cell `WS` run + cancel + `sourceCount`/`rowLimit` +
+    `DS4060` truncation (default & custom `row_limit`), and `DS4061` trigger rules (fires on
+    upstream syntax error or prepended `let` error; does *not* fire on upstream query error or
+    warning);
+  - two-step streaming export reusing the run-time cell snapshot, `nowMicros` (`now()`/`ago()`),
+    and cell-relative `statementIndex` on a multi-statement cell with local & upstream `let`s.
+- [ ] Wire contract documented alongside [WEB_UI.md](../WEB_UI.md) (shared with M5 WASM).
 - [ ] Running `from '/etc/passwd' | take 1`, `from '../x.csv'` and a symlink pointing out of the
-      root all fail with DS3007. (Without `from` the query fails parsing with DS0150 and never
-      reaches the sandbox, D-036.)
+      root all fail with DS3007 (D-016, D-036).
 
 ## Carried over
 - [ ] (from M2-11) The streaming API exists: `Session::start` returns a `RunStream` (`Send`, owns its engine and context) whose `next_query()` yields a `QueryStream` per query, batches arriving as they are produced, behind the panic boundary (D-055). Use it for streaming and cancellation over WebSocket (dropping it cancels the query) instead of building another.
-- [ ] (from M1-07) `ExecContext::row_limit` is enforced by `collect` and sets `QueryResult::truncated` (D-043). Extend it with the streaming-limit helper above, implement D-064's `DS4060` truncation info diagnostic (and D-062's `DS4061` upstream-cell error from this task's block, DS4060–DS4064), and show them. Invalidate the session's schema cache when files under the root change, since failed lookups are cached too.
+- [ ] (from M1-07) `ExecContext::row_limit` is enforced by `collect` and sets `QueryResult::truncated` (D-043). Extend it with the streaming-limit helper above, implement D-064's `DS4060` truncation info diagnostic and D-062's `DS4061` upstream-cell error (from this task's block, DS4060–DS4064), and show them. Invalidate the session's schema cache when files under the root change, since failed lookups are cached too.
 - [ ] (from M1-08) The sandbox hook exists: with `ExecContext::sandbox` set, the DataFusion engine returns `SourceError::OutsideSandbox` (paths compared after resolving symlinks and `..`, globs per match) and the binder reports DS3007 with draft wording. Set the sandbox to the UI root, review the wording, add golden or API tests, and mark DS3007 active in `codes.rs` and DIAGNOSTICS.md.
 - [ ] (from M2-29) Fix two verified sandbox escapes in `check_sandbox` / `glob_files` (`crates/datascript-datafusion/src/sources.rs`) before relying on the hook: (1) a missing file under a symlinked directory falls back to lexical `normalize()`, so an intermediate symlink can leave the root; canonicalize the deepest existing ancestor, then append and normalize the rest. (2) A glob that escapes the root but matches nothing (`../*.nope`, `/outside/*.csv`) returns DS3004 instead of DS3007, because only matches are checked; check the glob's non-wildcard prefix against the sandbox first.
 - [ ] (from M2-29) Cover the sandbox with a `TempDir` integration suite against `Session` + `DataFusionEngine` (`#[cfg(unix)]` for symlinks): file and directory symlinks pointing out (existing and missing targets), escaping globs with zero, all-outside and mixed matches, a sibling-prefix directory (`root2/a.csv` against `root`), absolute paths inside and outside, and host tables registered inside vs outside the root.

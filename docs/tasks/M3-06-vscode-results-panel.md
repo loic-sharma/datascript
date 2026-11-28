@@ -1,12 +1,13 @@
 # M3-06 — VS Code: results panel
 
 **Status:** todo
-**Depends on:** M3-05, M4-02, M4-03, M2-13
+**Depends on:** M3-05, M4-09, M4-03, M2-13
 **Crates:** `datascript-lsp`, `datascript-engine` (Arrow output per result), `editors/vscode`, `web/`
 
 ## Goal
 Show Run results in a webview panel: a virtualized grid and, for `render`, the chart, reusing the
-`web/` components from M4-02 and M4-03. The terminal output from M3-05 stays available (D-054).
+`web/src/components/results/` components from M4-09 and M4-03. The terminal output from M3-05 stays
+available (D-054).
 
 ## Scope
 - `datascript/run` gains a way to ask for data instead of text, e.g. `format: "arrow"`, returning
