@@ -1,7 +1,7 @@
 # M5-02 — JS/TS API (`@datascript/wasm`)
 
 **Status:** todo
-**Depends on:** M5-01, M3-02 (`complete` lives in the compiler), M4-08 (`.dsnb` parser and `StitchedProgram`), M2-13
+**Depends on:** M5-01, M3-02 (`complete` lives in the compiler), M4-08 (`StitchedProgram`), M4-13 (`.dsnb` parser), M2-13
 **Crates:** `datascript-wasm`
 
 ## Goal
@@ -18,7 +18,7 @@ also cover what `web/` (M4-02's `Runtime` interface, M5-03) and the parity tests
 - programs with several statements: `run` yields one result per query, with its statement index,
   and can run one statement by index (D-063). The index form checks the whole program, as
   `Session::run_statement` does, so it is for plain `.ds` scripts only;
-- **notebooks** (D-062), all through M4-08's `.dsnb` parser and `StitchedProgram`, matching
+- **notebooks** (D-062), all through M4-13's `.dsnb` parser and M4-08's `StitchedProgram`, matching
   `ds ui` exactly ([WEB_UI.md §3](../WEB_UI.md#upstream-let-prepending--ds1085)):
   `parseNotebook(text)` / `serializeNotebook(cells, baseText?)` (the same content-diff
   serializer), `checkNotebook(cells)` (whole-notebook check, diagnostics grouped by `cellIndex`),
@@ -39,7 +39,7 @@ Write the final API into ARCHITECTURE.md § WASM constraints and [WEB_UI.md §6]
 - [ ] Generated `.d.ts` plus hand-written docs. Vitest tests in Node and in a browser.
 - [ ] Notebook Vitest tests: `DS1085` (once, for a broken upstream `let`), a statement run succeeding next to a
       broken statement in the same cell, `mode: "bindings"` ignoring a half-typed query, cross-cell `let` completion, and a `.dsnb` round trip
-      through `parseNotebook`/`serializeNotebook`, with results identical to M4-08's fixtures.
+      through `parseNotebook`/`serializeNotebook`, with results identical to M4-08's and M4-13's fixtures.
 
 ## Carried over
 - [ ] (from planning, 2026-11-24) If M7-01 is done, URL sources are allowed natively (`ExecContext::allow_remote`). In the browser, fetch them with `fetch` (CORS permitting) instead of needing `registerFile`, honour `allow_remote`, and turn fetch failures into M7-01's errors, with a Vitest test. (If M7-01 lands after this task, M7-01 adds this item's work to M5-03 or a new task.)

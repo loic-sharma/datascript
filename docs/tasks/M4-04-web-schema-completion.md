@@ -10,7 +10,7 @@ Populate the on-demand right-hand **Contextual Inspector** (DuckDB-style live Re
 Source Schema viewer, starting collapsed by default per
 [WEB_UI.md §4.3](../WEB_UI.md#43-right-pane--contextual-inspector-collapsed-by-default)) and wire
 CodeMirror 6 completion, hover, and signature help to `datascript_compiler::ide`. *(Outline and
-Scope tabs follow in M4-05.)*
+Scope tabs follow in M4-17.)*
 
 ## Scope
 - **Server IDE endpoints** (`datascript-server`):

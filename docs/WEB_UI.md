@@ -123,7 +123,7 @@ A `.dsnb` file is a sequence of cells parsed from and serialized to UTF-8 Markdo
      `normalize` drops empty/whitespace-only Markdown cells and trims leading and trailing blank
      lines from Markdown cells (those belong to the separator); the appended closing fence is the
      only other difference.
-   - **No persisted cell metadata in v1** (nothing in M4-01–M4-05 needs it, keeping the delimiter
+   - **No persisted cell metadata in v1** (nothing in M4 v1 or its follow-up tasks needs it, keeping the delimiter
      unambiguous).
 4. **Canonical separators & deterministic lossless round-trip**:
    - Blank lines between cells belong to the separator (canonical separator for newly serialized
@@ -335,7 +335,7 @@ restating it.
   → one-shot `GET /api/export/<ticket>`, §6) streaming uncapped rows through
   `datascript_engine::writers`; a failed export is reported, never saved as a file that looks
   complete (§6). **v1 formats** are CSV and NDJSON, the existing streaming row
-  writers, so M4-10 adds no writer. JSON is offered once M2-26 makes `write_json` stream (today it
+  writers, so M4-14 adds no writer. JSON is offered once M2-26 makes `write_json` stream (today it
   takes every batch at once), Parquet once M2-27 lands, and `.xlsx` once M2-28 lands; new formats
   come from the `output` operator's writers, never from export-only code. The export menu lists
   only the formats the running server can write.
@@ -374,14 +374,14 @@ collapsed by default** so the notebook and wide result grids get the full width 
 laptop screens; users open it on demand via `Cmd/Ctrl+Shift+B`, the top-bar inspector toggle, or
 clicking a column header's stats trigger.
 
-> **Staged delivery:** M4 v1 (`M4-08` → `M4-01` → `M4-10` ∥ `M4-02` → `M4-09` → `M4-03` ∥
-> `M4-04`, where ∥ means the two can run in parallel) ships
-> a focused single-notebook view with a read-only file tree + `.dsnb` creation, DataScript &
-> Markdown cells, virtualized grid, ECharts, auto-save/conflict handling, and the collapsible
-> Result Profiler + Source Schema inspector. Power-user and workspace features (multi-file tabs &
-> pinning, file rename/delete, Cell Command Mode, Command Palette, Quick Open, and Outline/Scope
-> tabs) land in `M4-05`; CLI/LSP `.dsnb` support lands in `M4-06`; optional local output caching
-> lands in `M4-07`.
+> **Staged delivery:** M4 v1 is `M4-08` ∥ `M4-13` ∥ `M4-12` → `M4-01` → (`M4-10` ∥ `M4-02` →
+> `M4-15`) → `M4-09` → `M4-03` ∥ `M4-04` ∥ `M4-14`, where ∥ means the tasks can run in parallel.
+> It ships a focused single-notebook view with a read-only file tree + `.dsnb` creation,
+> DataScript & Markdown cells, virtualized grid, ECharts, full-result export, auto-save/conflict
+> handling, and the collapsible Result Profiler + Source Schema inspector. After v1: Cell Command
+> Mode, Command Palette and Quick Open (`M4-05`), file rename/delete and folders (`M4-16`),
+> multi-file tabs and Outline/Scope tabs (`M4-17`), CLI/LSP `.dsnb` support (`M4-06`), optional
+> local output caching (`M4-07`), and precise upstream blocking (`M4-11`).
 
 ### 4.1 Left Pane — Working Directory Tree & Attached Tables
 
@@ -393,16 +393,16 @@ clicking a column header's stats trigger.
   folders, and other files (subtly dimmed).
 - **Safe file CRUD** (confined strictly to the workspace root, D-016):
   - M4 v1 (`M4-01`, `M4-02`) supports creating and saving `.dsnb`/`.ds` files; folder creation,
-    rename, and delete land in `M4-05`.
+    rename, and delete land in `M4-16`.
   - **The workspace file API never writes, renames, or deletes data files** (explicit query
     `output` operators from M2-25…M2-28 may still write data files inside the D-016 sandbox):
-    - All mutating endpoints (`POST`, `PUT`, and M4-05's `POST /api/dir`, `PATCH`, `DELETE`) check
+    - All mutating endpoints (`POST`, `PUT`, and M4-16's `POST /api/dir`, `PATCH`, `DELETE`) check
       every path component under the root via `symlink_metadata` and open the final path with
       `O_NOFOLLOW`, refusing any in-root symlink (such as `notes.ds -> data/orders.csv`). *(The
       tiny TOCTOU window of an external process swapping a parent directory component mid-request
       is accepted for a local single-user tool.)*
     - Creating (`POST`) uses `OpenOptions::create_new(true)` (`O_CREAT|O_EXCL`). Renaming
-      (`PATCH`, M4-05) never overwrites, refusing any non-`.dsnb`/`.ds` extension or existing
+      (`PATCH`, M4-16) never overwrites, refusing any non-`.dsnb`/`.ds` extension or existing
       path:
       - **Files and folders use the same no-replace rename**: `rustix`'s
         `renameat_with(RENAME_NOREPLACE)` on Linux / `RENAME_EXCL` on macOS (safe wrapper), and
@@ -420,7 +420,7 @@ clicking a column header's stats trigger.
       allowed inside a folder being deleted or renamed. Finder creates `.DS_Store` in every folder
       it opens, and the tree hides these files, so refusing them would block almost every folder
       on macOS with no visible reason.
-    - Deleting a folder (`DELETE`, M4-05) never calls `remove_dir_all`. It runs in two phases:
+    - Deleting a folder (`DELETE`, M4-16) never calls `remove_dir_all`. It runs in two phases:
       1. **Verify everything first**: walk the whole tree (nested subfolders included) with
          `symlink_metadata`, and refuse the request before deleting anything if it finds a
          symlink or any file other than `.dsnb`/`.ds` and OS clutter. The refusal names the first
@@ -448,7 +448,7 @@ clicking a column header's stats trigger.
 ### 4.2 Center Pane — Notebook Canvas
 
 - **Header & tabs**: M4 v1 shows a clean path breadcrumb header for the active notebook/script;
-  `M4-05` adds a slim multi-file tab bar keeping open tabs' outputs, scroll position, and undo
+  `M4-17` adds a slim multi-file tab bar keeping open tabs' outputs, scroll position, and undo
   history alive, with pinning and Quick Open (`Cmd/Ctrl+P`).
 - **Cell list & reordering**:
   - Every cell has a quiet left gutter drag handle (pointer drag-and-drop reordering) and supports
@@ -507,7 +507,7 @@ clicking a column header's stats trigger.
 The right pane starts collapsed so wide tables keep full horizontal space, and opens on demand via
 `Cmd/Ctrl+Shift+B`, the top-bar inspector icon, selecting a data file in the left tree, or clicking
 a column header's stats badge. It provides contextual views (with Outline and Scope tabs added in
-`M4-05`):
+`M4-17`):
 
 1. **Inspector (default contextual tab, M4-04)**:
    - **When a cell with results is focused → Live Result Profile (DuckDB UI style)**:
@@ -524,10 +524,10 @@ a column header's stats badge. It provides contextual views (with Outline and Sc
      - Quick actions: **Insert `from '<rel>'`** (relative to the active notebook's parent dir),
        **New preview cell (`take 100`)**, and **Describe** (`from '<rel>' | describe`, wired once
        M2-23 lands).
-2. **Outline (Obsidian style, M4-05)**:
+2. **Outline (Obsidian style, M4-17)**:
    - Interactive jump list of Markdown headings (`#`, `##`, `###`) and DataScript cells (showing
      defined `let` names or `render` title / first line) for fast navigation in long notebooks.
-3. **Scope (`let`s, M4-05)**:
+3. **Scope (`let`s, M4-17)**:
    - Lists every scalar `let` (name, type, constant value if known) and tabular `let` (name,
      inferred output columns & types, defining cell link) visible to the currently focused cell.
 
@@ -560,7 +560,7 @@ ignores `AltGraph` events on Windows European layouts.
 | Toggle left sidebar (Files) | `Cmd+B` | `Ctrl+B` |
 | Toggle right sidebar (Inspector; verify `preventDefault` in Chrome, toolbar fallback) | `Cmd+Shift+B` | `Ctrl+Shift+B` |
 | Save immediately / Save Scratchpad | `Cmd+S` | `Ctrl+S` |
-| Close active tab *(M4-05; outside text inputs in browser; `Cmd/Ctrl+W` in desktop shell)* | `Alt+W` | `Alt+W` |
+| Close active tab *(M4-17 tabs, chord wired in M4-05; outside text inputs in browser; `Cmd/Ctrl+W` in desktop shell)* | `Alt+W` | `Alt+W` |
 | New Scratchpad notebook *(M4-05; outside text inputs in browser; `Cmd/Ctrl+Shift+N` in desktop shell)* | `Alt+N` | `Alt+N` |
 | Toggle line comment (in cell editor) | `Cmd+/` | `Ctrl+/` |
 
@@ -635,7 +635,7 @@ export interface Runtime {
   // expectedVersion is required (428 without it); at most one writeFile per path in flight (§2); WriteResult = { version }
   writeFile(path: string, doc: FileDocumentInput, expectedVersion: string): Promise<WriteResult>;
   createFile(path: string, doc?: FileDocumentInput): Promise<FileEntry>;
-  // Added in M4-05:
+  // Added in M4-16:
   createDir?(path: string): Promise<FileEntry>;
   renameFile?(from: string, to: string): Promise<FileEntry>;
   deleteFile?(path: string): Promise<void>;
@@ -653,7 +653,7 @@ How each target plugs in:
 | **VS Code Results Panel** | Direct component import (M3-06) | Imports `web/src/components/results/` (Arrow grid from M4-09, ECharts `RenderSpec` chart from M4-03, diagnostic cards) into a dedicated Vite webview bundle |
 | **Future Desktop App** | `TauriRuntime` (later) | Tauri 2 shell wrapping `web/` + Rust `Session` directly via Tauri IPC (no Node/Electron), adding native menus, folder picker, and OS `.dsnb` double-click file association |
 
-### Server auth, CSP & API contract (`datascript-server`, M4-01, M4-10, M4-04 & M4-05)
+### Server auth, CSP & API contract (`datascript-server`, M4-01, M4-10, M4-14, M4-04 & M4-16)
 
 - **Cookie-based session auth**: Opening the launch URL `http://127.0.0.1:<port>/?token=<token>`
   validates the per-launch token on the server, mints a **separate random session id**, sets
@@ -701,26 +701,26 @@ How each target plugs in:
 | Endpoint | Milestone | Purpose |
 |---|---|---|
 | `GET /?token=...` | M4-01 | Validates launch token, sets the `HttpOnly; SameSite=Strict` `ds_session_<port>` cookie (random session id), `302` redirects to `/`; without a valid cookie or token, serves a static "open the printed URL" page |
-| `GET /api/info` | M4-01 | Root folder name, capabilities, persisted preferences (`row_limit`, theme), registered host tables, and `exportFormats` (the formats this server can write; added by M4-10) |
+| `GET /api/info` | M4-01 | Root folder name, capabilities, persisted preferences (`row_limit`, theme), registered host tables, and `exportFormats` (the formats this server can write; added by M4-14) |
 | `PATCH /api/prefs` | M4-01 | Persist per-root UI preferences (`row_limit`, theme) in the user's OS config dir (`dirs::config_dir()`) |
 | `GET /api/files?dir=&includeHidden=` | M4-01 | Directory tree under root (sandboxed, D-016) |
 | `GET /api/file?path=` | M4-01 | Read a `.dsnb` (returned as parsed cells `{ kind, text }` + frontmatter) or `.ds` text file + `version` (etag) |
 | `PUT /api/file` | M4-01 | Atomic save (per-path lock, required `expectedVersion` (`428` without it), `409` check, lossless `.dsnb` content diff against the on-disk file via `datascript-compiler`, temp file + `sync_all` + rename; refuses non-`.dsnb`/`.ds` paths and symlink components). Returns `WriteResult { version }` |
 | `POST /api/file` | M4-01 | Create a new `.dsnb` or `.ds` file atomically (`O_CREAT\|O_EXCL`; refuses non-`.dsnb`/`.ds` paths, existing files, and symlink components) |
-| `POST /api/dir`, `PATCH /api/file`, `DELETE /api/file` | M4-05 | Create folders, rename (no-clobber: `rustix` no-replace rename / `MoveFileExW` for files and folders, `hard_link` fallback for files only), or delete `.dsnb`/`.ds` files or safe folders (verify the whole tree first, then per-file unlink + bottom-up `rmdir`; refuses symlinks and any folder containing files other than `.dsnb`/`.ds` and OS clutter such as `.DS_Store`) |
+| `POST /api/dir`, `PATCH /api/file`, `DELETE /api/file` | M4-16 | Create folders, rename (no-clobber: `rustix` no-replace rename / `MoveFileExW` for files and folders, `hard_link` fallback for files only), or delete `.dsnb`/`.ds` files or safe folders (verify the whole tree first, then per-file unlink + bottom-up `rmdir`; refuses symlinks and any folder containing files other than `.dsnb`/`.ds` and OS clutter such as `.DS_Store`) |
 | `GET /api/schema?source=` | M4-01 | Inspect schema of a file or host table via `Session` |
 | `POST /api/check` | M4-01 | Check a `.ds` script or whole `.dsnb` notebook in one pass (`{ path, cells }` → diagnostics grouped by `cellIndex` (every cell, Markdown included) in UTF-16 offsets + per-cell in-scope `let` summaries) |
 | `WS /api/ws` | M4-10 | Multiplexed stream for: (1) query execution (`run` with `mode` = `cell` / `statement` (+ `statementIndex`) / `bindings` and optional shared `nowMicros` for Run all / `cancel` → `started` with `nowMicros` and `rowLimit`, then per result its `statementIndex` and `sourceCount`, streaming capped Arrow IPC batches + `RenderSpec` + diagnostics incl. `DS4060`/`DS1085` + timing, suppressing `DS0004` for `bindings` runs and `let`-only cells), and (2) workspace file-change notifications |
-| `POST /api/export` | M4-10 | Accepts the run-time cell snapshot `{ path, cells, targetCellIndex, statementIndex, nowMicros, format }` (`statementIndex` is 0-based among the target cell's own query statements), checks, plans and starts the query (returning diagnostics instead of a ticket on failure), and returns a short-lived single-use download URL `/api/export/<ticket>` |
-| `GET /api/export/<ticket>` | M4-10 | Requires the session cookie + one-shot ticket (checks `Sec-Fetch-Site` when present) and streams the full uncapped result as `Content-Disposition: attachment`, aborting the connection on a mid-stream error (plus a WS `exportFailed` event) via `datascript_engine::writers` (v1: `csv`, `ndjson`; `json` once M2-26 lands, `parquet` once M2-27 lands, `xlsx` once M2-28 lands) |
+| `POST /api/export` | M4-14 | Accepts the run-time cell snapshot `{ path, cells, targetCellIndex, statementIndex, nowMicros, format }` (`statementIndex` is 0-based among the target cell's own query statements), checks, plans and starts the query (returning diagnostics instead of a ticket on failure), and returns a short-lived single-use download URL `/api/export/<ticket>` |
+| `GET /api/export/<ticket>` | M4-14 | Requires the session cookie + one-shot ticket (checks `Sec-Fetch-Site` when present) and streams the full uncapped result as `Content-Disposition: attachment`, aborting the connection on a mid-stream error (plus a WS `exportFailed` event) via `datascript_engine::writers` (v1: `csv`, `ndjson`; `json` once M2-26 lands, `parquet` once M2-27 lands, `xlsx` once M2-28 lands) |
 | `POST /api/complete`, `/api/hover`, `/api/signature-help` | M4-04 | IDE helpers (`{ path, cells, targetCellIndex, offset }`) backed by `datascript_compiler::ide` over the same `StitchedProgram` as runs (every upstream `let` in scope, §3) |
 
-### Cross-cell combined program & `.dsnb` parser (`datascript-compiler`, M4-08)
+### Cross-cell combined program & `.dsnb` parser (`datascript-compiler`, M4-08 & M4-13)
 
 Both the dependency-free, line-based `.dsnb` Markdown fence scanner/serializer and the
 segment-stitching / span-mapping primitive (`StitchedProgram`, extracted from `ReplProgram` in
 `datascript-cli`, which delegates to it) live in **`datascript-compiler`** (pure, no I/O,
-`wasm32`-compatible). `datascript-server` (M4-01, M4-10, M4-04), `datascript-cli` (`ds run`/
+`wasm32`-compatible). `datascript-server` (M4-01, M4-10, M4-14, M4-04), `datascript-cli` (`ds run`/
 `ds check`/`ds explain` on `.dsnb`, M4-06), `datascript-lsp` (M4-06), and `datascript-wasm` (M5)
 all reuse them:
 - Whole-notebook check stitches every DataScript cell's statements in document order (mapping every

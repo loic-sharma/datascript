@@ -1,7 +1,7 @@
-# M4-09 — Web UI: cell execution, virtualized Arrow results grid, multi-result tabs & export
+# M4-09 — Web UI: cell execution, virtualized Arrow results grid & multi-result tabs
 
 **Status:** todo
-**Depends on:** M4-02, M4-10
+**Depends on:** M4-15, M4-10
 **Crates:** `web/`
 **Diagnostic codes:** none
 
@@ -9,7 +9,7 @@
 Wire cell execution over M4-10's WebSocket (`ServerRuntime.run`) and build the decoupled
 `web/src/components/results/` package (reused directly by VS Code's M3-06 results webview)
 implementing the virtualized Arrow grid, multi-statement sub-tabs (D-063),
-truncation-aware sorting + **Sort in query**, and two-step streaming export (D-064,
+and truncation-aware sorting + **Sort in query** (D-064; export is M4-14,
 [WEB_UI.md §3–§4.2](../WEB_UI.md#42-center-pane--notebook-canvas)).
 
 ## Scope
@@ -38,26 +38,15 @@ truncation-aware sorting + **Sort in query**, and two-step streaming export (D-0
   - Column-header **Sort in query** action that inserts `| sort by <col> desc` (or `asc`, always
     explicit so `DS2103` never fires, D-005) **before any trailing `| render ...`** or updates an
     existing `sort` in place, then re-runs over all rows.
-- **Two-step streaming export** (D-064):
-  - Capture the immutable cell snapshot (`cells`, `targetCellIndex`, `nowMicros`, cell-relative
-    `statementIndex`) at run time and wire the **Export full result** menu to `POST /api/export` →
-    `GET /api/export/<ticket>` (authenticated by session cookie + one-shot ticket; re-executes
-    against current disk files), started from a programmatic `<a download>` click so the page
-    never unloads; show `POST` diagnostics and `exportFailed` WS events in the cell footer. The menu lists exactly `Runtime.capabilities.exportFormats` (from
-    `GET /api/info`; v1: CSV, NDJSON; JSON, Parquet and `.xlsx` once M2-26 / M2-27 / M2-28 land),
-    never a hard-coded list.
 
 ## Acceptance criteria
 - [ ] Vitest unit tests for upstream-`let` staleness fingerprinting, Run-statement-at-cursor
       selection, Arrow cell formatting, "Sort in query" rewrites (including a query
       ending in `| render timechart`, updating an existing `sort`, and explicit `asc`/`desc`),
-      dynamic truncation labels with a non-default `rowLimit`, and run-time export snapshot capture
-      (including after editing a cell into Stale state).
+      and dynamic truncation labels with a non-default `rowLimit`.
 - [ ] Playwright test against `ds ui` verifying Run / Run all / Cancel, `let`-only cell showing no
       `DS0004` warning, `DS1085` jump, virtualized scrolling, multi-statement sub-tabs (each with
-      its own source count), truncation banner + "Sort in query", streaming CSV export
-      download, and the export menu showing exactly the server's `exportFormats` (Parquet appears
-      only when the server reports it), live tree refresh after a file is added and
+      its own source count), truncation banner + "Sort in query", live tree refresh after a file is added and
       deleted on disk, the "changed on disk" banner appearing without a save after an external
       edit, and **no** banner after the server's own auto-save.
 

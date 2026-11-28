@@ -195,7 +195,7 @@ pub const DS3004: Code = Code::new(3004);
 pub const DS3005: Code = Code::new(3005);
 /// source path or reader option is not a constant
 pub const DS3006: Code = Code::new(3006);
-/// path is outside the UI root directory (planned, M4-01, D-016)
+/// path is outside the UI root directory (planned, M4-12, D-016)
 pub const DS3007: Code = Code::new(3007);
 /// file could not be read (permission denied, malformed CSV/JSON row at runtime)
 pub const DS3008: Code = Code::new(3008);
@@ -691,7 +691,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS3007,
         severity: Some(Severity::Error),
-        summary: "path is outside the UI root directory *(planned, M4-01, D-016)*",
+        summary: "path is outside the UI root directory *(planned, M4-12, D-016)*",
         status: CodeStatus::Planned,
     },
     CodeInfo {

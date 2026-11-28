@@ -953,7 +953,7 @@ box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
 - **Single canonical `.dsnb` format & parser**: strictly source-only plain-text Markdown (no
   persisted cell metadata in v1, no cached outputs on disk; optional local caching under the user's
   OS cache dir / WASM `IndexedDB` is deferred to M4-07). A small, dependency-free CommonMark
-  top-level fence scanner/serializer and `StitchedProgram` live in `datascript-compiler` (M4-08,
+  top-level fence scanner/serializer (M4-13) and `StitchedProgram` (M4-08) live in `datascript-compiler` (
   `wasm32`-compatible), reused across `datascript-server`, `ds run`/`ds check`/`ds lsp` (M4-06),
   `datascript-cli` (`ReplProgram`), and `datascript-wasm` (M5) — `web/` consumes structured cells
   via `Runtime` and never duplicates the parser; saves are lossless through a server-side content
@@ -980,14 +980,15 @@ box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
   and inserts paths relative to the active notebook's parent directory. The workspace file API
   never writes or deletes data files and rejects in-root symlink components
   ([WEB_UI.md §4.1](WEB_UI.md#41-left-pane--working-directory-tree--attached-tables),
-  [§6](WEB_UI.md#server-auth-csp--api-contract-datascript-server-m4-01-m4-10-m4-04--m4-05)).
-- **Staged delivery & shortcuts**: M4 v1 (`M4-08`, `M4-01`, `M4-10`, `M4-02`, `M4-09`, `M4-03`,
-  `M4-04`) ships a single-notebook view, read-only tree + atomic `.dsnb` creation, Scratchpad quick
+  [§6](WEB_UI.md#server-auth-csp--api-contract-datascript-server-m4-01-m4-10-m4-14-m4-04--m4-16)).
+- **Staged delivery & shortcuts**: M4 v1 (`M4-08`, `M4-13`, `M4-12`, `M4-01`, `M4-10`, `M4-02`,
+  `M4-15`, `M4-09`, `M4-03`, `M4-04`, `M4-14`) ships a single-notebook view, read-only tree + atomic `.dsnb` creation, Scratchpad quick
   previews, grid + ECharts (plain table queries stay in Table view by default with a **Visualize**
   helper appending `| render ...`), auto-save with `409` conflicts, and a right-hand inspector
-  starting collapsed by default. Multi-file tabs & pinning, atomic no-clobber rename (`rustix` /
-  `MoveFileExW`) & verify-then-delete folder removal, Outline/Scope tabs, Cell Command Mode, Command Palette
-  (`Cmd/Ctrl+K` primary), and Quick Open follow in `M4-05` ([WEB_UI.md §5](WEB_UI.md#5-keyboard-shortcuts--command-mode)).
+  starting collapsed by default. Cell Command Mode, Command Palette (`Cmd/Ctrl+K` primary), and
+  Quick Open follow in `M4-05` ([WEB_UI.md §5](WEB_UI.md#5-keyboard-shortcuts--command-mode));
+  atomic no-clobber rename (`rustix` / `MoveFileExW`) & verify-then-delete folder removal in
+  `M4-16`; multi-file tabs & pinning and Outline/Scope tabs in `M4-17`.
 *(Web UI design session, 2026-11-27.)*
 
 ### D-063 — Multi-statement cells use compact result sub-tabs
@@ -1012,9 +1013,9 @@ column headers offer **Sort in query** (`| sort by <col> desc/asc`, inserted bef
 full result**. Exports send the immutable run-time cell snapshot (re-executing the cell-relative
 `statementIndex` with the original `now_micros` clock per D-015 and upstream `let` context against
 current disk files) over a two-step cookie+ticket download (`POST /api/export` → one-shot
-`GET /api/export/<ticket>`, [WEB_UI.md §6](WEB_UI.md#server-auth-csp--api-contract-datascript-server-m4-01-m4-10-m4-04--m4-05))
+`GET /api/export/<ticket>`, [WEB_UI.md §6](WEB_UI.md#server-auth-csp--api-contract-datascript-server-m4-01-m4-10-m4-14-m4-04--m4-16))
 so `datascript_engine::writers` streams straight to disk without buffering in browser memory.
-v1 export formats are CSV and NDJSON (the existing streaming writers, so M4-10 adds none); JSON,
+v1 export formats are CSV and NDJSON (the existing streaming writers, so M4-14 adds none); JSON,
 Parquet and `.xlsx` appear once M2-26, M2-27 and M2-28 add or stream those writers for the `output`
 operator, and the menu lists only what the server can write.
 *(Web UI design session, 2026-11-27.)*

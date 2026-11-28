@@ -1,4 +1,4 @@
-# M4-02 — Web UI: notebook shell, `Runtime`, editor & live checking (M4 v1)
+# M4-02 — Web UI: scaffold, `Runtime`, notebook shell & auto-save (M4 v1)
 
 **Status:** todo
 **Depends on:** M4-01, M2-13
@@ -7,12 +7,13 @@
 
 ## Goal
 Scaffold the shared React + Vite + Tailwind + CodeMirror 6 notebook SPA (`D-061`, `D-062`), wire
-`Runtime` / `ServerRuntime`, and ship the M4 v1 workspace shell, notebook/script editing,
-auto-save, and whole-notebook live checking ([WEB_UI.md §1–§4.2](../WEB_UI.md)). This task needs
-only M4-01's HTTP API, so it runs in parallel with M4-10 (WebSocket runs). Running cells, the
-virtualized Arrow grid and export land in M4-09; ECharts in M4-03; inspector & IDE completion in
-M4-04; power-user tabs/shortcuts/file management in M4-05. `Runtime.run` is declared here but
-`ServerRuntime.run` is implemented in M4-09.
+`Runtime` / `ServerRuntime`, and ship the M4 v1 workspace shell: file tree, Scratchpad, a cell
+list with plain CodeMirror editors, and auto-save ([WEB_UI.md §1–§4.2](../WEB_UI.md)). This task
+needs only M4-01's HTTP API, so it runs in parallel with M4-10 (WebSocket runs). Cell editing
+proper (DataScript mode, Markdown rendering, reordering, live checking) lands in M4-15; running
+cells and the grid in M4-09; export in M4-14; ECharts in M4-03; inspector & IDE completion in
+M4-04; keyboard power features in M4-05, file management in M4-16, tabs and Outline/Scope in
+M4-17. `Runtime.run` is declared here but `ServerRuntime.run` is implemented in M4-09.
 
 ## Scope
 - **Scaffold & `Runtime`**:
@@ -29,19 +30,12 @@ M4-04; power-user tabs/shortcuts/file management in M4-05. `Runtime.run` is decl
     and optional Attached Tables section.
   - Center pane: single active `.dsnb`/`.ds` view with path breadcrumb, Scratchpad empty-state
     quick-preview strip (Save defaults to workspace root, warning if saved into a subfolder,
-    [WEB_UI.md §2](../WEB_UI.md#plain-ds-scripts--scratchpads)), drag-and-drop cell reordering, and
-    hover `+ DataScript` / `+ Markdown` dividers.
+    [WEB_UI.md §2](../WEB_UI.md#plain-ds-scripts--scratchpads)), and a cell list (add and delete
+    DataScript and Markdown cells, each a plain CodeMirror editor; M4-15 adds the real editing).
   - Right pane shell starting collapsed by default (populated in M4-04).
   - Load/save structured `.dsnb` cells (`{ kind, text }`) directly via `Runtime` (no duplicate
     TS parser), with debounced auto-save (~500 ms), `Cmd/Ctrl+S` flush, and `409 Conflict` banner.
-- **Cells & diagnostics**:
-  - **Markdown cells**: GFM rendered via DOMPurify (no external `http(s)://` or relative workspace
-    images in v1; `data:`/`blob:` only); click/double-click edits in CodeMirror (`Cmd/Ctrl+Enter`,
-    `Shift+Enter`, `Esc` per [WEB_UI.md §4.2](../WEB_UI.md#42-center-pane--notebook-canvas)).
-  - **DataScript cells**: CodeMirror 6 with DataScript highlighting (D-026), whole-notebook live
-    checking (`POST /api/check`), inline squiggles, and rustc/Claude-Code-style diagnostic cards
-    with one-click **Apply fix** and cross-cell jump links for secondary labels (e.g. `DS1003`;
-    `DS1085` comes from runs, M4-09).
+- **Saving**:
   - Use the fresh `version` returned by every `PUT /api/file` for the next auto-save, keeping **at most one `PUT` per path in flight** and merging edits made meanwhile
     into one follow-up save ([WEB_UI.md §2](../WEB_UI.md#serialization-grammar--canonical-layout)).
 
@@ -51,13 +45,12 @@ M4-04; power-user tabs/shortcuts/file management in M4-05. `Runtime.run` is decl
       resent with the same cells and old `version`, with newer edits sent only after it answers,
       and no banner whether or not the original had landed), notebook-relative
       path calculation (root notebook, nested subfolder notebook, Scratchpad save-location
-      warning), and Markdown sanitization.
+      warning).
 - [ ] Playwright smoke test against a real `ds ui`: verifies strict CSP header, page reload
       retaining session cookie, two `ds ui` instances open at once both staying signed in,
-      multi-cell `.dsnb` in a subfolder with relative `../` path insertion, cross-cell live
-      diagnostics, drag reorder, two consecutive auto-saves of different cells leaving untouched
+      multi-cell `.dsnb` in a subfolder with relative `../` path insertion, two consecutive auto-saves of different cells leaving untouched
       cells byte-identical, and the `409` banner when saving after an external edit. (Watch-driven
       behaviour, including no banner after the server's own save, is tested in M4-09.)
-- [ ] Dark and light themes both work, with monochrome icons and keyboard accessibility.
+- [ ] Dark and light themes both work, with monochrome icons.
 
 ## Follow-ups

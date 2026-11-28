@@ -134,15 +134,21 @@ Two shared files are touched by many tasks:
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
-| [M4-08](M4-08-notebook-parser-stitcher.md) | `.dsnb` notebook parser/serializer, `StitchedProgram` & `DS1085` | M1-13, M2-13 | todo |
-| [M4-01](M4-01-server-api.md) | Local server (`ds ui`): cookie auth, CSP, files API, check & sandbox | M4-08 | todo |
-| [M4-10](M4-10-server-streaming-export.md) | Local server (`ds ui`): WS streaming runs, row-limit helper & export | M4-01 | todo |
-| [M4-02](M4-02-web-frontend.md) | Web UI: notebook shell, `Runtime`, editor & live checking (v1) | M4-01, M2-13 | todo |
-| [M4-09](M4-09-web-results-grid.md) | Web UI: cell execution, virtualized Arrow grid, multi-result tabs & export | M4-02, M4-10 | todo |
+| [M4-08](M4-08-notebook-stitcher.md) | Notebook `StitchedProgram` & `DS1085` | M1-13, M2-13 | todo |
+| [M4-13](M4-13-notebook-parser-serializer.md) | `.dsnb` notebook parser & lossless serializer | M1-13, M2-13 | todo |
+| [M4-12](M4-12-sandbox-hardening.md) | Path sandbox hardening & `DS3007` | M1-13, M2-13 | todo |
+| [M4-01](M4-01-server-api.md) | Local server (`ds ui`): cookie auth, CSP, files API & check | M4-08, M4-12, M4-13 | todo |
+| [M4-10](M4-10-server-streaming.md) | Local server (`ds ui`): WS streaming runs & row-limit helper | M4-01 | todo |
+| [M4-02](M4-02-web-frontend.md) | Web UI: scaffold, `Runtime`, notebook shell & auto-save (v1) | M4-01, M2-13 | todo |
+| [M4-15](M4-15-web-cell-editing.md) | Web UI: cell editing & live checking (v1) | M4-02 | todo |
+| [M4-09](M4-09-web-results-grid.md) | Web UI: cell execution, virtualized Arrow grid & multi-result tabs | M4-15, M4-10 | todo |
+| [M4-14](M4-14-export-full-result.md) | Export full result (server & UI) | M4-09 | todo |
 | [M4-03](M4-03-web-charts.md) | Charts from `RenderSpec` (Apache ECharts) | M4-09, M1-10 | todo |
 | [M4-04](M4-04-web-schema-completion.md) | Result profiler, source schema inspector & IDE completion | M4-09, M3-02, M2-13 | todo |
-| [M4-05](M4-05-web-shortcuts-polish.md) | Power-user shortcuts, tabs, file management & inspector polish | M4-02, M4-09, M4-03, M4-04 | todo |
-| [M4-06](M4-06-notebook-cli-lsp.md) | `.dsnb` notebooks in CLI (`ds run`/`ds check`) and LSP / VS Code | M4-08, M3-01, M3-02 | todo |
+| [M4-05](M4-05-web-shortcuts-polish.md) | Web UI: Command Mode, Command Palette & Quick Open | M4-09, M4-03, M4-04 | todo |
+| [M4-16](M4-16-web-file-management.md) | Web UI: safe file & folder management | M4-02 | todo |
+| [M4-17](M4-17-web-tabs-outline.md) | Web UI: multi-file tabs, Outline & Scope | M4-09, M4-04 | todo |
+| [M4-06](M4-06-notebook-cli-lsp.md) | `.dsnb` notebooks in CLI (`ds run`/`ds check`) and LSP / VS Code | M4-08, M4-13, M3-01, M3-02 | todo |
 | [M4-07](M4-07-web-output-cache.md) | Web UI: local output cache across reloads *(optional for M4 "done")* | M4-09, M4-03 | todo |
 | [M4-11](M4-11-precise-upstream-blocking.md) | Notebooks: block a cell run only on the upstream `let`s it uses | M4-08, M4-10 | todo |
 
@@ -151,8 +157,8 @@ Two shared files are touched by many tasks:
 | ID | Task | Depends on | Status |
 |---|---|---|---|
 | [M5-01](M5-01-wasm-build.md) | Build the engine for wasm32 | M1-13, M2-13 | todo |
-| [M5-02](M5-02-wasm-js-api.md) | JS/TS API (`@datascript/wasm`) | M5-01, M3-02, M4-08, M2-13 | todo |
-| [M5-03](M5-03-wasm-playground.md) | WASM runtime adapter and playground | M5-02, M4-02, M4-09, M4-03, M4-04, M2-13 | todo |
+| [M5-02](M5-02-wasm-js-api.md) | JS/TS API (`@datascript/wasm`) | M5-01, M3-02, M4-08, M4-13, M2-13 | todo |
+| [M5-03](M5-03-wasm-playground.md) | WASM runtime adapter and playground | M5-02, M4-02, M4-09, M4-14, M4-03, M4-04, M2-13 | todo |
 | [M5-04](M5-04-parity-tests.md) | CLI ↔ WASM parity tests | M5-02 | todo |
 
 ## M6 — Release readiness

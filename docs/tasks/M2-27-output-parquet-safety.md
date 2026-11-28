@@ -62,8 +62,8 @@ LANGUAGE.md; such a case still reads correct data on the next run, because M2-25
 cache after a run that writes. Record the decision in DECISIONS.md.
 
 ### Hosts
-- If M4-10 is done, its export (D-064) offers Parquet through the same writer. (M4-10's "Carried
-  over" item covers it if M4-10 lands after this task.)
+- If M4-14 is done, its export (D-064) offers Parquet through the same writer. (M4-14's "Carried
+  over" item covers it if M4-14 lands after this task.)
 
 ## Acceptance criteria
 - [ ] Golden `run` cases writing Parquet from CSV and JSON fixtures, reading each back with the
