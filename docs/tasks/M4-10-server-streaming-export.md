@@ -3,7 +3,7 @@
 **Status:** todo
 **Depends on:** M4-01
 **Crates:** `datascript-server`, `datascript-engine`, `datascript-diagnostics`
-**Diagnostic codes:** DS4060, DS4062–DS4064 (`DS4060` results truncated per D-064) (D-018)
+**Diagnostic codes:** DS4060–DS4064 (`DS4060` results truncated per D-064) (D-018)
 
 ## Goal
 Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit helper in
@@ -23,7 +23,7 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
 - **WebSocket streaming execution & file watcher** (`WS /api/ws`, requiring the `ds_session_<port>` cookie +
   `Origin` check):
   - Executes single cells (or a single cell-relative `statementIndex`) using M4-08's
-    `StitchedProgram` (transitive upstream `let` prepending + `DS4061`) and `Session::start` + the
+    `StitchedProgram` (transitive upstream `let` prepending + `DS1085`) and `Session::start` + the
     streaming row-limit helper.
   - Emits `started` carrying `nowMicros` (accepting an optional shared `nowMicros` for Run all) and
     `rowLimit`, then for each result its `statementIndex` and `sourceCount` (distinct `SourceRef`s
@@ -60,7 +60,7 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
 - [ ] API/WS integration tests covering:
   - WS cookie + `Origin` auth, streaming batches, cancellation, `sourceCount`/`rowLimit`, `DS4060`
     truncation (default & custom `row_limit`), per-result `sourceCount` in a multi-statement
-    cell, `DS4061` propagation (rules a and b; not on an unreferenced broken `let` or upstream
+    cell, `DS1085` propagation (rules a and b; not on an unreferenced broken `let` or upstream
     query error), `DS0004` suppression on `let`-only cells, workspace file-watch invalidation,
     and **no** change notification after the server's own `PUT`;
   - two-step streaming export reusing the run-time snapshot, `nowMicros` (`now()`/`ago()`),

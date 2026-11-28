@@ -163,7 +163,7 @@ rules as a single `.ds` program split into cells:
 - **Interactive single-cell execution**: when running one cell interactively, only the upstream
   `let` statements that the cell references (directly or transitively) are prepended ahead of the
   target cell. Errors in unreferenced upstream `let`s, upstream query statements, and warnings do
-  not block running that cell. When a run *is* blocked it reports `DS4061`; the exact rule is
+  not block running that cell. When a run *is* blocked it reports `DS1085`; the exact rule is
   defined once in [WEB_UI.md §3](WEB_UI.md#transitive-upstream-let-prepending--ds4061).
 - **Relative paths**: file paths in any cell resolve against the `.dsnb` file's parent directory
   (or the workspace root for unsaved Scratchpads in `ds ui`).

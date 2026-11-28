@@ -40,7 +40,7 @@ M4-04; power-user tabs/shortcuts/file management in M4-05. `Runtime.run` is decl
     `Shift+Enter`, `Esc` per [WEB_UI.md §4.2](../WEB_UI.md#42-center-pane--notebook-canvas)).
   - **DataScript cells**: CodeMirror 6 with DataScript highlighting (D-026), whole-notebook live
     checking (`POST /api/check`), inline squiggles, and rustc/Claude-Code-style diagnostic cards
-    with one-click **Apply fix** and `DS4061` upstream jump links.
+    with one-click **Apply fix** and `DS1085` upstream jump links.
   - Swap in the fresh `originId`s and `version` returned by every `PUT /api/file` before the next
     auto-save ([WEB_UI.md §2](../WEB_UI.md#serialization-grammar--canonical-layout)).
 

@@ -182,7 +182,7 @@ A notebook behaves identically to a single DataScript program split into cells
   union across the cell; in a multi-statement cell each result sub-tab shows its own count.
   Materialized/cached `let` results are flagged as higher priority in [ROADMAP.md](ROADMAP.md).
 
-### Transitive upstream `let` prepending & `DS4061`
+### Transitive upstream `let` prepending & `DS1085`
 
 - During live **`check`**, errors in an upstream cell are reported on that upstream cell itself;
   downstream references to a broken `let` receive the binder's error type silently (D-038) so
@@ -201,7 +201,7 @@ This section is the single definition of when an interactive single-cell run is 
   is not.
 - If two upstream statements declare the same name, both are prepended; the later one carries
   `DS1003` (D-007), which blocks the run under rule (a) below.
-- `StitchedProgram` emits **`DS4061`** (error) if and only if:
+- `StitchedProgram` emits **`DS1085`** (error) if and only if:
   - **(a)** a transitively referenced upstream `let` statement has an **error-severity**
     diagnostic (lexical, syntax, or semantic, including `DS1003`), **or**
   - **(b)** cell $k$ (or a prepended `let`) references a name that no successfully parsed upstream
@@ -212,7 +212,7 @@ This section is the single definition of when an interactive single-cell run is 
   Otherwise an unresolved name is the ordinary unknown-name diagnostic in cell $k$, and errors in
   unreferenced upstream `let`s, upstream query statements (including a broken query next to a
   valid `let` in the same cell), and warnings anywhere **do not block** running cell $k$.
-- **`DS4061` shape** (DIAGNOSTICS.md style):
+- **`DS1085` shape** (DIAGNOSTICS.md style):
   - message: ``cannot run this cell because `orders` (cell 2) has errors`` (rule a) or
     ``cannot run this cell because cell 2 has a syntax error that may define `orders` `` (rule b);
   - primary span: the first reference to the blocking name in cell $k$;
@@ -398,7 +398,7 @@ clicking a column header's stats trigger.
     split, copy query, collapse output, delete).
   - **Diagnostics panel**: Renders any compiler or runtime `Diagnostic`s in rustc/Claude-Code style
     with clickable **Apply fix** buttons for machine-applicable `Suggestion`s (including jump links
-    for `DS4061` upstream cell errors).
+    for `DS1085` upstream cell errors).
   - **Tabular output (virtualized Arrow grid, `M4-09`)**:
     - Reads Arrow IPC `RecordBatch`es directly via `apache-arrow` with row and column virtualization
       (`@tanstack/react-virtual`).
@@ -613,7 +613,7 @@ How each target plugs in:
 | `POST /api/dir`, `PATCH /api/file`, `DELETE /api/file` | M4-05 | Create folders, rename (no-clobber: `hard_link` + `remove_file` for files; `rustix` / `MoveFileExW` for folders), or delete `.dsnb`/`.ds` files or safe folders (per-file unlink + `rmdir`; refuses symlinks and any folder containing non-`.dsnb`/`.ds` files) |
 | `GET /api/schema?source=` | M4-01 | Inspect schema of a file or host table via `Session` |
 | `POST /api/check` | M4-01 | Check a `.ds` script or whole `.dsnb` notebook in one pass (`{ path, cells }` → diagnostics grouped by `cellIndex` (every cell, Markdown included) in UTF-16 offsets + per-cell in-scope `let` summaries) |
-| `WS /api/ws` | M4-10 | Multiplexed stream for: (1) query execution (`run` with optional shared `nowMicros` for Run all / `cancel` → `started` with `nowMicros` and `rowLimit`, then per result its `statementIndex` and `sourceCount`, streaming capped Arrow IPC batches + `RenderSpec` + diagnostics incl. `DS4060`/`DS4061` + timing, suppressing `DS0004` on `let`-only cells), and (2) workspace file-change notifications |
+| `WS /api/ws` | M4-10 | Multiplexed stream for: (1) query execution (`run` with optional shared `nowMicros` for Run all / `cancel` → `started` with `nowMicros` and `rowLimit`, then per result its `statementIndex` and `sourceCount`, streaming capped Arrow IPC batches + `RenderSpec` + diagnostics incl. `DS4060`/`DS1085` + timing, suppressing `DS0004` on `let`-only cells), and (2) workspace file-change notifications |
 | `POST /api/export` | M4-10 | Accepts the run-time cell snapshot `{ path, cells, targetCellIndex, statementIndex, nowMicros, format }` (`statementIndex` is 0-based among the target cell's own query statements), validates it, and returns a short-lived single-use download URL `/api/export/<ticket>` |
 | `GET /api/export/<ticket>` | M4-10 | Requires the session cookie + one-shot ticket (checks `Sec-Fetch-Site` when present) and streams the full uncapped result as `Content-Disposition: attachment` via `datascript_engine::writers` (v1: `csv`, `ndjson`, `json`, `arrow`; `parquet` once M2-27 lands, `xlsx` once M2-28 lands) |
 | `POST /api/complete`, `/api/hover`, `/api/signature-help` | M4-04 | IDE helpers (`{ path, cells, targetCellIndex, offset }`) backed by `datascript_compiler::ide` over `StitchedProgram` |
@@ -630,7 +630,7 @@ all reuse them:
   diagnostic span back to `{ cellIndex, start, end, line, column }` in UTF-16, D-025).
 - Single-cell execution and IDE requests (`run`, `export`, `complete`, `hover`, `signature_help`)
   compute the target cell's **transitive upstream `let` dependencies**, prepend only those `let`
-  statements in document order separated by `\n;\n` glue segments, and emit `DS4061` under the
+  statements in document order separated by `\n;\n` glue segments, and emit `DS1085` under the
   rules in [§3](#transitive-upstream-let-prepending--ds4061).
 - Relative file paths inside the notebook resolve against the `.dsnb` file's parent directory (or
   the workspace root for unsaved Scratchpads), always enforced by the D-016 sandbox in `ds ui`.

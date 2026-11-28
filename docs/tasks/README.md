@@ -134,7 +134,7 @@ Two shared files are touched by many tasks:
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
-| [M4-08](M4-08-notebook-parser-stitcher.md) | `.dsnb` notebook parser/serializer, `StitchedProgram` & `DS4061` | M1-13, M2-13 | todo |
+| [M4-08](M4-08-notebook-parser-stitcher.md) | `.dsnb` notebook parser/serializer, `StitchedProgram` & `DS1085` | M1-13, M2-13 | todo |
 | [M4-01](M4-01-server-api.md) | Local server (`ds ui`): cookie auth, CSP, files API, check & sandbox | M4-08 | todo |
 | [M4-10](M4-10-server-streaming-export.md) | Local server (`ds ui`): WS streaming runs, row-limit helper & export | M4-01 | todo |
 | [M4-02](M4-02-web-frontend.md) | Web UI: notebook shell, `Runtime`, editor & live checking (v1) | M4-01, M2-13 | todo |

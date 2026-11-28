@@ -18,7 +18,7 @@ truncation-aware sorting + **Sort in query**, and two-step streaming export (D-0
   (`Shift+Enter`), Run statement at cursor (`Cmd/Ctrl+Alt+Enter` / gutter button), Run cell &
   below / Run all (one shared `nowMicros`, stopping at the first failing cell), Cancel
   (`Cmd/Ctrl+.` / Stop button), per-result status line (`rows · duration · N sources`),
-  transitive-`let` Stale badge, `let`-only validation line (`DS0004` suppressed), and `DS4061`
+  transitive-`let` Stale badge, `let`-only validation line (`DS0004` suppressed), and `DS1085`
   cards whose secondary label jumps to the upstream cell.
 - **Virtualized Arrow grid** (`apache-arrow` + `@tanstack/react-virtual`):
   - Row index gutter, compact monochrome column headers (type glyph + subtle null indicator whose
@@ -47,7 +47,7 @@ truncation-aware sorting + **Sort in query**, and two-step streaming export (D-0
       dynamic truncation labels with a non-default `rowLimit`, and run-time export snapshot capture
       (including after editing a cell into Stale state).
 - [ ] Playwright test against `ds ui` verifying Run / Run all / Cancel, `let`-only cell showing no
-      `DS0004` warning, `DS4061` jump, virtualized scrolling, multi-statement sub-tabs (each with
+      `DS0004` warning, `DS1085` jump, virtualized scrolling, multi-statement sub-tabs (each with
       its own source count), truncation banner + "Sort in query", and streaming CSV export
       download (plus Parquet if M2-27 is done).
 

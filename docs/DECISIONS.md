@@ -957,10 +957,10 @@ box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
   `datascript-cli` (`ReplProgram`), and `datascript-wasm` (M5) — `web/` consumes structured cells
   with opaque `originId`s via `Runtime` for lossless diff saves and never duplicates the parser.
   Supersedes D-048's note that the web UI does not need a shared stitcher.
-- **Cross-cell `let` scope & `DS4061`**: top-to-bottom lexical order keeping `DS1003` no-shadowing
+- **Cross-cell `let` scope & `DS1085`**: top-to-bottom lexical order keeping `DS1003` no-shadowing
   (D-007) so `.dsnb` notebooks stay 1:1 with `.ds` scripts. Live `POST /api/check` checks the whole
   notebook in one pass; single-cell runs prepend only the cell's transitively referenced upstream
-  `let`s, and `StitchedProgram` emits `DS4061` when the run is blocked by a broken referenced `let`
+  `let`s, and `StitchedProgram` emits `DS1085` when the run is blocked by a broken referenced `let`
   or by an upstream syntax error that may define a referenced name. Warnings, upstream queries, and
   unreferenced broken `let`s do not block. The exact rule, the deliberate over-approximation of
   references, and the diagnostic's shape are defined once in [WEB_UI.md §3](WEB_UI.md#transitive-upstream-let-prepending--ds4061). Lazy
