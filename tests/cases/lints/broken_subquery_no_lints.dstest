@@ -1,0 +1,15 @@
+# A syntactically broken subquery must not emit lint warnings (DS2102, DS2103) on top of the syntax error.
+mode: check
+schema: orders(orderId: string, customerId: string, amount: real)
+---- query
+from (from orders | where 1 == 1 | sort by amount
+---- expected
+error[DS0112]: unclosed `(`
+  --> query:1:6
+  |
+1 | from (from orders | where 1 == 1 | sort by amount
+  |      ^                                           - the input ends before a `)`
+  |      |
+  |      this `(` is never closed
+  |
+  = help: add `)` where the bracketed part ends

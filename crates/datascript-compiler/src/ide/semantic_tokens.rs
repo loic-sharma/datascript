@@ -49,6 +49,7 @@ pub enum SemanticTokenKind {
 pub struct SemanticTokenModifiers(u32);
 
 impl SemanticTokenModifiers {
+    /// No modifiers set.
     pub const NONE: Self = Self(0);
     /// Defining occurrence (`let` name, `let` keyword, output column name, rename target).
     pub const DECLARATION: Self = Self(1 << 0);
@@ -57,14 +58,17 @@ impl SemanticTokenModifiers {
     /// Built-in symbol (pipeline operator keywords, catalog functions, `$left`/`$right`).
     pub const DEFAULT_LIBRARY: Self = Self(1 << 2);
 
+    /// Returns the raw LSP modifier bitmask.
     pub const fn bits(self) -> u32 {
         self.0
     }
 
+    /// Returns `true` if all modifier bits in `other` are set in `self`.
     pub const fn contains(self, other: Self) -> bool {
         (self.0 & other.0) == other.0
     }
 
+    /// Returns the union of the modifier bits in `self` and `other`.
     pub const fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
     }
@@ -73,9 +77,13 @@ impl SemanticTokenModifiers {
 /// One semantic token with a byte range in the source file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SemanticToken {
+    /// Inclusive start byte offset in the source text.
     pub start: usize,
+    /// Exclusive end byte offset in the source text.
     pub end: usize,
+    /// Semantic token category.
     pub kind: SemanticTokenKind,
+    /// Modifiers applied to this token.
     pub modifiers: SemanticTokenModifiers,
 }
 

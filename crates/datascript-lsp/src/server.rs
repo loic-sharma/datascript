@@ -449,17 +449,21 @@ impl LanguageServer for Backend {
         let Some((file, analysis)) = self.state.analyze_optional(&uri).await else {
             return Ok(None);
         };
-        let diagnostics = match analysis {
-            Some(analysis) => analysis.diagnostics,
-            // In syntax-only mode, quick fixes come only from lexical and syntax diagnostics.
-            None => syntax_diagnostics(&file),
-        };
-        Ok(Some(ide::code_actions(
-            &file,
-            &uri,
-            &diagnostics,
-            params.range,
-        )))
+        let range = params.range;
+        match catch_panic(Some(FILE), "computing code actions", || {
+            let diagnostics = match analysis {
+                Some(analysis) => analysis.diagnostics,
+                // In syntax-only mode, quick fixes come only from lexical and syntax diagnostics.
+                None => syntax_diagnostics(&file),
+            };
+            ide::code_actions(&file, &uri, &diagnostics, range)
+        }) {
+            Ok(actions) => Ok(Some(actions)),
+            Err(crash) => {
+                self.log_crash(&crash).await;
+                Ok(None)
+            }
+        }
     }
 
     async fn goto_definition(
@@ -535,7 +539,8 @@ impl LanguageServer for Backend {
         match catch_panic(Some(FILE), "preparing rename", || {
             datascript_compiler::ide::prepare_rename(&file, analysis.as_ref(), offset)
         }) {
-            Ok(found) => Ok(found.map(|target| ide::prepare_rename(&file, FILE, target))),
+            Ok(Ok(found)) => Ok(found.map(|target| ide::prepare_rename(&file, FILE, target))),
+            Ok(Err(err)) => Err(jsonrpc::Error::invalid_params(err.to_string())),
             Err(crash) => {
                 self.log_crash(&crash).await;
                 Ok(None)

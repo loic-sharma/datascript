@@ -20,14 +20,19 @@ pub enum SymbolKind {
 /// One top-level symbol in a document (outline / go to symbol).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentSymbol {
+    /// Display name of the symbol (the `let` name, or `query 1`, `query 2`, …).
     pub name: String,
+    /// Optional secondary detail (inferred type, column count, or short source preview).
     pub detail: Option<String>,
+    /// Whether this symbol is a scalar `let`, tabular `let`, or query statement.
     pub kind: SymbolKind,
-    /// Byte range of the whole statement.
+    /// Inclusive start byte offset of the whole statement.
     pub start: usize,
+    /// Exclusive end byte offset of the whole statement.
     pub end: usize,
-    /// Byte range of the name or statement head, contained within `start..end`.
+    /// Inclusive start byte offset of the name or statement head, contained within `start..end`.
     pub selection_start: usize,
+    /// Exclusive end byte offset of the name or statement head, contained within `start..end`.
     pub selection_end: usize,
 }
 

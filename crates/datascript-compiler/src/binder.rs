@@ -362,12 +362,13 @@ impl<'a> Binder<'a> {
                     None
                 }
                 Operator::Extend(extend) => {
-                    // Still bind complete items so completion and hover in a later item see
-                    // columns made by earlier items (D-040), without cascading errors.
+                    // Still bind complete items to record per-item stage schemas so completion and
+                    // hover in a later item see columns made by earlier items (D-040), without
+                    // cascading errors or leaking an `Op::Extend` into the HIR that lints see.
                     let saved = self.diagnostics.len();
-                    let (bound, _) = self.bind_extend(extend, columns);
+                    self.bind_extend(extend, columns);
                     self.diagnostics.truncate(saved);
-                    return (bound, None);
+                    None
                 }
                 _ => None,
             };

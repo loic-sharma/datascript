@@ -976,43 +976,46 @@ fn goto_definition_references_and_rename_for_lets() {
     let big_use_1 = text.find("from big").unwrap() + 5;
     let big_use_2 = text.find("join big").unwrap() + 5;
 
-    // Works identically with full analysis and in syntax-only mode (`None`).
+    // Full analysis: both tabular (`big`) and row-expression (`cutoff`) `let`s resolve and rename.
+    assert_eq!(
+        goto_definition(&src, Some(&analysis), cutoff_use_2 + 2),
+        Some(cutoff_def..cutoff_def + 6)
+    );
+    // Cursor right at the end of a `let` name before punctuation (`cutoff;`) still resolves.
+    assert_eq!(
+        goto_definition(&src, Some(&analysis), cutoff_use_1 + 6),
+        Some(cutoff_def..cutoff_def + 6)
+    );
+    assert_eq!(
+        prepare_rename(&src, Some(&analysis), cutoff_use_1 + 6),
+        Ok(Some(RenameTarget {
+            start: cutoff_use_1,
+            end: cutoff_use_1 + 6,
+            placeholder: "cutoff".into(),
+        }))
+    );
+    assert_eq!(
+        references(&src, Some(&analysis), cutoff_def + 1, true),
+        vec![
+            cutoff_def..cutoff_def + 6,
+            cutoff_use_1..cutoff_use_1 + 6,
+            cutoff_use_2..cutoff_use_2 + 6,
+        ]
+    );
+    assert_eq!(
+        references(&src, Some(&analysis), cutoff_use_1 + 1, false),
+        vec![
+            cutoff_use_1..cutoff_use_1 + 6,
+            cutoff_use_2..cutoff_use_2 + 6,
+        ]
+    );
+
+    // Tabular `let` (`big`, used only in no-column table positions) works identically with full
+    // analysis and in syntax-only mode (`None`).
     for analysis_opt in [Some(&analysis), None] {
-        assert_eq!(
-            goto_definition(&src, analysis_opt, cutoff_use_2 + 2),
-            Some(cutoff_def..cutoff_def + 6)
-        );
-        // Cursor right at the end of a `let` name before punctuation (`cutoff;`) still resolves.
-        assert_eq!(
-            goto_definition(&src, analysis_opt, cutoff_use_1 + 6),
-            Some(cutoff_def..cutoff_def + 6)
-        );
-        assert_eq!(
-            prepare_rename(&src, analysis_opt, cutoff_use_1 + 6),
-            Some(RenameTarget {
-                start: cutoff_use_1,
-                end: cutoff_use_1 + 6,
-                placeholder: "cutoff".into(),
-            })
-        );
         assert_eq!(
             goto_definition(&src, analysis_opt, big_use_2 + 1),
             Some(big_def..big_def + 3)
-        );
-        assert_eq!(
-            references(&src, analysis_opt, cutoff_def + 1, true),
-            vec![
-                cutoff_def..cutoff_def + 6,
-                cutoff_use_1..cutoff_use_1 + 6,
-                cutoff_use_2..cutoff_use_2 + 6,
-            ]
-        );
-        assert_eq!(
-            references(&src, analysis_opt, cutoff_use_1 + 1, false),
-            vec![
-                cutoff_use_1..cutoff_use_1 + 6,
-                cutoff_use_2..cutoff_use_2 + 6,
-            ]
         );
         assert_eq!(
             references(&src, analysis_opt, big_use_1, true),
@@ -1024,11 +1027,11 @@ fn goto_definition_references_and_rename_for_lets() {
         );
         assert_eq!(
             prepare_rename(&src, analysis_opt, big_use_1 + 1),
-            Some(RenameTarget {
+            Ok(Some(RenameTarget {
                 start: big_use_1,
                 end: big_use_1 + 3,
                 placeholder: "big".into(),
-            })
+            }))
         );
         let edits = rename(&src, analysis_opt, big_use_1 + 1, "large_orders").unwrap();
         assert_eq!(
@@ -1056,7 +1059,7 @@ fn goto_definition_references_and_rename_for_lets() {
     // Columns, keywords and unknown names do not jump or rename.
     let amount_off = text.find("amount").unwrap();
     assert_eq!(goto_definition(&src, Some(&analysis), amount_off), None);
-    assert_eq!(prepare_rename(&src, Some(&analysis), amount_off), None);
+    assert_eq!(prepare_rename(&src, Some(&analysis), amount_off), Ok(None));
     assert_eq!(
         rename(&src, Some(&analysis), amount_off, "x"),
         Err(RenameError::NotRenamable)
@@ -1066,6 +1069,107 @@ fn goto_definition_references_and_rename_for_lets() {
         rename(&src, Some(&analysis), big_def, "cutoff"),
         Err(RenameError::AlreadyDefined("cutoff".into()))
     );
+}
+
+#[test]
+fn unknown_schema_excludes_ambiguous_row_refs_and_refuses_rename() {
+    let text = "let amount = 5;\n\
+                from 'orders.csv' | where amount > 1 | take amount\n";
+    let src = SourceFile::new("q.ds", text);
+    let no_schema_analysis = analyze(&src, &crate::NoSchemas);
+
+    let let_amount = text.find("amount").unwrap();
+    let where_amount = text.find("where amount").unwrap() + 6;
+    let take_amount = text.rfind("amount").unwrap();
+
+    for (analysis_opt, expected_syntax_only) in [(None, true), (Some(&no_schema_analysis), false)] {
+        // Row-expression site with unknown schema is excluded from goto, references, and readonly tokens.
+        assert_eq!(goto_definition(&src, analysis_opt, where_amount), None);
+        // No-column site (`take amount`) still resolves unambiguously.
+        assert_eq!(
+            goto_definition(&src, analysis_opt, take_amount),
+            Some(let_amount..let_amount + 6)
+        );
+        assert_eq!(
+            references(&src, analysis_opt, let_amount, false),
+            vec![take_amount..take_amount + 6]
+        );
+        let tokens = semantic_tokens(&src, analysis_opt);
+        let where_tok = tokens
+            .iter()
+            .find(|t| t.start == where_amount && t.end == where_amount + 6)
+            .unwrap();
+        assert!(
+            !where_tok
+                .modifiers
+                .contains(SemanticTokenModifiers::READONLY)
+        );
+        let take_tok = tokens
+            .iter()
+            .find(|t| t.start == take_amount && t.end == take_amount + 6)
+            .unwrap();
+        assert!(
+            take_tok
+                .modifiers
+                .contains(SemanticTokenModifiers::READONLY)
+        );
+
+        // Both `prepare_rename` and `rename` refuse from the definition, `take`, or `where` site.
+        for offset in [let_amount, take_amount, where_amount] {
+            assert_eq!(
+                prepare_rename(&src, analysis_opt, offset),
+                Err(RenameError::UnknownSchema {
+                    syntax_only: expected_syntax_only
+                })
+            );
+            assert_eq!(
+                rename(&src, analysis_opt, offset, "threshold"),
+                Err(RenameError::UnknownSchema {
+                    syntax_only: expected_syntax_only
+                })
+            );
+        }
+    }
+}
+
+#[test]
+fn rename_rejects_name_shadowed_by_in_scope_column() {
+    let text = "let cutoff = 100;\n\
+                from 'orders.csv' | where amount > cutoff\n";
+    let src = SourceFile::new("q.ds", text);
+    let analysis = analyze(&src, &Orders);
+    let cutoff_def = text.find("cutoff").unwrap();
+
+    // `amount` is an input column at line 2 -> rejected so query meaning cannot silently change.
+    assert_eq!(
+        rename(&src, Some(&analysis), cutoff_def, "amount"),
+        Err(RenameError::ShadowedByColumn {
+            name: "amount".into(),
+            line: 2,
+        })
+    );
+    // Non-colliding name still succeeds.
+    assert!(rename(&src, Some(&analysis), cutoff_def, "threshold").is_ok());
+
+    // Earlier `extend` item column also blocks the rename (D-040).
+    let ext_text = "let cutoff = 100;\n\
+                    from 'orders.csv' | extend total = amount * 2, big = total > cutoff\n";
+    let ext_src = SourceFile::new("ext.ds", ext_text);
+    let ext_analysis = analyze(&ext_src, &Orders);
+    let ext_def = ext_text.find("cutoff").unwrap();
+    assert_eq!(
+        rename(&ext_src, Some(&ext_analysis), ext_def, "total"),
+        Err(RenameError::ShadowedByColumn {
+            name: "total".into(),
+            line: 2,
+        })
+    );
+
+    // No-column positions (`take`) are not shadowed by columns.
+    let take_text = "let limit = 5;\nfrom 'orders.csv' | take limit\n";
+    let take_src = SourceFile::new("take.ds", take_text);
+    let take_analysis = analyze(&take_src, &Orders);
+    assert!(rename(&take_src, Some(&take_analysis), 4, "amount").is_ok());
 }
 
 #[test]
@@ -1172,11 +1276,11 @@ fn rename_handles_quoted_identifiers_and_validation() {
 
     assert_eq!(
         prepare_rename(&src, None, use_off + 2),
-        Some(RenameTarget {
+        Ok(Some(RenameTarget {
             start: use_off,
             end: use_off + 12,
             placeholder: "my limit".into(),
-        })
+        }))
     );
     // Plain identifier needs no quotes; spaces and reserved words are quoted automatically.
     let plain = rename(&src, None, def, "max_rows").unwrap();

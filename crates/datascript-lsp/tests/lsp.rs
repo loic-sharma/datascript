@@ -2506,6 +2506,25 @@ async fn goto_definition_references_and_rename_for_lets() {
         "{err}"
     );
 
+    // Renaming `cutoff` to `amount` (a column in scope at line 2) returns an invalid_params error.
+    let col_err = client
+        .request_response(
+            "textDocument/rename",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 0, "character": 5 },
+                "newName": "amount"
+            }),
+        )
+        .await;
+    assert!(
+        col_err["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("is a column at line 2"),
+        "{col_err}"
+    );
+
     // Column shadowing in full mode: `let amount = 5;` is NOT referenced by `where amount > 0`.
     let shadow_uri = client.uri("shadow.ds");
     client
@@ -2697,21 +2716,22 @@ async fn syntax_only_mode_supports_navigation_rename_symbols_tokens_and_syntax_f
     )
     .await;
     let uri = client.uri("untrusted.ds");
-    let text = "let cutoff = 15;\n\
-                from 'orders.csv' | where by = cutoff | project amout\n";
+    let text = "let limit = 15;\n\
+                let amount = 5;\n\
+                from 'orders.csv' | where by = amount | take limit | project amout\n";
     client.open(&uri, text).await;
     assert_eq!(client.diagnostics(&uri).await.codes(), ["DS0110"]);
 
     // Code actions return syntax quick fix (DS0110), and NOT semantic fixes.
-    let eq_col = text.lines().nth(1).unwrap().find("= cutoff").unwrap() as u32;
+    let eq_col = text.lines().nth(2).unwrap().find("= amount").unwrap() as u32;
     let actions = client
         .request(
             "textDocument/codeAction",
             json!({
                 "textDocument": { "uri": uri },
                 "range": {
-                    "start": { "line": 1, "character": eq_col },
-                    "end": { "line": 1, "character": eq_col + 1 }
+                    "start": { "line": 2, "character": eq_col },
+                    "end": { "line": 2, "character": eq_col + 1 }
                 },
                 "context": { "diagnostics": [] }
             }),
@@ -2721,14 +2741,15 @@ async fn syntax_only_mode_supports_navigation_rename_symbols_tokens_and_syntax_f
     assert_eq!(arr.len(), 1, "{actions}");
     assert_eq!(arr[0]["diagnostics"][0]["code"], "DS0110");
 
-    // Go to definition, references, prepareRename, rename over `cutoff` all work without reading files.
-    let cutoff_col = text.lines().nth(1).unwrap().find("cutoff").unwrap() as u32;
+    // Go to definition, references, prepareRename and rename work without reading files for
+    // no-column positions (`take limit`).
+    let limit_col = text.lines().nth(2).unwrap().find("limit").unwrap() as u32;
     let def = client
         .request(
             "textDocument/definition",
             json!({
                 "textDocument": { "uri": uri },
-                "position": { "line": 1, "character": cutoff_col + 1 }
+                "position": { "line": 2, "character": limit_col + 1 }
             }),
         )
         .await;
@@ -2752,23 +2773,70 @@ async fn syntax_only_mode_supports_navigation_rename_symbols_tokens_and_syntax_f
             "textDocument/prepareRename",
             json!({
                 "textDocument": { "uri": uri },
-                "position": { "line": 1, "character": cutoff_col + 1 }
+                "position": { "line": 2, "character": limit_col + 1 }
             }),
         )
         .await;
-    assert_eq!(prep["placeholder"], "cutoff");
+    assert_eq!(prep["placeholder"], "limit");
 
     let renamed = client
         .request(
             "textDocument/rename",
             json!({
                 "textDocument": { "uri": uri },
-                "position": { "line": 1, "character": cutoff_col + 1 },
-                "newName": "threshold"
+                "position": { "line": 2, "character": limit_col + 1 },
+                "newName": "max_rows"
             }),
         )
         .await;
     assert_eq!(renamed["changes"][&uri].as_array().unwrap().len(), 2);
+
+    // Row-expression `amount` in syntax-only mode has unknown schema: excluded from definition/
+    // references, and prepareRename/rename refuse rather than risk rewriting a column.
+    let amount_col = text.lines().nth(2).unwrap().find("amount").unwrap() as u32;
+    let row_def = client
+        .request(
+            "textDocument/definition",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 2, "character": amount_col + 1 }
+            }),
+        )
+        .await;
+    assert_eq!(row_def, Value::Null);
+    let prep_err = client
+        .request_response(
+            "textDocument/prepareRename",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 1, "character": 5 }
+            }),
+        )
+        .await;
+    assert!(
+        prep_err["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("input schema"),
+        "{prep_err}"
+    );
+    let rename_err = client
+        .request_response(
+            "textDocument/rename",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 1, "character": 5 },
+                "newName": "threshold"
+            }),
+        )
+        .await;
+    assert!(
+        rename_err["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("input schema"),
+        "{rename_err}"
+    );
 
     // Document symbols work from the parse alone.
     let symbols = client
@@ -2778,12 +2846,15 @@ async fn syntax_only_mode_supports_navigation_rename_symbols_tokens_and_syntax_f
         )
         .await;
     let arr = symbols.as_array().unwrap();
-    assert_eq!(arr.len(), 2);
-    assert_eq!(arr[0]["name"], "cutoff");
+    assert_eq!(arr.len(), 3);
+    assert_eq!(arr[0]["name"], "limit");
     assert_eq!(arr[0]["detail"], "scalar");
-    assert_eq!(arr[1]["name"], "query 1");
+    assert_eq!(arr[1]["name"], "amount");
+    assert_eq!(arr[1]["detail"], "scalar");
+    assert_eq!(arr[2]["name"], "query 1");
 
-    // Semantic tokens work from the parse alone and classify `by` in `where by = cutoff` as variable.
+    // Semantic tokens work from the parse alone and classify `by` in `where by = amount` as variable,
+    // without falsely marking ambiguous `amount` as `readonly`.
     let tokens = client
         .request(
             "textDocument/semanticTokens/full",
@@ -2791,10 +2862,18 @@ async fn syntax_only_mode_supports_navigation_rename_symbols_tokens_and_syntax_f
         )
         .await;
     let decoded = decode_semantic_tokens(&tokens);
-    let by_col = text.lines().nth(1).unwrap().find("by").unwrap() as u32;
+    let by_col = text.lines().nth(2).unwrap().find("by").unwrap() as u32;
     assert!(
-        decoded.contains(&(1, by_col, 2, 6, 0)),
+        decoded.contains(&(2, by_col, 2, 6, 0)),
         "`by` should be variable (6): {decoded:?}"
+    );
+    assert!(
+        decoded.contains(&(2, amount_col, 6, 6, 0)),
+        "ambiguous `amount` should not have readonly modifier: {decoded:?}"
+    );
+    assert!(
+        decoded.contains(&(2, limit_col, 5, 6, 2)),
+        "unambiguous `take limit` should have readonly modifier (2): {decoded:?}"
     );
 
     client.shutdown().await;

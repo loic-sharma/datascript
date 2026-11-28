@@ -52,7 +52,7 @@ pub struct Analysis {
     pub hir: hir::Hir,
     /// Syntax and semantic diagnostics, sorted and capped.
     pub diagnostics: Vec<Diagnostic>,
-    /// The schema after each pipeline stage whose schema is known.
+    /// The schema after each pipeline stage (and each `extend` item) whose schema is known.
     pub stage_schemas: Vec<StageSchema>,
     /// Sources the provider answered [`SchemaLookup::Pending`] for, sorted. The session fetches
     /// them and checks again (D-022).

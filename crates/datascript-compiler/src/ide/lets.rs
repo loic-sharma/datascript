@@ -1,10 +1,14 @@
 //! `let` navigation and rename: [`goto_definition`], [`references`], [`prepare_rename`] and
 //! [`rename`].
 //!
-//! `let` bindings are resolved directly from the syntax tree so every feature works in
-//! syntax-only mode (D-053) as well as full mode. When an [`Analysis`] is provided, row
-//! expressions check the columns in scope at the operator so a column shadowing a `let`
-//! (D-038) is not mistaken for a reference to that `let`.
+//! `let` bindings are resolved from the syntax tree with optional [`Analysis`] schema information.
+//! In positions where columns are never in scope (scalar `let` RHS, `from`, `join` right, `union`,
+//! `take`, `top` count, scalar `render` properties), every matching name resolves directly from the
+//! syntax tree—including in syntax-only mode (D-053). In row-expression positions where columns win
+//! over scalar `let`s (D-038), a name resolves to a `let` only when the operator's input columns
+//! are known and do not contain it: when schemas are unavailable, those ambiguous sites are
+//! excluded from navigation/references/semantic tokens, and [`prepare_rename`] / [`rename`] refuse
+//! rather than risk rewriting a column reference.
 
 use std::collections::{HashMap, HashSet};
 use std::ops::Range;
@@ -20,8 +24,9 @@ use crate::binder::{property_takes_columns, property_words};
 /// The target of a rename request at the cursor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenameTarget {
-    /// Byte range of the identifier token under the cursor.
+    /// Inclusive start byte offset of the identifier token under the cursor.
     pub start: usize,
+    /// Exclusive end byte offset of the identifier token under the cursor.
     pub end: usize,
     /// Unquoted name shown in the editor's rename input box.
     pub placeholder: String,
@@ -30,12 +35,15 @@ pub struct RenameTarget {
 /// One text replacement produced by [`rename`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenameEdit {
+    /// Inclusive start byte offset of the range to replace.
     pub start: usize,
+    /// Exclusive end byte offset of the range to replace.
     pub end: usize,
+    /// Replacement source text (quoted with `['...']` when needed).
     pub replacement: String,
 }
 
-/// Why [`rename`] refused to rename the symbol at the cursor.
+/// Why [`prepare_rename`] or [`rename`] refused to rename the symbol at the cursor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RenameError {
     /// The cursor is not on a renamable `let` definition or reference.
@@ -44,6 +52,19 @@ pub enum RenameError {
     InvalidName(String),
     /// Another `let` in the same document already defines this name (`DS1003`).
     AlreadyDefined(String),
+    /// Renaming would be shadowed by an in-scope column at a row-expression reference (D-038).
+    ShadowedByColumn {
+        /// The colliding column name.
+        name: String,
+        /// 1-based line number of the reference where the column would hide the `let`.
+        line: usize,
+    },
+    /// At least one row-expression site using this name has an unknown input schema, so we cannot
+    /// tell whether it refers to a column or to this `let` (D-038, D-053).
+    UnknownSchema {
+        /// Whether the request ran without an [`Analysis`] (syntax-only mode).
+        syntax_only: bool,
+    },
 }
 
 impl std::fmt::Display for RenameError {
@@ -54,11 +75,33 @@ impl std::fmt::Display for RenameError {
             RenameError::AlreadyDefined(name) => {
                 write!(f, "`{name}` is already defined by another `let`")
             }
+            RenameError::ShadowedByColumn { name, line } => write!(
+                f,
+                "`{name}` is a column at line {line}, so the renamed `let` would be hidden there"
+            ),
+            RenameError::UnknownSchema { syntax_only: true } => write!(
+                f,
+                "rename needs the input schema; trust the workspace to load schemas"
+            ),
+            RenameError::UnknownSchema { syntax_only: false } => write!(
+                f,
+                "rename needs the input schema, which could not be loaded for a source"
+            ),
         }
     }
 }
 
 impl std::error::Error for RenameError {}
+
+/// One resolved reference to a `let`.
+#[derive(Debug, Clone)]
+struct LetRef {
+    range: Range<usize>,
+    /// The enclosing row-expression operator when columns are in scope at this site (D-038),
+    /// or `None` in no-column positions (`let` RHS, `from`, `join` right, `union`, `take`,
+    /// `top` count, scalar `render` properties).
+    row_op: Option<SyntaxNode>,
+}
 
 /// A top-level `let` definition and every reference that resolves to it.
 #[derive(Debug, Clone)]
@@ -66,7 +109,9 @@ pub(crate) struct LetDef {
     pub name: String,
     pub name_range: Range<usize>,
     pub stmt_end: usize,
-    pub references: Vec<Range<usize>>,
+    references: Vec<LetRef>,
+    /// Row-expression sites with this `let`'s name whose operator's input columns were unknown.
+    unknown_row_refs: Vec<Range<usize>>,
 }
 
 /// Resolved `let` definitions and uses across one document.
@@ -74,13 +119,13 @@ pub(crate) struct LetIndex {
     pub defs: Vec<LetDef>,
     /// All `let` names declared in the document (including duplicate `let`s).
     all_names: HashSet<String>,
-    /// Every reference byte range, for O(1) membership checks in semantic tokens.
+    /// Every unambiguous reference byte range, for O(1) membership checks in semantic tokens.
     ref_ranges: HashSet<Range<usize>>,
 }
 
 impl LetIndex {
-    /// Builds the index over `root`. Pass `doc` when an [`Analysis`] is available so columns
-    /// that shadow a `let` (D-038) are excluded.
+    /// Builds the index over `root`. Pass `doc` when an [`Analysis`] is available so row-expression
+    /// references can be checked against in-scope columns (D-038).
     pub(crate) fn build(root: &SyntaxNode, doc: Option<&Doc<'_>>) -> Self {
         let Some(program) = ast::Program::cast(root.clone()) else {
             return LetIndex {
@@ -109,6 +154,7 @@ impl LetIndex {
                         name_range: range(&token),
                         stmt_end: range_of(let_stmt.syntax()).end,
                         references: Vec::new(),
+                        unknown_row_refs: Vec::new(),
                     });
                 }
             }
@@ -150,7 +196,7 @@ impl LetIndex {
         }
     }
 
-    /// Whether the token spanning `r` resolves to a `let` reference.
+    /// Whether the token spanning `r` unambiguously resolves to a `let` reference.
     pub(crate) fn is_let_ref(&self, r: &Range<usize>) -> bool {
         self.ref_ranges.contains(r)
     }
@@ -161,7 +207,9 @@ impl LetIndex {
     fn resolve_at_offset(&self, offset: usize) -> Option<(usize, Range<usize>)> {
         let mut ending = None;
         for (idx, def) in self.defs.iter().enumerate() {
-            for r in std::iter::once(&def.name_range).chain(&def.references) {
+            for r in
+                std::iter::once(&def.name_range).chain(def.references.iter().map(|lr| &lr.range))
+            {
                 if r.start <= offset && offset < r.end {
                     return Some((idx, r.clone()));
                 }
@@ -172,9 +220,30 @@ impl LetIndex {
         }
         ending
     }
+
+    /// Whether `offset` lands on a row-expression site matching some in-scope `let` whose input
+    /// schema was unknown.
+    fn has_unknown_ref_at(&self, offset: usize) -> bool {
+        self.defs.iter().any(|def| {
+            def.unknown_row_refs
+                .iter()
+                .any(|r| (r.start <= offset && offset < r.end) || r.end == offset)
+        })
+    }
 }
 
-/// Walks `node` in preorder, recording every `NAME_REF` that resolves to a visible `let`.
+/// Three-state classification of a `NAME_REF` whose text matches an in-scope `let`.
+enum RefStatus {
+    /// Definitely not a `let` reference (callee, field, column-only op, or shadowed by a column).
+    NotLet,
+    /// Unambiguously a `let` reference; `row_op` is `Some(op)` in row-expression positions.
+    Let { row_op: Option<SyntaxNode> },
+    /// In a row-expression position whose input columns are unknown (syntax-only or failed schema).
+    UnknownRow,
+}
+
+/// Walks `node` in preorder, recording every `NAME_REF` that resolves to (or is ambiguously
+/// shadowed at) a visible `let`.
 fn collect_refs(
     node: &SyntaxNode,
     stmt_start: usize,
@@ -205,28 +274,37 @@ fn collect_refs(
             continue;
         }
         let tok_range = range(&token);
-        if is_let_reference(&desc, &name, tok_range.start, doc) {
-            defs[def_idx].references.push(tok_range.clone());
-            ref_ranges.insert(tok_range);
+        match classify_let_ref(&desc, &name, tok_range.start, doc) {
+            RefStatus::Let { row_op } => {
+                defs[def_idx].references.push(LetRef {
+                    range: tok_range.clone(),
+                    row_op,
+                });
+                ref_ranges.insert(tok_range);
+            }
+            RefStatus::UnknownRow => {
+                defs[def_idx].unknown_row_refs.push(tok_range);
+            }
+            RefStatus::NotLet => {}
         }
     }
 }
 
-/// Whether `name_ref` can refer to a `let` named `name` (not a function call, field access,
-/// column-only clause, or shadowed by a known column).
-fn is_let_reference(
+/// Classifies whether `name_ref` refers to a `let` named `name`, is definitely not a `let`, or
+/// sits in a row expression whose input columns are unknown.
+fn classify_let_ref(
     name_ref: &SyntaxNode,
     name: &str,
     offset: usize,
     doc: Option<&Doc<'_>>,
-) -> bool {
+) -> RefStatus {
     let Some(parent) = name_ref.parent() else {
-        return false;
+        return RefStatus::NotLet;
     };
     match parent.kind() {
         // Function call callee (`f(...)`): never a `let` (until UDFs in M2-05).
         SyntaxKind::CALL_EXPR if parent.children().next().as_ref() == Some(name_ref) => {
-            return false;
+            return RefStatus::NotLet;
         }
         // Member field (`$left.col`, `a.b`): never a `let`.
         SyntaxKind::FIELD_EXPR => {
@@ -234,13 +312,13 @@ fn is_let_reference(
                 .and_then(|f| f.field())
                 .is_some_and(|f| f.syntax() == name_ref)
             {
-                return false;
+                return RefStatus::NotLet;
             }
         }
         // `project-rename new = old`: `old` is always an input column.
-        SyntaxKind::RENAME_ITEM => return false,
+        SyntaxKind::RENAME_ITEM => return RefStatus::NotLet,
         // `distinct a, b`: columns only (DS1032).
-        SyntaxKind::DISTINCT_OP => return false,
+        SyntaxKind::DISTINCT_OP => return RefStatus::NotLet,
         _ => {}
     }
 
@@ -252,28 +330,32 @@ fn is_let_reference(
 
     let Some(scope) = scope else {
         // Scalar `let` RHS outside any pipeline: no columns in scope.
-        return true;
+        return RefStatus::Let { row_op: None };
     };
 
     match scope.kind() {
         // Pipeline source (e.g. `from t`, `from read_csv(p)`): no columns in scope.
-        SyntaxKind::PIPELINE => true,
+        SyntaxKind::PIPELINE => RefStatus::Let { row_op: None },
         // `union t1, t2`: table position, no columns in scope.
-        SyntaxKind::UNION_OP => true,
+        SyntaxKind::UNION_OP => RefStatus::Let { row_op: None },
         // `join [kind = k] right on conditions`: table position before `on`, columns only after.
         SyntaxKind::JOIN_OP => {
             let on = scope
                 .children_with_tokens()
                 .filter_map(|e| e.into_token())
                 .find(|t| t.kind() == SyntaxKind::IDENT && t.text() == "on");
-            on.is_none_or(|t| offset < range(&t).start)
+            if on.is_none_or(|t| offset < range(&t).start) {
+                RefStatus::Let { row_op: None }
+            } else {
+                RefStatus::NotLet
+            }
         }
         // `project-away`, `project-rename`, `distinct`: column names only.
         SyntaxKind::PROJECT_AWAY_OP | SyntaxKind::PROJECT_RENAME_OP | SyntaxKind::DISTINCT_OP => {
-            false
+            RefStatus::NotLet
         }
         // `take n`: constant count, no columns in scope (D-049).
-        SyntaxKind::TAKE_OP => true,
+        SyntaxKind::TAKE_OP => RefStatus::Let { row_op: None },
         // `top n by key`: `n` is a constant (no columns), `key` is a row expression.
         SyntaxKind::TOP_OP => {
             let in_key = name_ref
@@ -281,9 +363,9 @@ fn is_let_reference(
                 .take_while(|n| n != &scope)
                 .any(|n| n.kind() == SyntaxKind::SORT_KEY);
             if !in_key {
-                true
+                RefStatus::Let { row_op: None }
             } else {
-                !shadowed_by_column(&scope, name, offset, doc)
+                row_ref_status(&scope, name, offset, doc)
             }
         }
         // `render`: column and keyword properties are never `let`s; scalar props (`title`, `ymin`,
@@ -296,56 +378,67 @@ fn is_let_reference(
                 .and_then(|p| p.name())
                 .and_then(|n| n.text())
             else {
-                return false;
+                return RefStatus::NotLet;
             };
-            !property_takes_columns(&prop) && property_words(&prop).is_empty()
+            if !property_takes_columns(&prop) && property_words(&prop).is_empty() {
+                RefStatus::Let { row_op: None }
+            } else {
+                RefStatus::NotLet
+            }
         }
         // Row-expression operators (`where`, `project`, `extend`, `summarize`, `sort`):
-        // columns win over `let`s when known (D-038).
-        _ => !shadowed_by_column(&scope, name, offset, doc),
+        // columns win over `let`s (D-038), so schemas must be known.
+        _ => row_ref_status(&scope, name, offset, doc),
     }
 }
 
-fn shadowed_by_column(op: &SyntaxNode, name: &str, offset: usize, doc: Option<&Doc<'_>>) -> bool {
-    doc.and_then(|d| d.columns_at(op, offset))
-        .is_some_and(|cols| cols.iter().any(|c| c.name == name))
+fn row_ref_status(op: &SyntaxNode, name: &str, offset: usize, doc: Option<&Doc<'_>>) -> RefStatus {
+    let Some(cols) = doc.and_then(|d| d.columns_at(op, offset)) else {
+        return RefStatus::UnknownRow;
+    };
+    if cols.iter().any(|c| c.name == name) {
+        RefStatus::NotLet
+    } else {
+        RefStatus::Let {
+            row_op: Some(op.clone()),
+        }
+    }
 }
 
-/// Parses `src` (reusing `analysis` when present) and resolves the `let` under `offset`.
-fn resolve_at(
-    src: &SourceFile,
-    analysis: Option<&Analysis>,
-    offset: usize,
-) -> Option<(LetIndex, usize, Range<usize>)> {
-    let text = src.text();
-    let offset = floor_char_boundary(text, offset);
-    let index = match analysis {
+/// Parses `text` (reusing `analysis` when present) and builds its [`LetIndex`].
+fn build_index<'a>(text: &'a str, analysis: Option<&'a Analysis>) -> (Option<Doc<'a>>, LetIndex) {
+    match analysis {
         Some(analysis) => {
             let doc = Doc::new(text, analysis);
-            LetIndex::build(&doc.root, Some(&doc))
+            let index = LetIndex::build(&doc.root, Some(&doc));
+            (Some(doc), index)
         }
         None => {
             let root = datascript_syntax::parse(text, FileId(0)).syntax();
-            LetIndex::build(&root, None)
+            let index = LetIndex::build(&root, None);
+            (None, index)
         }
-    };
-    let (def_idx, tok_range) = index.resolve_at_offset(offset)?;
-    Some((index, def_idx, tok_range))
+    }
 }
 
-/// The byte range of the `let` definition for the name at byte `offset`, if it refers to a `let`.
+/// The byte range of the `let` definition for the name at byte `offset`, if it unambiguously
+/// refers to a `let`.
 ///
-/// Works from the syntax tree alone when `analysis` is `None` (syntax-only mode, D-053).
+/// Works from the syntax tree alone when `analysis` is `None` (syntax-only mode, D-053) for
+/// no-column positions; row-expression positions require a known schema (D-038).
 pub fn goto_definition(
     src: &SourceFile,
     analysis: Option<&Analysis>,
     offset: usize,
 ) -> Option<Range<usize>> {
-    let (index, def_idx, _) = resolve_at(src, analysis, offset)?;
+    let text = src.text();
+    let offset = floor_char_boundary(text, offset);
+    let (_, index) = build_index(text, analysis);
+    let (def_idx, _) = index.resolve_at_offset(offset)?;
     Some(index.defs[def_idx].name_range.clone())
 }
 
-/// Byte ranges of all references to the `let` at byte `offset`, in source order.
+/// Byte ranges of all unambiguous references to the `let` at byte `offset`, in source order.
 ///
 /// When `include_declaration` is true, the defining `let` name is included first.
 pub fn references(
@@ -354,7 +447,10 @@ pub fn references(
     offset: usize,
     include_declaration: bool,
 ) -> Vec<Range<usize>> {
-    let Some((index, def_idx, _)) = resolve_at(src, analysis, offset) else {
+    let text = src.text();
+    let offset = floor_char_boundary(text, offset);
+    let (_, index) = build_index(text, analysis);
+    let Some((def_idx, _)) = index.resolve_at_offset(offset) else {
         return Vec::new();
     };
     let def = &index.defs[def_idx];
@@ -362,43 +458,95 @@ pub fn references(
     if include_declaration {
         out.push(def.name_range.clone());
     }
-    out.extend(def.references.iter().cloned());
+    out.extend(def.references.iter().map(|r| r.range.clone()));
     out
 }
 
-/// Checks whether the token at byte `offset` is a `let` that can be renamed, returning its range
-/// and unquoted name.
+/// Checks whether the token at byte `offset` is a `let` that can be safely renamed, returning its
+/// range and unquoted name.
+///
+/// Returns `Ok(None)` when the cursor is not on a `let`, and `Err(RenameError::UnknownSchema)`
+/// when a row-expression use of the `let` sits in an operator with an unknown input schema.
 pub fn prepare_rename(
     src: &SourceFile,
     analysis: Option<&Analysis>,
     offset: usize,
-) -> Option<RenameTarget> {
-    let (index, def_idx, tok_range) = resolve_at(src, analysis, offset)?;
-    Some(RenameTarget {
+) -> Result<Option<RenameTarget>, RenameError> {
+    let text = src.text();
+    let offset = floor_char_boundary(text, offset);
+    let (_, index) = build_index(text, analysis);
+    let Some((def_idx, tok_range)) = index.resolve_at_offset(offset) else {
+        if index.has_unknown_ref_at(offset) {
+            return Err(RenameError::UnknownSchema {
+                syntax_only: analysis.is_none(),
+            });
+        }
+        return Ok(None);
+    };
+    let def = &index.defs[def_idx];
+    if !def.unknown_row_refs.is_empty() {
+        return Err(RenameError::UnknownSchema {
+            syntax_only: analysis.is_none(),
+        });
+    }
+    Ok(Some(RenameTarget {
         start: tok_range.start,
         end: tok_range.end,
-        placeholder: index.defs[def_idx].name.clone(),
-    })
+        placeholder: def.name.clone(),
+    }))
 }
 
 /// Renames the `let` at byte `offset` to `new_name`, returning edits for its definition and all
 /// its references in source order.
 ///
 /// Names that are not plain identifiers (or are reserved words) are quoted with `['...']`
-/// automatically; an already-quoted `['...']` name is accepted too.
+/// automatically; an already-quoted `['...']` name is accepted too. Refuses when any
+/// row-expression site has an unknown schema or when `new_name` would be shadowed by an in-scope
+/// column at a reference (D-038).
 pub fn rename(
     src: &SourceFile,
     analysis: Option<&Analysis>,
     offset: usize,
     new_name: &str,
 ) -> Result<Vec<RenameEdit>, RenameError> {
-    let Some((index, def_idx, _)) = resolve_at(src, analysis, offset) else {
+    let text = src.text();
+    let offset = floor_char_boundary(text, offset);
+    let (doc, index) = build_index(text, analysis);
+    let Some((def_idx, _)) = index.resolve_at_offset(offset) else {
+        if index.has_unknown_ref_at(offset) {
+            return Err(RenameError::UnknownSchema {
+                syntax_only: analysis.is_none(),
+            });
+        }
         return Err(RenameError::NotRenamable);
     };
-    let (raw, replacement) = parse_new_name(new_name)?;
     let def = &index.defs[def_idx];
+    if !def.unknown_row_refs.is_empty() {
+        return Err(RenameError::UnknownSchema {
+            syntax_only: analysis.is_none(),
+        });
+    }
+    let (raw, replacement) = parse_new_name(new_name)?;
     if raw != def.name && index.all_names.contains(&raw) {
         return Err(RenameError::AlreadyDefined(raw));
+    }
+    if raw != def.name
+        && let Some(doc) = doc.as_ref()
+    {
+        for r in &def.references {
+            if let Some(op) = &r.row_op
+                && doc
+                    .columns_at(op, r.range.start)
+                    .is_some_and(|cols| cols.iter().any(|c| c.name == raw))
+            {
+                let line = text[..r.range.start]
+                    .bytes()
+                    .filter(|&b| b == b'\n')
+                    .count()
+                    + 1;
+                return Err(RenameError::ShadowedByColumn { name: raw, line });
+            }
+        }
     }
     let mut edits = Vec::with_capacity(1 + def.references.len());
     edits.push(RenameEdit {
@@ -408,8 +556,8 @@ pub fn rename(
     });
     for r in &def.references {
         edits.push(RenameEdit {
-            start: r.start,
-            end: r.end,
+            start: r.range.start,
+            end: r.range.end,
             replacement: replacement.clone(),
         });
     }
