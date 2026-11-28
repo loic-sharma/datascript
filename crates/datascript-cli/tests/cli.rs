@@ -1247,12 +1247,23 @@ fn color_never_is_plain() {
 
 // ---- Ctrl-C ----
 
+/// Rewinds a temporary file capturing child stderr and returns its contents.
+fn read_temp_file(file: &mut std::fs::File) -> String {
+    use std::io::{Read, Seek, SeekFrom};
+
+    file.seek(SeekFrom::Start(0)).unwrap();
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).unwrap();
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
 #[cfg(unix)]
 #[test]
 fn ctrl_c_stops_a_running_query() {
     use std::io::{BufRead, BufReader};
     use std::os::unix::process::ExitStatusExt;
     use std::process::Stdio;
+    use std::sync::mpsc;
     use std::time::{Duration, Instant};
 
     // Query 1 flushes a row immediately, proving `ds` has started and installed its SIGINT
@@ -1263,20 +1274,44 @@ fn ctrl_c_stops_a_running_query() {
          from 'orders.csv' | project customerId | {} | summarize n = count()",
         vec![join; 14].join(" | ")
     );
+    let mut stderr_file = tempfile::tempfile().unwrap();
     let mut child = ds_process()
         .args(["run", "-e", &program])
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::from(stderr_file.try_clone().unwrap()))
         .spawn()
         .unwrap();
-    let mut stdout = BufReader::new(child.stdout.take().unwrap());
-    let mut line = String::new();
+    let (tx, rx) = mpsc::channel();
+    let stdout = child.stdout.take().unwrap();
+    let reader = std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        loop {
+            let mut line = String::new();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    if tx.send(line).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+    let deadline = Instant::now() + Duration::from_secs(30);
     loop {
-        line.clear();
-        let n = stdout.read_line(&mut line).unwrap();
-        assert_ne!(n, 0, "the query finished before emitting its first row");
-        if line == "o-0001\n" {
-            break;
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        match rx.recv_timeout(remaining) {
+            Ok(line) if line == "o-0001\n" => break,
+            Ok(_) => continue,
+            Err(reason) => {
+                let _ = child.kill();
+                let status = child.wait().unwrap();
+                let _ = reader.join();
+                let stderr = read_temp_file(&mut stderr_file);
+                panic!(
+                    "did not see first row on stdout ({reason}); status={status:?}, stderr={stderr}"
+                );
+            }
         }
     }
     let sent = Instant::now();
@@ -1285,17 +1320,18 @@ fn ctrl_c_stops_a_running_query() {
         .status()
         .unwrap();
     assert!(kill.success());
-    let output = child.wait_with_output().unwrap();
-    drop(stdout);
+    let status = child.wait().unwrap();
+    drop(rx);
+    reader.join().unwrap();
+    let stderr = read_temp_file(&mut stderr_file);
     assert!(sent.elapsed() < Duration::from_secs(5));
     assert_eq!(
-        output.status.code(),
+        status.code(),
         Some(130),
-        "signal {:?}, stderr {}",
-        output.status.signal(),
-        String::from_utf8_lossy(&output.stderr)
+        "signal {:?}, stderr {stderr}",
+        status.signal(),
     );
-    assert!(String::from_utf8_lossy(&output.stderr).contains("interrupted"));
+    assert!(stderr.contains("interrupted"), "{stderr}");
 }
 
 /// Writes one framed JSON-RPC message, as the LSP sends them over stdio.
@@ -1597,18 +1633,27 @@ fn assert_broken_pipe_exits_0(cmd: &mut std::process::Command, prefix_bytes: usi
     use std::io::Read;
     use std::process::Stdio;
 
+    let mut stderr_file = tempfile::tempfile().unwrap();
     let mut child = cmd
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::from(stderr_file.try_clone().unwrap()))
         .spawn()
         .unwrap();
     let mut stdout = child.stdout.take().unwrap();
     let mut buf = vec![0u8; prefix_bytes];
-    stdout.read_exact(&mut buf).unwrap();
+    if let Err(err) = stdout.read_exact(&mut buf) {
+        drop(stdout);
+        let status = child.wait().unwrap();
+        let stderr = read_temp_file(&mut stderr_file);
+        panic!(
+            "failed to read {prefix_bytes} byte(s) from stdout ({err}); \
+             status={status:?}, stderr={stderr}"
+        );
+    }
     drop(stdout);
-    let output = child.wait_with_output().unwrap();
-    let stderr = String::from_utf8(output.stderr).unwrap();
-    assert_eq!(output.status.code(), Some(0), "{stderr}");
+    let status = child.wait().unwrap();
+    let stderr = read_temp_file(&mut stderr_file);
+    assert_eq!(status.code(), Some(0), "{stderr}");
     assert!(stderr.is_empty(), "{stderr}");
 }
 
