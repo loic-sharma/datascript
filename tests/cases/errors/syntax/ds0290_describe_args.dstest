@@ -4,9 +4,10 @@ mode: syntax
 ---- query
 from 'orders.csv' | describe amount;
 from 'orders.csv' | describe orderId, amount | where count = 1;
-from 'orders.csv' | describe 'orders.csv'
+from 'orders.csv' | describe 'orders.csv';
+from 'orders.csv' | describe read_csv('orders.csv')
 ---- expected
-PROGRAM@0..143
+PROGRAM@0..196
   PIPELINE@0..35
     IDENT@0..4 "from"
     WHITESPACE@4..5 " "
@@ -67,7 +68,25 @@ PROGRAM@0..143
       WHITESPACE@129..130 " "
       ERROR@130..142
         STRING@130..142 "'orders.csv'"
-  WHITESPACE@142..143 "\n"
+  SEMICOLON@142..143 ";"
+  WHITESPACE@143..144 "\n"
+  PIPELINE@144..195
+    IDENT@144..148 "from"
+    WHITESPACE@148..149 " "
+    LITERAL@149..161
+      STRING@149..161 "'orders.csv'"
+    WHITESPACE@161..162 " "
+    PIPE@162..163 "|"
+    WHITESPACE@163..164 " "
+    DESCRIBE_OP@164..195
+      IDENT@164..172 "describe"
+      WHITESPACE@172..173 " "
+      ERROR@173..195
+        IDENT@173..181 "read_csv"
+        L_PAREN@181..182 "("
+        STRING@182..194 "'orders.csv'"
+        R_PAREN@194..195 ")"
+  WHITESPACE@195..196 "\n"
 
 error[DS0290]: `describe` takes no arguments
   --> query:1:30
@@ -96,15 +115,24 @@ error[DS0110]: `=` is assignment, not comparison
 error[DS0290]: `describe` takes no arguments
   --> query:3:30
   |
-3 | from 'orders.csv' | describe 'orders.csv'
+3 | from 'orders.csv' | describe 'orders.csv';
   |                              ^^^^^^^^^^^^ not accepted here
   |
-  = help: remove the arguments to summarize every column, or select columns first with `project` before `describe`
+  = help: put the table after `from` instead: `from 'orders.csv' | describe` (or `.describe 'orders.csv'` in the REPL)
+
+error[DS0290]: `describe` takes no arguments
+  --> query:4:30
+  |
+4 | from 'orders.csv' | describe read_csv('orders.csv')
+  |                              ^^^^^^^^^^^^^^^^^^^^^^ not accepted here
+  |
+  = help: put the table after `from` instead: `from read_csv('orders.csv') | describe` (or `.describe read_csv('orders.csv')` in the REPL)
 
 with the machine-applicable fixes applied:
     from 'orders.csv' | describe amount;
     from 'orders.csv' | describe orderId, amount | where count == 1;
-    from 'orders.csv' | describe 'orders.csv'
+    from 'orders.csv' | describe 'orders.csv';
+    from 'orders.csv' | describe read_csv('orders.csv')
 which still has errors:
 
 error[DS0290]: `describe` takes no arguments
@@ -126,7 +154,15 @@ error[DS0290]: `describe` takes no arguments
 error[DS0290]: `describe` takes no arguments
   --> fixed:3:30
   |
-3 | from 'orders.csv' | describe 'orders.csv'
+3 | from 'orders.csv' | describe 'orders.csv';
   |                              ^^^^^^^^^^^^ not accepted here
   |
-  = help: remove the arguments to summarize every column, or select columns first with `project` before `describe`
+  = help: put the table after `from` instead: `from 'orders.csv' | describe` (or `.describe 'orders.csv'` in the REPL)
+
+error[DS0290]: `describe` takes no arguments
+  --> fixed:4:30
+  |
+4 | from 'orders.csv' | describe read_csv('orders.csv')
+  |                              ^^^^^^^^^^^^^^^^^^^^^^ not accepted here
+  |
+  = help: put the table after `from` instead: `from read_csv('orders.csv') | describe` (or `.describe read_csv('orders.csv')` in the REPL)

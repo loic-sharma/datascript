@@ -349,23 +349,18 @@ impl Lowering {
                     aggs.push(agg::avg(as_f64.clone()).alias(format!("__ds_avg_{i}")));
                     aggs.push(agg::stddev(as_f64.clone()).alias(format!("__ds_std_{i}")));
                     aggs.push(
-                        agg::approx_percentile_cont(
-                            as_f64.clone().sort(true, false),
-                            lit(0.25f64),
-                            None,
-                        )
-                        .alias(format!("__ds_q25_{i}")),
+                        udaf::describe_quantile(2500)
+                            .call(vec![as_f64.clone()])
+                            .alias(format!("__ds_q25_{i}")),
                     );
                     aggs.push(
-                        agg::approx_percentile_cont(
-                            as_f64.clone().sort(true, false),
-                            lit(0.50f64),
-                            None,
-                        )
-                        .alias(format!("__ds_q50_{i}")),
+                        udaf::describe_quantile(5000)
+                            .call(vec![as_f64.clone()])
+                            .alias(format!("__ds_q50_{i}")),
                     );
                     aggs.push(
-                        agg::approx_percentile_cont(as_f64.sort(true, false), lit(0.75f64), None)
+                        udaf::describe_quantile(7500)
+                            .call(vec![as_f64])
                             .alias(format!("__ds_q75_{i}")),
                     );
                 }
@@ -377,23 +372,18 @@ impl Lowering {
                     aggs.push(agg::max(col_expr.clone()).alias(format!("__ds_max_{i}")));
                     let as_f64 = cast(cast(col_expr, DataType::Int64), DataType::Float64);
                     aggs.push(
-                        agg::approx_percentile_cont(
-                            as_f64.clone().sort(true, false),
-                            lit(0.25f64),
-                            None,
-                        )
-                        .alias(format!("__ds_q25_{i}")),
+                        udaf::describe_quantile(2500)
+                            .call(vec![as_f64.clone()])
+                            .alias(format!("__ds_q25_{i}")),
                     );
                     aggs.push(
-                        agg::approx_percentile_cont(
-                            as_f64.clone().sort(true, false),
-                            lit(0.50f64),
-                            None,
-                        )
-                        .alias(format!("__ds_q50_{i}")),
+                        udaf::describe_quantile(5000)
+                            .call(vec![as_f64.clone()])
+                            .alias(format!("__ds_q50_{i}")),
                     );
                     aggs.push(
-                        agg::approx_percentile_cont(as_f64.sort(true, false), lit(0.75f64), None)
+                        udaf::describe_quantile(7500)
+                            .call(vec![as_f64])
                             .alias(format!("__ds_q75_{i}")),
                     );
                 }

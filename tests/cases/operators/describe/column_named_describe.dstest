@@ -1,0 +1,33 @@
+# `describe` is a contextual operator name, so a column named `describe` still works — including
+# at the start of a continuation line in a multi-line column list and right before `| describe`.
+mode: check
+show: schema
+schema: 't.csv'(id: long, describe: long)
+---- query
+from 't.csv' | project id,
+  describe;
+from 't.csv' | where describe > 0 | extend describe = describe + 1;
+from 't.csv' | project id,
+  describe | describe
+---- expected
+query 1 columns:
+  id: long
+  describe: long
+
+query 2 columns:
+  id: long
+  describe: long
+
+query 3 columns:
+  column_name: string
+  column_type: string
+  count: long
+  null_percentage: real
+  approx_unique: long
+  min: string
+  max: string
+  avg: real
+  std: real
+  q25: string
+  q50: string
+  q75: string

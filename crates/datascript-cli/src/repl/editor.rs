@@ -19,7 +19,7 @@ use reedline::{
     default_emacs_keybindings,
 };
 
-use super::session::{COMMANDS, CompletionContext, MetaOutcome};
+use super::session::{COMMANDS, CompletionContext, MetaAction};
 use super::{Printer, ReplSession, Step, input};
 use crate::args::{ColorChoice, TableArg};
 
@@ -82,13 +82,13 @@ pub fn run(
 /// query, and returns to the prompt; saved lets are kept (D-048).
 async fn submit(repl: &mut ReplSession, printer: &Printer, text: &str) -> Step {
     let prepared = if input::is_meta(text) {
-        let outcome = tokio::select! {
-            outcome = repl.meta(text) => outcome,
+        let action = tokio::select! {
+            action = repl.meta(text) => action,
             _ = tokio::signal::ctrl_c() => return cancelled(),
         };
-        match outcome {
-            MetaOutcome::Run(prepared) => prepared,
-            outcome => return printer.meta(repl, outcome),
+        match action {
+            MetaAction::Run(prepared) => prepared,
+            MetaAction::Done(outcome) => return printer.meta(repl, outcome),
         }
     } else {
         repl.prepare(text)

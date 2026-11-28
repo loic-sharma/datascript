@@ -14,21 +14,21 @@ column_name | column_type | count | null_percentage | approx_unique | min       
 string      | string      | long  | real            | long          | string               | string               | real     | real                 | string               | string               | string
 ------------+-------------+-------+-----------------+---------------+----------------------+----------------------+----------+----------------------+----------------------+----------------------+---------------------
 flag        | bool        |     4 |            20.0 |             2 | false                | true                 | null     | null                 | null                 | null                 | null
-whole       | long        |     4 |            20.0 |             4 | -10                  | 20                   |    5.0   |   12.909944487358056 | -5                   | 5                    | 15
-frac        | real        |     4 |            20.0 |             3 | 1.5                  | 10                   |    4.125 |    3.944933459514875 | 2.25                 | 2.5                  | 6.25
+whole       | long        |     4 |            20.0 |             4 | -10                  | 20                   |    5.0   |   12.909944487358056 | -2.5                 | 5                    | 12.5
+frac        | real        |     4 |            20.0 |             3 | 1.5                  | 10                   |    4.125 |    3.944933459514875 | 2.25                 | 2.5                  | 4.375
 label       | string      |     4 |            20.0 |             3 | alpha                | gamma                | null     | null                 | null                 | null                 | null
-when        | datetime    |     4 |            20.0 |             4 | 2024-01-01T00:00:00Z | 2024-01-04T00:00:00Z | null     | null                 | 2024-01-01T12:00:00Z | 2024-01-02T12:00:00Z | 2024-01-03T12:00:00Z
-span        | timespan    |     4 |            20.0 |             4 | -00:00:05            | 1.00:00:00           | null     | null                 | -00:00:05            | 00:00:00             | 12:45:00
+when        | datetime    |     4 |            20.0 |             4 | 2024-01-01T00:00:00Z | 2024-01-04T00:00:00Z | null     | null                 | 2024-01-01T18:00:00Z | 2024-01-02T12:00:00Z | 2024-01-03T06:00:00Z
+span        | timespan    |     4 |            20.0 |             4 | -00:00:05            | 1.00:00:00           | null     | null                 | -00:00:01.25         | 00:45:00             | 07:07:30
 raw         | Binary      |     4 |            20.0 |          null | null                 | null                 | null     | null                 | null                 | null                 | null
-small       | int         |     4 |            20.0 |             4 | -10                  | 20                   |    5.0   |   12.909944487358056 | -5                   | 5                    | 15
+small       | int         |     4 |            20.0 |             4 | -10                  | 20                   |    5.0   |   12.909944487358056 | -2.5                 | 5                    | 12.5
 
 column_name | column_type                        | count | null_percentage    | approx_unique | min    | max    | avg     | std                   | q25    | q50    | q75
 string      | string                             | long  | real               | long          | string | string | real    | real                  | string | string | string
 ------------+------------------------------------+-------+--------------------+---------------+--------+--------+---------+-----------------------+--------+--------+-------
-id          | long                               |     3 |  0.0               |             3 | 1      | 3      |    2.0  |    1.0                | 1.25   | 2      | 2.75
+id          | long                               |     3 |  0.0               |             3 | 1      | 3      |    2.0  |    1.0                | 1.5    | 2      | 2.5
 pkg         | Utf8 (extension type `arrow.json`) |     2 | 33.333333333333336 |          null | null   | null   | null    | null                  | null   | null   | null
 scripts     | Utf8 (extension type `arrow.json`) |     2 | 33.333333333333336 |          null | null   | null   | null    | null                  | null   | null   | null
 tags        | Utf8 (extension type `arrow.json`) |     2 | 33.333333333333336 |          null | null   | null   | null    | null                  | null   | null   | null
-score       | real                               |     2 | 33.333333333333336 |             2 | 1      | 2.5    |    1.75 |    1.0606601717798212 | 1      | 1.75   | 2.5
+score       | real                               |     2 | 33.333333333333336 |             2 | 1      | 2.5    |    1.75 |    1.0606601717798212 | 1.375  | 1.75   | 2.125
 code        | Utf8 (extension type `arrow.json`) |     2 | 33.333333333333336 |          null | null   | null   | null    | null                  | null   | null   | null
 big_id      | Utf8 (extension type `arrow.json`) |     2 | 33.333333333333336 |          null | null   | null   | null    | null                  | null   | null   | null

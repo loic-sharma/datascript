@@ -21,7 +21,7 @@ use crate::output;
 use crate::script::{Reporter, Sources};
 use crate::{EXIT_ERRORS, EXIT_USAGE};
 
-pub use session::{Checked, MetaOutcome, Ran, ReplSession};
+pub use session::{Checked, MetaAction, MetaOutcome, Ran, ReplSession};
 
 /// Runs the REPL, interactive on a terminal, piped otherwise.
 pub fn main(cli: Cli) -> ExitCode {
@@ -83,8 +83,8 @@ enum Step {
 async fn submit(repl: &mut ReplSession, printer: &Printer, text: &str) -> Step {
     let prepared = if input::is_meta(text) {
         match repl.meta(text).await {
-            MetaOutcome::Run(prepared) => prepared,
-            outcome => return printer.meta(repl, outcome),
+            MetaAction::Run(prepared) => prepared,
+            MetaAction::Done(outcome) => return printer.meta(repl, outcome),
         }
     } else {
         repl.prepare(text)
@@ -142,7 +142,6 @@ impl Printer {
                 eprintln!("{mistake}");
                 Step::Continue { failed: true }
             }
-            MetaOutcome::Run(_) => unreachable!("MetaOutcome::Run is handled in submit"),
             MetaOutcome::Quit => Step::Quit,
         }
     }
