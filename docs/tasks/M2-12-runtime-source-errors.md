@@ -30,6 +30,6 @@ that reads several sources (see "Carried over").
       planning, but a file deleted after that check and before DataFusion opens it still reads as
       no rows (DataFusion lists a missing file as no files). The same per-scan wrapper could turn
       a missing file at open time into the "moved or deleted" `DS3008`.
-- [ ] (from M2-33) A JSON glob is read by one table, not one `ListingTable` per file; name the failing JSON file from the `file` path in M2-33's structured `JsonReadError` (`crates/datascript-datafusion/src/json.rs`) instead.
+- [ ] (from M2-33) A JSON glob is read by one table, not one `ListingTable` per file; name the failing JSON file from the `file` path in M2-33's structured `JsonReadError` (`crates/datascript-datafusion/src/json.rs`) instead (`JsonReadError.file` comes from `PartitionedFile.object_meta.location`, matching `SourceFile.url.prefix().as_ref()`, which maps back to `SourceFile.shown`).
 
 ## Follow-ups

@@ -737,7 +737,11 @@ impl<R: Read> Iterator for SyncBatchIter<R> {
                         .into_datafusion()));
                     }
                     if self.decoder.is_full() {
-                        return Some(self.decoder.flush());
+                        let batch = self.decoder.flush();
+                        if batch.is_err() {
+                            self.done = true;
+                        }
+                        return Some(batch);
                     }
                 }
                 Ok(Step::NeedMore) => match self.reader.read(&mut self.read_buf) {
@@ -1336,12 +1340,14 @@ impl ColumnBuilder {
             TargetColumnKind::Float64 => {
                 ColumnBuilder::Float64(Float64Builder::with_capacity(batch_size))
             }
-            TargetColumnKind::Utf8 => {
-                ColumnBuilder::Utf8(StringBuilder::with_capacity(batch_size, batch_size * 16))
-            }
-            TargetColumnKind::ArrowJson => {
-                ColumnBuilder::ArrowJson(StringBuilder::with_capacity(batch_size, batch_size * 32))
-            }
+            TargetColumnKind::Utf8 => ColumnBuilder::Utf8(StringBuilder::with_capacity(
+                batch_size,
+                batch_size.saturating_mul(16),
+            )),
+            TargetColumnKind::ArrowJson => ColumnBuilder::ArrowJson(StringBuilder::with_capacity(
+                batch_size,
+                batch_size.saturating_mul(32),
+            )),
         }
     }
 
@@ -1709,7 +1715,9 @@ impl<'a> JsonParser<'a> {
         }
     }
 
-    fn parse_number(&mut self) -> Result<ParsedValue<'a>, JsonReadErrorKind> {
+    /// Validates an RFC 8259 number token without parsing its numeric value, returning its raw
+    /// slice and whether it contains a fraction or exponent.
+    fn scan_number(&mut self) -> Result<(&'a str, bool), JsonReadErrorKind> {
         let start = self.pos;
         if self.peek() == Some(b'-') {
             self.pos += 1;
@@ -1750,7 +1758,11 @@ impl<'a> JsonParser<'a> {
                 self.pos += 1;
             }
         }
-        let raw = &self.src[start..self.pos];
+        Ok((&self.src[start..self.pos], is_float))
+    }
+
+    fn parse_number(&mut self) -> Result<ParsedValue<'a>, JsonReadErrorKind> {
+        let (raw, is_float) = self.scan_number()?;
         if is_float {
             match raw.parse::<f64>() {
                 Ok(v) if v.is_finite() => Ok(ParsedValue::Float(v, raw)),
@@ -1892,7 +1904,7 @@ impl<'a> JsonParser<'a> {
                 Some(b't') => self.expect_literal(b"true")?,
                 Some(b'f') => self.expect_literal(b"false")?,
                 Some(b'-' | b'0'..=b'9') => {
-                    self.parse_number()?;
+                    self.scan_number()?;
                 }
                 Some(_) => return Err(syntax("unexpected character while parsing value")),
                 None => return Err(syntax("unexpected end of input while parsing value")),
@@ -2692,6 +2704,190 @@ mod tests {
                     expected: DataType::Int64,
                     found: JsonValueKind::String,
                 }
+            );
+        });
+    }
+
+    #[test]
+    fn rfc8259_strings_surrogates_escapes_and_utf8() {
+        let schema = Arc::new(Schema::new(vec![Field::new("s", DataType::Utf8, true)]));
+        let input = br#"{"s": "a\"\\\/\b\f\n\r\t\u00e9\uD83D\uDE00"}"#;
+        let batches = decode_all(input, JsonLayout::Ndjson, schema.clone(), &[0], 16, 64).unwrap();
+        assert_eq!(
+            batches[0].column(0).as_string::<i32>().value(0),
+            "a\"\\/\u{0008}\u{000C}\n\r\t\u{00e9}\u{1F600}"
+        );
+
+        // Escaped top-level keys match unescaped keys and respect duplicate-key last-wins.
+        let dup_escaped = br#"{"\u0061": "first", "a": 42}"#;
+        let inferred = infer_str(dup_escaped, JsonLayout::Ndjson, 1000).unwrap();
+        assert_eq!(inferred.fields().len(), 1);
+        assert_eq!(inferred.field(0).name(), "a");
+        assert_eq!(inferred.field(0).data_type(), &DataType::Int64);
+        let batches = decode_all(dup_escaped, JsonLayout::Ndjson, inferred, &[0], 16, 64).unwrap();
+        assert_eq!(
+            batches[0]
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap()
+                .value(0),
+            42
+        );
+
+        // Reject unpaired surrogates, invalid escapes, unescaped control chars, and invalid UTF-8.
+        let bad_cases: &[&[u8]] = &[
+            br#"{"s": "\uD800"}"#,
+            br#"{"s": "\uD800\u0041"}"#,
+            br#"{"s": "\uDC00"}"#,
+            br#"{"s": "\a"}"#,
+            br#"{"s": "\x20"}"#,
+            br#"{"s": "\u12"}"#,
+            br#"{"s": "\uZZZZ"}"#,
+            b"{\"s\": \"raw\x07ctrl\"}",
+            b"{\"s\": \"\xFF\"}",
+        ];
+        for &bad in bad_cases {
+            let err =
+                decode_all(bad, JsonLayout::Ndjson, schema.clone(), &[0], 16, 64).unwrap_err();
+            assert!(
+                matches!(json_err(&err).kind, JsonReadErrorKind::Syntax { .. }),
+                "expected Syntax for {bad:?}, got {:?}",
+                json_err(&err)
+            );
+        }
+    }
+
+    #[test]
+    fn rfc8259_invalid_numbers_trailing_commas_and_malformed_nested() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, true),
+            arrow_json_field("v"),
+        ]));
+        let bad_cases: &[&[u8]] = &[
+            br#"{"id": 01}"#,
+            br#"{"id": -01}"#,
+            br#"{"id": 1.}"#,
+            br#"{"id": .5}"#,
+            br#"{"id": +1}"#,
+            br#"{"id": 1e}"#,
+            br#"{"id": 1e+}"#,
+            br#"{"id": NaN}"#,
+            br#"{"id": 1,}"#,
+            br#"{"id": 1, "v": [1,]}"#,
+            br#"{"id": 1, "v": {"k": 1,}}"#,
+            br#"{"id": 1} {"id": 2}"#,
+            // Malformed nested JSON is rejected even when `v` is unprojected.
+            br#"{"id": 1, "v": {"bad": 01}}"#,
+            br#"{"id": 1, "v": [1 2]}"#,
+        ];
+        for &bad in bad_cases {
+            let err =
+                decode_all(bad, JsonLayout::Ndjson, schema.clone(), &[0], 16, 64).unwrap_err();
+            assert!(
+                matches!(json_err(&err).kind, JsonReadErrorKind::Syntax { .. }),
+                "expected Syntax for {:?}, got {:?}",
+                String::from_utf8_lossy(bad),
+                json_err(&err)
+            );
+        }
+    }
+
+    #[test]
+    fn scanner_edges_empty_objects_bom_array_as_ndjson_and_tricky_strings() {
+        // `{}`-only NDJSON has 0 columns and 2 rows.
+        let empty_objs = b"{}\n{}\n";
+        let schema = infer_str(empty_objs, JsonLayout::Ndjson, 1000).unwrap();
+        assert_eq!(schema.fields().len(), 0);
+        let batches = decode_all(empty_objs, JsonLayout::Ndjson, schema, &[], 16, 1).unwrap();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].num_columns(), 0);
+        assert_eq!(batches[0].num_rows(), 2);
+
+        // Explicit `JsonLayout::Array` rejects empty input and `{}`.
+        for bad in [b"".as_slice(), b"{}"] {
+            let err = infer_str(bad, JsonLayout::Array, 1000).unwrap_err();
+            assert!(matches!(
+                json_err(&err).kind,
+                JsonReadErrorKind::Syntax { .. }
+            ));
+        }
+
+        // BOM + `[` in NDJSON mode sets `looks_like_json_array = true`.
+        let err = infer_str(b"\xEF\xBB\xBF[{\"id\": 1}]", JsonLayout::Ndjson, 1000).unwrap_err();
+        assert!(json_err(&err).looks_like_json_array);
+
+        // Strings containing `}`, `]`, `\"`, `\\"` inside a JSON array scanned 1 byte at a time.
+        let tricky = br#"[{"s": "a}b]c\"d\\"}, {"s": "ok"}]"#;
+        let schema = infer_str(tricky, JsonLayout::Array, 1000).unwrap();
+        let batches = decode_all(tricky, JsonLayout::Array, schema, &[0], 16, 1).unwrap();
+        let col = batches[0].column(0).as_string::<i32>();
+        assert_eq!(col.value(0), "a}b]c\"d\\");
+        assert_eq!(col.value(1), "ok");
+    }
+
+    #[test]
+    fn projection_pushdown_handles_reordered_and_repeated_columns() {
+        block_on(async {
+            let dir = tempfile::TempDir::new().unwrap();
+            let file_path = dir.path().join("cols.ndjson");
+            std::fs::write(
+                &file_path,
+                "{\"a\": 1, \"b\": \"x\"}\n{\"a\": 2, \"b\": \"y\"}\n",
+            )
+            .unwrap();
+
+            let ctx = SessionContext::new();
+            let format = Arc::new(DataScriptJsonFormat::new(
+                JsonLayout::Ndjson,
+                1000,
+                FileCompressionType::UNCOMPRESSED,
+            ));
+            let url = datafusion::datasource::listing::ListingTableUrl::parse(
+                file_path.to_string_lossy(),
+            )
+            .unwrap();
+            let opts = datafusion::datasource::listing::ListingOptions::new(format)
+                .with_file_extension("");
+            let schema = opts.infer_schema(&ctx.state(), &url).await.unwrap();
+            let table = datafusion::datasource::listing::ListingTable::try_new(
+                datafusion::datasource::listing::ListingTableConfig::new(url)
+                    .with_listing_options(opts)
+                    .with_schema(schema),
+            )
+            .unwrap();
+            ctx.register_table("t", Arc::new(table)).unwrap();
+
+            use datafusion::prelude::col;
+            let df = ctx
+                .table("t")
+                .await
+                .unwrap()
+                .select(vec![col("b"), col("a"), col("a").alias("a2")])
+                .unwrap();
+            let batches = df.collect().await.unwrap();
+            assert_eq!(batches[0].num_columns(), 3);
+            assert_eq!(batches[0].schema().field(0).name(), "b");
+            assert_eq!(batches[0].schema().field(1).name(), "a");
+            assert_eq!(batches[0].schema().field(2).name(), "a2");
+            assert_eq!(batches[0].column(0).as_string::<i32>().value(0), "x");
+            assert_eq!(
+                batches[0]
+                    .column(1)
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .value(1),
+                2
+            );
+            assert_eq!(
+                batches[0]
+                    .column(2)
+                    .as_any()
+                    .downcast_ref::<Int64Array>()
+                    .unwrap()
+                    .value(1),
+                2
             );
         });
     }

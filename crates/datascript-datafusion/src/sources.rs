@@ -267,13 +267,7 @@ async fn read(
         let mut parsed = Vec::with_capacity(paths.len());
         let mut combined = SampledSchema::default();
         for (path, shown) in paths {
-            let url =
-                ListingTableUrl::parse(strip_verbatim(&path).to_string_lossy()).map_err(|e| {
-                    SourceError::Unreadable {
-                        file: shown.clone(),
-                        problem: ReadProblem::Io(e.strip_backtrace()),
-                    }
-                })?;
+            let url = file_url(&path, &shown)?;
             let store =
                 state
                     .runtime_env()
@@ -407,11 +401,45 @@ pub(crate) fn io_problem(error: &std::io::Error) -> ReadProblem {
     }
 }
 
+/// Builds a concrete `file://` [`ListingTableUrl`] with no glob pattern so literal `[`, `?`, `*`,
+/// or `%` characters in a resolved filesystem path are never interpreted as a glob.
+#[cfg(not(target_arch = "wasm32"))]
+fn file_url(path: &Path, shown: &str) -> Result<ListingTableUrl, SourceError> {
+    use std::fmt::Write as _;
+    let obj_path = datafusion::object_store::path::Path::from_filesystem_path(strip_verbatim(path))
+        .map_err(|e| SourceError::Unreadable {
+            file: shown.to_string(),
+            problem: ReadProblem::Io(e.to_string()),
+        })?;
+    let mut uri = String::from("file:///");
+    for &b in obj_path.as_ref().as_bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~' | b'/' | b':') {
+            uri.push(char::from(b));
+        } else {
+            let _ = write!(uri, "%{b:02X}");
+        }
+    }
+    ListingTableUrl::parse(&uri).map_err(|e| SourceError::Unreadable {
+        file: shown.to_string(),
+        problem: ReadProblem::Io(e.strip_backtrace()),
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn file_url(path: &Path, shown: &str) -> Result<ListingTableUrl, SourceError> {
+    ListingTableUrl::parse(strip_verbatim(path).to_string_lossy()).map_err(|e| {
+        SourceError::Unreadable {
+            file: shown.to_string(),
+            problem: ReadProblem::Io(e.strip_backtrace()),
+        }
+    })
+}
+
 /// A merged column's type so far.
 #[derive(Debug, Clone, PartialEq)]
 enum Merged {
-    /// Only nulls so far: an all-empty CSV column, or JSON values that are all `null`. It takes
-    /// the type of the other files, and is `string` if none has one.
+    /// Only nulls so far (for example an all-empty CSV column). It takes the type of the other
+    /// files, and is `string` if none has one.
     Null,
     Typed(Type),
     /// No DataScript type: merges only with the same Arrow type.
