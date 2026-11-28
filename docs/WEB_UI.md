@@ -142,12 +142,22 @@ A `.dsnb` file is a sequence of cells parsed from and serialized to UTF-8 Markdo
      neighbours are the same matched cells, in the same order, as on disk; otherwise the canonical
      separator is written, with `<!-- ds:cell -->` whenever two Markdown cells end up adjacent
      (e.g. after deleting the DataScript cell between them).
+   - **Cell `text` is normalized** wherever it is produced or compared: line endings are LF (CRLF
+     and lone CR become LF), a DataScript cell's text excludes the fences and the newline before
+     the closing fence, and a Markdown cell's text has leading and trailing blank lines trimmed
+     (they belong to the separator). `GET /api/file` returns normalized text, and the server
+     normalizes incoming cells the same way before diffing, so an editor that converts CRLF to LF
+     (CodeMirror does) still matches every untouched cell. Normalization only affects matching:
+     a matched cell re-emits its original bytes, CRLF included.
    - Nothing the client holds goes stale except `version`: a successful `PUT` returns
      `WriteResult { version }`, and the client sends that version with its next save.
    - **One save in flight per file**: because every save changes `version`, `ServerRuntime` never
      sends a second `PUT` for a path until the previous one has answered. Edits made meanwhile are
-     merged into one follow-up save, sent with the fresh `version` (or, after a failure, retried
-     with the old one). Without this, a slow disk turns two quick auto-saves into a `409` and a
+     merged into one follow-up save, sent with the fresh `version`. After an error response (other
+     than `409`), the save is retried with the old `version`. After a timeout or a lost response the
+     write may have landed, so `ServerRuntime` first re-reads the file (`GET /api/file`): if its
+     cells equal the cells it sent, it adopts the returned `version`; otherwise it shows the
+     "changed on disk" banner. Without this, a slow disk turns two quick auto-saves into a `409` and a
      false "changed on disk" banner.
    - **`expectedVersion` is required** on every `PUT` to an existing file: a `PUT` without it is
      rejected with `428 Precondition Required`, because the `409` check and the content diff both
@@ -230,24 +240,34 @@ This section is the single definition of when an interactive single-cell run is 
   that don't reference it.
 - **The dependency scan over-approximates on purpose**: any identifier token in cell $k$ (or in a
   prepended `let`) whose text equals an upstream `let` name counts as a reference, even when the
-  binder would resolve it to a column. Prepending an unused `let` is harmless; missing a used one
-  is not.
-- If two upstream statements declare the same name, both are prepended; the later one carries
-  `DS1003` (D-007), which blocks the run under the rule below.
-- `StitchedProgram` emits **`DS1085`** (error) if and only if a transitively referenced upstream
-  `let` statement has an **error-severity** diagnostic (lexical, syntax, or semantic, including
-  `DS1003`). A broken `let` counts as declaring a name whenever recovery finds the name.
+  binder would resolve it to a column. Prepending an unused **valid** `let` is harmless; missing a
+  used one is not.
+- **Broken upstream `let`s are never prepended.** An upstream `let` is *broken* when the
+  whole-notebook check (the same one live check runs) reports an error-severity diagnostic on the
+  statement itself (lexical, syntax, or semantic). A name declared by more than one upstream
+  statement is broken too (`DS1003`, D-007), so none of its declarations is prepended. A broken
+  `let` still counts as declaring its name whenever recovery finds the name. A valid `let` that
+  depends on a broken one is not itself broken (D-038 keeps the error on the broken statement), so
+  it is prepended and its reference to the broken name is left unresolved.
+- `StitchedProgram` then binds the stitched program and emits **`DS1085`** (error) for, and in
+  place of, each unknown-name error (`DS1001` unknown column, `DS1002` unknown name) whose name is
+  declared by a broken upstream `let`, whether the error is in cell $k$ or inside a prepended `let`.
+  Because this is decided **after** binding, an identifier that the binder resolves to a column
+  never blocks the run, even if a broken upstream `let` has the same name.
 
   Nothing else blocks: errors in unreferenced upstream `let`s, upstream query statements
   (including a broken query next to a valid `let` in the same cell), and warnings anywhere **do
   not block** running cell $k$. An upstream statement so broken that its name cannot be recovered
   (e.g. `let = …`, or a stretch whose statement boundaries are lost) declares nothing, so a name in
-  cell $k$ that it might have defined is the ordinary unknown-name error (`DS1001`/`DS1002`) in
-  cell $k$. Live check already shows the syntax error on the upstream cell, so no special
-  diagnostic is needed.
+  cell $k$ that it might have defined is the ordinary unknown-name error in cell $k$. Live check
+  already shows the syntax error on the upstream cell, so no special diagnostic is needed.
 - **`DS1085` shape** (DIAGNOSTICS.md style):
-  - message: ``cannot run this cell because `orders` (cell 2) has errors``;
-  - primary span: the first reference to the blocking name in cell $k$;
+  - message: ``cannot run this cell because `orders` (cell 2) has errors``, naming the broken
+    `let` and its cell;
+  - primary span: the unresolved reference itself when it is in cell $k$. When it is inside a
+    prepended `let` (an indirect dependency: cell 3 uses `b`, cell 2's `b` uses `a`, cell 1's `a`
+    is broken), the first reference in cell $k$ to the direct dependency that leads to it (`b`),
+    with a note naming the chain (`` `b` (cell 2) uses `a` ``);
   - secondary label: the broken upstream statement (`` `orders` is defined here ``);
   - help: ``fix the error in cell 2, then run this cell again``. The web UI renders the secondary
     label as a jump link to that cell.
@@ -260,6 +280,10 @@ This section is the single definition of when an interactive single-cell run is 
     in document order). Other query statements in cell $k$, and unreferenced `let`s in it, are left
     out, so a half-typed neighbouring statement never blocks running or exporting a working one.
     The target is then the only query in the program, so no `RunStream::select` is needed.
+  - **Validating bindings** (Run statement at cursor on a `let`, or running a `let`-only cell)
+    stitches every `let` statement of cell $k$ plus the upstream `let`s they transitively
+    reference, and no query statement, with `DS0004` suppressed. A half-typed query in the same
+    cell never blocks validation.
 
 ### IDE requests see every upstream `let`
 
@@ -433,8 +457,10 @@ clicking a column header's stats trigger.
     `data/orders.parquet` in a root-level notebook or Scratchpad).
 - **Attached Tables section**: Shown only when host tables are registered (`ds ui --table ...`),
   listing their names and schemas (DuckDB UI style).
-- **Live workspace sync**: File additions, renames, and deletions on disk update the tree and
-  invalidate `Session`'s schema cache automatically.
+- **Live workspace sync** (M4-09, over M4-10's file-change events): file additions, renames, and
+  deletions on disk update the tree and invalidate `Session`'s schema cache automatically, and an
+  external change to the open file shows the "changed on disk" banner right away instead of on the
+  next save. (Before M4-09, M4-02 detects external edits only through the `409` on save.)
 
 ### 4.2 Center Pane — Notebook Canvas
 
@@ -599,6 +625,7 @@ export interface Runtime {
   readonly capabilities: {
     workspaceFiles: boolean;      // true in ds ui & Tauri; false/virtual in WASM playground
     streamingExport: boolean;     // true in ds ui & Tauri; client-side blob export in WASM
+    exportFormats: string[];      // from GET /api/info on ds ui (v1: "csv", "ndjson")
     hostTables: boolean;
   };
 
@@ -628,6 +655,7 @@ export interface Runtime {
   createDir?(path: string): Promise<FileEntry>;
   renameFile?(from: string, to: string): Promise<FileEntry>;
   deleteFile?(path: string): Promise<void>;
+  // Added in M4-09 (consumes M4-10's WS file-change events):
   subscribeWorkspace?(onEvent: (ev: WorkspaceEvent) => void): () => void;
 }
 ```
@@ -689,7 +717,7 @@ How each target plugs in:
 | Endpoint | Milestone | Purpose |
 |---|---|---|
 | `GET /?token=...` | M4-01 | Validates launch token, sets the `HttpOnly; SameSite=Strict` `ds_session_<port>` cookie (random session id), `302` redirects to `/`; without a valid cookie or token, serves a static "open the printed URL" page |
-| `GET /api/info` | M4-01 | Root folder name, capabilities, persisted preferences (`row_limit`, theme), registered host tables |
+| `GET /api/info` | M4-01 | Root folder name, capabilities, persisted preferences (`row_limit`, theme), registered host tables, and `exportFormats` (the formats this server can write; added by M4-10) |
 | `PATCH /api/prefs` | M4-01 | Persist per-root UI preferences (`row_limit`, theme) in the user's OS config dir (`dirs::config_dir()`) |
 | `GET /api/files?dir=&includeHidden=` | M4-01 | Directory tree under root (sandboxed, D-016) |
 | `GET /api/file?path=` | M4-01 | Read a `.dsnb` (returned as parsed cells `{ kind, text }` + frontmatter) or `.ds` text file + `version` (etag) |

@@ -20,6 +20,11 @@ truncation-aware sorting + **Sort in query**, and two-step streaming export (D-0
   (`Cmd/Ctrl+.` / Stop button), per-result status line (`rows · duration · N sources`),
   transitive-`let` Stale badge, `let`-only validation line (`DS0004` suppressed), and `DS1085`
   cards whose secondary label jumps to the upstream cell.
+- **Live workspace sync** (needs M4-10's watcher): implement `Runtime.subscribeWorkspace` in
+  `ServerRuntime` over `WS /api/ws` file-change events; refresh the file tree on additions,
+  renames, and deletions; and show the "changed on disk" banner as soon as the open file changes
+  externally, ignoring the server's own saves
+  ([WEB_UI.md §4.1](../WEB_UI.md#41-left-pane--working-directory-tree--attached-tables)).
 - **Virtualized Arrow grid** (`apache-arrow` + `@tanstack/react-virtual`):
   - Row index gutter, compact monochrome column headers (type glyph + subtle null indicator whose
     click opens the right-hand profiler), italic `NULL` cell styling, column resizing, click-to-copy
@@ -50,7 +55,9 @@ truncation-aware sorting + **Sort in query**, and two-step streaming export (D-0
 - [ ] Playwright test against `ds ui` verifying Run / Run all / Cancel, `let`-only cell showing no
       `DS0004` warning, `DS1085` jump, virtualized scrolling, multi-statement sub-tabs (each with
       its own source count), truncation banner + "Sort in query", and streaming CSV export
-      download (plus Parquet if M2-27 is done).
+      download (plus Parquet if M2-27 is done), live tree refresh after a file is added and
+      deleted on disk, the "changed on disk" banner appearing without a save after an external
+      edit, and **no** banner after the server's own auto-save.
 
 ## Carried over
 - [ ] (from M2-03) If M2-03 is done, `dynamic` values exist: show them in the grid as JSON text,

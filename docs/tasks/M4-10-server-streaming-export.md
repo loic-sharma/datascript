@@ -56,7 +56,7 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
   - **Formats.** v1 export offers `csv` and `ndjson`, the existing streaming row writers in
     `writers.rs`; this task adds no writer. `json` is added by the carried-over item below once
     M2-26 makes `write_json` stream (today it takes every batch at once), `parquet` once M2-27
-    lands, and `xlsx` once M2-28 lands. `GET /api/info` lists the formats this server can write, and the UI shows only
+    lands, and `xlsx` once M2-28 lands. `GET /api/info` lists the formats this server can write (`exportFormats`), and the UI shows only
     those.
 
 ## Acceptance criteria

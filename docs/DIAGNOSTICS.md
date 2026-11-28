@@ -225,7 +225,7 @@ design decision and implemented by the task named in the allocation table.
 | DS1030 | error | `join` condition that is not a column name or `$left.a == $right.b` |
 | DS1031 | error | `$left`/`$right` used outside a `join` condition |
 | DS1032 | error | `distinct` given an expression instead of a column name |
-| DS1085 | error | cannot run notebook cell because an upstream `let` it uses has errors*(planned, M4-08, D-062)* |
+| DS1085 | error | cannot run notebook cell because an upstream `let` it uses has errors *(planned, M4-08, D-062)* |
 | DS2001 | error | predicate is not `bool` |
 | DS2002 | error | wrong number of arguments |
 | DS2003 | error | operator not defined for these types |

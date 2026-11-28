@@ -46,15 +46,17 @@ M4-04; power-user tabs/shortcuts/file management in M4-05. `Runtime.run` is decl
 
 ## Acceptance criteria
 - [ ] Vitest unit tests for `ServerRuntime` (including edits made while a slow `PUT` is in
-      flight producing exactly one follow-up `PUT` with the fresh `version` and no `409`), notebook-relative
+      flight producing exactly one follow-up `PUT` with the fresh `version` and no `409`, and a
+      timed-out `PUT` that actually landed being recovered by re-reading the file instead of a
+      `409` banner), notebook-relative
       path calculation (root notebook, nested subfolder notebook, Scratchpad save-location
       warning), and Markdown sanitization.
 - [ ] Playwright smoke test against a real `ds ui`: verifies strict CSP header, page reload
       retaining session cookie, two `ds ui` instances open at once both staying signed in,
       multi-cell `.dsnb` in a subfolder with relative `../` path insertion, cross-cell live
       diagnostics, drag reorder, two consecutive auto-saves of different cells leaving untouched
-      cells byte-identical, no conflict banner after the server's own save, and the `409` banner
-      after an external edit.
+      cells byte-identical, and the `409` banner when saving after an external edit. (Watch-driven
+      behaviour, including no banner after the server's own save, is tested in M4-09.)
 - [ ] Dark and light themes both work, with monochrome icons and keyboard accessibility.
 
 ## Follow-ups

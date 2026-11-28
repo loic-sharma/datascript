@@ -40,20 +40,27 @@ REPL, and `datascript-wasm` (M5) all share one implementation
       document order), re-emits matched cells' exact original bytes and line endings, and
       serializes unmatched cells canonically. Separators are recomputed from each cell's new
       neighbours (original separator bytes reused only between the same two matched cells in the
-      same order; `<!-- ds:cell -->` whenever two Markdown cells become adjacent).
+      same order; `<!-- ds:cell -->` whenever two Markdown cells become adjacent). Cell text is
+      normalized (LF line endings; DataScript text without fences or the newline before the
+      closing fence; Markdown trimmed of leading/trailing blank lines) both in parser output and
+      on incoming cells before matching, per
+      [WEB_UI.md §2](../WEB_UI.md#serialization-grammar--canonical-layout).
 - **Shared `StitchedProgram` & `DS1085`** (`datascript-compiler`, `datascript-diagnostics`):
   - Extract the pure segment-stitching and offset-mapping primitive from `datascript-cli`'s
     `ReplProgram`, supporting:
     1. whole-notebook stitching (for `POST /api/check`, `ds check`, `ds run`);
     2. single-cell stitching that syntactically computes the target cell's **transitive upstream
        `let` dependencies** (parsing upstream cells with recovery, over-approximating references
-       by identifier text), prepends only those `let` statements in document order, and emits
+       by identifier text), prepends only those **valid** `let` statements in document order
+       (which upstream statements are broken comes from the whole-notebook check), and emits
        **`DS1085`** (register active in `codes.rs` & `DIAGNOSTICS.md`) exactly per the rule in
        [WEB_UI.md §3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085), with the
        message, primary span, secondary label, and help given there;
     3. single-statement stitching (Run statement at cursor, export): the same as 2, but keeping
        only the target query statement and the `let`s it transitively references from the target
-       cell, so the cell's other query statements cannot block it;
+       cell, so the cell's other query statements cannot block it; and bindings-only stitching
+       (validating a `let` or a `let`-only cell): the cell's `let`s and their transitive upstream
+       `let`s, no query statements;
     4. prefix stitching for IDE requests: every DataScript cell up to and including the target, so
        completion sees every upstream `let`
        ([WEB_UI.md §3](../WEB_UI.md#ide-requests-see-every-upstream-let)).
@@ -84,19 +91,24 @@ REPL, and `datascript-wasm` (M5) all share one implementation
 - [ ] Repeated-save test: parse, edit cell A, serialize with base, then edit cell B and serialize
       again against the first save's output. Every untouched cell (one with CRLF and a
       `~~~datascript` fence) keeps its bytes after both saves.
+- [ ] CRLF test: parse a CRLF file, convert every cell's text to LF as an editor would, edit one
+      cell, and serialize with base: every other cell keeps its CRLF bytes and fence style.
 - [ ] Unit tests for `StitchedProgram` whole-notebook and transitive single-cell stitching, span
       mapping (multi-byte UTF-8/UTF-16), and `DS1085`: fires for a referenced `let` with a type
-      error and for a referenced name declared twice upstream (`DS1003`); does *not* fire on an
-      unreferenced broken `let`, a broken query next to a valid `let` in the same cell, an upstream
-      warning, or an upstream `let` whose name is missing (the target gets the ordinary
-      unknown-name error for a name it might have defined); a column whose name matches an upstream `let`
-      prepends that `let` harmlessly. Single-statement stitching leaves out a broken neighbouring
-      query statement in the target cell, and prefix stitching includes an unreferenced upstream
+      error, for a referenced name declared twice upstream (`DS1003`), and for an indirect chain
+      (cell 3 uses valid `b`, `b` uses broken `a`: primary span on cell 3's `b`, with the chain
+      note); does *not* fire on an unreferenced broken `let`, a broken query next to a valid `let`
+      in the same cell, an upstream warning, an upstream `let` whose name is missing (the target
+      gets the ordinary unknown-name error for a name it might have defined), or a column whose
+      name matches a **broken** upstream `let` (the run succeeds); a column whose name matches a
+      valid upstream `let` prepends that `let` harmlessly. Single-statement stitching leaves out a
+      broken neighbouring query statement in the target cell, bindings-only stitching leaves out a
+      half-typed query in the same cell, and prefix stitching includes an unreferenced upstream
       `let`.
 - [ ] Rendered-output snapshot tests (error output is first-class behaviour, AGENTS.md): `.dsnb`
       fixtures under `crates/datascript-compiler/tests/notebooks/` whose expected output is the
       rendered diagnostic text (code, message, primary span, secondary label, help, `.dsnb` line
-      and column) for `DS1085` and for cross-cell `DS1003`. `.dstest` is not used
+      and column) for `DS1085` (direct and indirect) and for cross-cell `DS1003`. `.dstest` is not used
       because its `---- query` section models one snippet, not a multi-cell file; M4-06 adds the
       cross-cell `DS1003` case end to end through `ds check` (`ds check` checks the whole
       notebook, so it never emits `DS1085`; M4-10 covers `DS1085` end to end over `WS /api/ws`).

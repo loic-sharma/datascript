@@ -963,8 +963,10 @@ box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
   (D-007) so `.dsnb` notebooks stay 1:1 with `.ds` scripts. Live `POST /api/check` checks the whole
   notebook in one pass; single-cell runs prepend only the cell's transitively referenced upstream
   `let`s, and `StitchedProgram` emits `DS1085` when the run is blocked by a broken referenced `let`
-  (an upstream statement whose name cannot be recovered declares nothing, so it yields the
-  ordinary unknown-name error). Warnings, upstream queries, and
+  (broken `let`s are never prepended; after binding, an unknown-name error for a name a broken
+  upstream `let` declares becomes `DS1085`, so a same-named column never blocks; an upstream
+  statement whose name cannot be recovered declares nothing, so it yields the ordinary
+  unknown-name error). Warnings, upstream queries, and
   unreferenced broken `let`s do not block. The exact rule, the deliberate over-approximation of
   references, and the diagnostic's shape are defined once in [WEB_UI.md §3](WEB_UI.md#transitive-upstream-let-prepending--ds1085). Lazy
   `let` re-scans are surfaced via distinct `SourceRef` counts (`PlanNode::Scan`) per result;
