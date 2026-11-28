@@ -78,7 +78,9 @@ Reader names win over DuckDB's where a reader option exists.
   this needs no code moved, and the output matches `format_datetime` exactly.
 
 `write_json(…, format = "array")` needs a streaming JSON array writer: `writers::write_json` still
-collects every row into a `Vec<Value>`. Make it stream (sharing the code with `printer.rs`).
+collects every row into a `Vec<Value>`. Make it stream (sharing the code with `printer.rs`). If
+M4-14 is done, add `json` to its export formats (D-066) with a read-back test. (M4-14's "Carried
+over" item covers it if M4-14 lands after this task.)
 
 Excel output (`write_xlsx`) is M2-28's. Partitioned output (`partition_by`) is not planned yet;
 it comes back together with reading Hive-partitioned directories (Q-006, ROADMAP.md).

@@ -143,6 +143,8 @@ pub const DS1030: Code = Code::new(1030);
 pub const DS1031: Code = Code::new(1031);
 /// `distinct` given an expression instead of a column name
 pub const DS1032: Code = Code::new(1032);
+/// cannot run notebook cell because an upstream `let` has errors (planned, M4-08, D-064)
+pub const DS1085: Code = Code::new(1085);
 /// predicate is not `bool`
 pub const DS2001: Code = Code::new(2001);
 /// wrong number of arguments
@@ -193,7 +195,7 @@ pub const DS3004: Code = Code::new(3004);
 pub const DS3005: Code = Code::new(3005);
 /// source path or reader option is not a constant
 pub const DS3006: Code = Code::new(3006);
-/// path is outside the UI root directory (planned, M4-01, D-016)
+/// path is outside the UI root directory (planned, M4-12, D-016)
 pub const DS3007: Code = Code::new(3007);
 /// file could not be read (permission denied, malformed CSV/JSON row at runtime)
 pub const DS3008: Code = Code::new(3008);
@@ -207,6 +209,8 @@ pub const DS4002: Code = Code::new(4002);
 pub const DS4003: Code = Code::new(4003);
 /// invalid argument value: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100 (reported by `check` when the argument is a constant, D-049)
 pub const DS4004: Code = Code::new(4004);
+/// query result truncated at the UI row limit (planned, M4-10, D-066)
+pub const DS4060: Code = Code::new(4060);
 /// chart not drawn in this runtime (once per program run, not for `render table`)
 pub const DS5001: Code = Code::new(5001);
 /// chart role cannot be filled: no column of the type the kind needs, or an explicit column of the wrong type (names the role and lists the result's columns)
@@ -517,6 +521,12 @@ pub const REGISTRY: &[CodeInfo] = &[
         status: CodeStatus::Active,
     },
     CodeInfo {
+        code: DS1085,
+        severity: Some(Severity::Error),
+        summary: "cannot run notebook cell because an upstream `let` has errors *(planned, M4-08, D-064)*",
+        status: CodeStatus::Planned,
+    },
+    CodeInfo {
         code: DS2001,
         severity: Some(Severity::Error),
         summary: "predicate is not `bool`",
@@ -681,7 +691,7 @@ pub const REGISTRY: &[CodeInfo] = &[
     CodeInfo {
         code: DS3007,
         severity: Some(Severity::Error),
-        summary: "path is outside the UI root directory *(planned, M4-01, D-016)*",
+        summary: "path is outside the UI root directory *(planned, M4-12, D-016)*",
         status: CodeStatus::Planned,
     },
     CodeInfo {
@@ -719,6 +729,12 @@ pub const REGISTRY: &[CodeInfo] = &[
         severity: Some(Severity::Error),
         summary: "invalid argument value: a regular expression that does not compile, an unknown datetime part or format, a percentile outside 0–100 (reported by `check` when the argument is a constant, D-049)",
         status: CodeStatus::Active,
+    },
+    CodeInfo {
+        code: DS4060,
+        severity: Some(Severity::Info),
+        summary: "query result truncated at the UI row limit *(planned, M4-10, D-066)*",
+        status: CodeStatus::Planned,
     },
     CodeInfo {
         code: DS5001,

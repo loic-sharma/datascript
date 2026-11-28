@@ -215,7 +215,7 @@ pub struct QueryResult {
     /// [`RunOutput::diagnostics`].
     pub diagnostics: Vec<Diagnostic>,
     /// Whether rows were left out because of [`ExecContext::row_limit`]. Frontends say so
-    /// (Q-007, decided in M4-01).
+    /// (D-066, implemented in M4-10).
     pub truncated: bool,
 }
 
@@ -260,7 +260,7 @@ pub struct ExecContext {
     pub base_dir: PathBuf,
     /// If set, every path must resolve inside this directory (D-016, M4-01).
     pub sandbox: Option<PathBuf>,
-    /// If set, each result stops after this many rows and is marked truncated (Q-007).
+    /// If set, each result stops after this many rows and is marked truncated (D-066).
     pub row_limit: Option<usize>,
 }
 

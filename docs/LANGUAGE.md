@@ -150,6 +150,28 @@ from big | summarize count() by customerId                // query statement (pr
   to run (`DS0004`).
 - `now()` has one value for the whole run of a program (D-015).
 
+### 2.1 Notebooks (`.dsnb`)
+
+A DataScript notebook (`.dsnb`, D-064) is a plain-text Markdown file whose fenced `ds` /
+`datascript` code blocks form a sequence of DataScript cells (file grammar in
+[WEB_UI.md §2](WEB_UI.md#2-notebook-file-format-dsnb)). Semantically, a notebook follows the same
+rules as a single `.ds` program split into cells:
+
+- **Top-to-bottom `let` scope**: every DataScript cell sees all scalar and tabular `let`
+  declarations from DataScript cells above it in document order. Re-declaring an existing `let`
+  name in a lower cell is `DS1003`, matching `.ds` programs (D-007).
+- **Interactive single-cell execution**: when running one cell interactively, every upstream
+  `let` statement is prepended ahead of the target cell (upstream queries are not). An error in any
+  upstream `let` blocks the run with `DS1085`; errors in upstream query statements and warnings do
+  not. The exact rule is defined once in [WEB_UI.md §3](WEB_UI.md#upstream-let-prepending--ds1085).
+- **Relative paths**: file paths in any cell resolve against the `.dsnb` file's parent directory
+  (or the workspace root for unsaved Scratchpads in `ds ui`).
+- **`ds run` vs interactive "Run all"**: `ds run notebook.dsnb` checks the entire notebook as one
+  program upfront—any error in any cell refuses to run—and then runs every query statement
+  top-to-bottom under one shared `now()` clock (D-015). Interactive "Run all" in `ds ui` runs
+  cells sequentially under one shared `now()` clock and stops at the first failing cell so earlier
+  cells' outputs stay visible.
+
 ## 3. Tabular expressions
 
 ```

@@ -46,11 +46,18 @@ scripts, and Run shows a result grid.
 
 ## M4 — Local web UI
 
-`ds ui` starts a local server and opens a browser tab with an editor, a file/schema sidebar, a
-results grid, and charts for every render kind.
+`ds ui` starts a local server and opens a notebook-first web workbench ([WEB_UI.md](WEB_UI.md)):
+a working-directory file tree, `.dsnb` Markdown/DataScript notebooks (and `.ds` scripts) with
+inline diagnostics, completion, virtualized Arrow grids, ECharts visualizations for every render
+kind, and an on-demand right-hand Result Profiler & Source Schema inspector. Power-user workspace
+polish (`M4-05`, `M4-16`, `M4-17`), CLI/LSP `.dsnb` support (`M4-06`), optional local output
+caching (`M4-07`), and precise upstream blocking (`M4-11`) build on the v1 core (`M4-08`, `M4-13`,
+`M4-12`, `M4-01`, `M4-10`, `M4-02`, `M4-15`, `M4-09`, `M4-03`, `M4-04`, `M4-14`).
 
-**Done when:** a new user can `ds ui` in a folder of CSVs, browse schemas, write a query with
-inline errors and completion, and see a timechart.
+**Done when (M4 v1):** a new user can `ds ui` in a folder of CSVs/Parquet files, preview a file in
+one click from the Scratchpad, inspect schemas from the file tree, author and reorder a multi-cell
+`.dsnb` notebook with shared `let`s, inline quick fixes, completion, and auto-save, profile
+results in the inspector, and render a timechart.
 
 ## M5 — In-browser runtime (WASM)
 
@@ -77,5 +84,8 @@ written up (M7-04) but waits for a consumer.
 
 ## Explicitly later / unscheduled
 
-Hive-partitioned directories, reading and writing (Q-006), query parameters, notebooks, materialized `let`,
-additional engines beyond the SQL emitter, and localization of error messages.
+Hive-partitioned directories, reading and writing (Q-006), query parameters, Tauri desktop app
+packaging (reusing `web/` over a native `TauriRuntime`), **materialized / cached `let` results**
+(now higher priority once `.dsnb` notebooks land, since downstream cells currently re-scan upstream
+sources on each run), additional engines beyond the SQL emitter, and localization of error
+messages.

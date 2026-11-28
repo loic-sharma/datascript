@@ -98,7 +98,8 @@ KQL has no such operator (its `.export` is a management command, LANGUAGE.md §9
 - VS Code: the user-triggered Run (`datascript/run`, D-054, D-056, trusted workspaces only) executes
   `output` like the CLI. Background diagnostics, completion and hover never write.
 - `ds ui` (M4-01): writes go through D-016's sandbox, so only paths under the root are allowed
-  (DS3007). If M4-01 is not done yet, its "Carried over" item covers this instead.
+  (DS3007). If M4-12 (sandbox hardening) is not done yet, its "Carried over" item covers this
+  instead.
 - WASM (M5-02): writes go into the registered-file store and the JS API reports them so the UI can
   offer a download. If M5-02 is not done yet, its "Carried over" item covers this instead.
 - Python and C API (M7-03, M7-04): no special handling; the summary row comes back as a result.

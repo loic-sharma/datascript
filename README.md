@@ -105,6 +105,7 @@ Paths in a script are relative to the script's file. The language is described i
 |---|---|
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Milestones and what "done" means for each |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Crates, compiler pipeline, engine abstraction, render layer, WASM constraints |
+| [docs/WEB_UI.md](docs/WEB_UI.md) | Local web UI (`ds ui`) notebook design, `.dsnb` format, layout, shortcuts, and `Runtime` API |
 | [docs/LANGUAGE.md](docs/LANGUAGE.md) | Draft language specification |
 | [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md) | Error-message principles, format, and error-code ranges |
 | [docs/TESTING.md](docs/TESTING.md) | The `.dstest` golden-file format and test strategy |

@@ -462,11 +462,11 @@ derives serde `Serialize` and `Deserialize`. *(M1-06, 2026-11-21.)*
 **Failed schema lookups are cached like successful ones**, until `Session::invalidate_schemas` or
 `invalidate_source` is called; a source is fetched at most once per call even if a concurrent
 invalidation lands between passes. A one-shot CLI run never needs invalidation; the REPL, the LSP
-and `ds ui` invalidate when files may have changed (M1-12, M3-01, M4-01). The cache key is the
+and `ds ui` invalidate when files may have changed (M1-12, M3-01, M4-10). The cache key is the
 base directory, the sandbox and the `SourceRef`, because the sandbox can refuse a path that is
 fine without it. **The row limit is enforced by the session**, not the backend: `ResultStream::
 collect` stops after `row_limit` rows, drops the stream (cancelling the query) once one more row
-arrives, and sets `QueryResult::truncated`. How frontends word that is Q-007's (M4-01).
+arrives, and sets `QueryResult::truncated`. How frontends word that is D-066's (M4-10).
 **`QueryResult`** is `{ schema, batches, render, diagnostics, truncated }`: `render` is copied from
 the plan; `diagnostics` holds per-query warnings (none yet), while errors stop the run and go to
 `RunOutput::diagnostics` together with every non-error diagnostic from checking. **Panics**: every
@@ -587,7 +587,9 @@ the new input, and every diagnostic span is mapped back to the input it came fro
 own snippet (`<repl:N>`, lines from 1), so an error renders against what the user just typed, and
 an error in a saved let (its file was deleted) against that let's own snippet. The alternative, a
 compiler API taking earlier inputs as a prelude, is cleaner but changes `datascript-compiler` for
-one frontend; the LSP and web UI work on whole documents and don't need it. **Saving**: an input's
+one frontend; the LSP and web UI work on whole documents and don't need it. *(Partly superseded by
+D-064: the web UI, CLI, and LSP now share `StitchedProgram` in `datascript-compiler` for `.dsnb`
+notebooks.)* **Saving**: an input's
 lets are saved once it checks without errors, before its queries run; a check error saves nothing,
 a runtime error or Ctrl-C undoes nothing. **Redefinition is allowed in the REPL** (≠ `DS1003` in
 programs, LANGUAGE.md §2): a new `let x` removes the old one and every saved let that uses it,
@@ -772,7 +774,7 @@ incremental sync. It does not pick an engine; `ds lsp` passes a `Session` over D
   `DS0004`, or the errors that stop it), the selected `QueryPlan`s (`select(index)` replaces
   `run_statement`), and `next_query()`, which starts one query and hands back a `QueryStream`
   (schema, `render` spec, spans and a `BatchStream`). It owns its engine handle and context, so
-  it is `Send` on native targets and can move into a spawned task (the REPL, and M4-01's
+  it is `Send` on native targets and can move into a spawned task (the REPL, and M4-10's
   WebSocket). `Session::run` is now `start` plus `QueryStream::collect`, so golden tests are
   unchanged. **Panic boundary**: checking and `Engine::execute` run under `catch_panic_async`,
   and each batch stream is wrapped so a panic while producing a batch becomes a `DS9001` item
@@ -1091,19 +1093,103 @@ that `describe` reads every row and point to `getschema` for metadata without re
   command.
 *(M2-23, 2026-11-28.)*
 
-## Proposed (open questions)
+### D-063 — Web front-end stack: React, Vite, Tailwind CSS, CodeMirror 6, Apache ECharts
+**Accepted.** Closes Q-002. The shared `web/` SPA (used by `ds ui`, the M5 WASM playground,
+M3-06's VS Code results panel via component reuse, and a potential future Tauri desktop shell)
+standardizes on:
+- **React + TypeScript + Vite + Tailwind CSS**: the React runtime (~45 KB gzipped) is negligible
+  next to CodeMirror, ECharts, and the WASM engine (size not yet measured; M5-01), and provides the strongest ecosystem for
+  virtualized grids (`@tanstack/react-virtual`), drag-and-drop cell reordering, and accessible UI
+  primitives.
+- **CodeMirror 6**: lightweight, multi-instance friendly for notebooks, and small enough for WASM.
+- **Apache ECharts** (tree-shaken modules; Canvas renderer on screen, `SVGRenderer` off-screen for
+  SVG download): covers all 9 `RenderSpec` kinds (with a custom
+  KPI card component for `card`), handles large point counts and interactive zoom, exports
+  PNG/SVG, and supports matching dark/light themes.
+- **Desktop readiness**: all UI state talks through a typed `Runtime` interface (`ServerRuntime`,
+  `WasmRuntime`, and later `TauriRuntime` wrapping Rust's `Session` natively with no Electron
+  overhead). See [WEB_UI.md §6](WEB_UI.md#6-architecture-stack--multi-target-reuse).
+*(Web UI design session, 2026-11-27.)*
 
-### Q-002 — Web front-end stack
-Proposal: TypeScript + Vite + **CodeMirror 6** (smaller than Monaco, easier to embed in WASM
-builds) + a light UI layer (Svelte or Preact) + **Vega-Lite** or **ECharts** for charts. Decide at
-the start of M4 (task M4-02). The VS Code results panel (M3-06) should reuse the same components.
+### D-064 — Notebook-first local web UI with `.dsnb` source-only Markdown format
+**Accepted.** `ds ui` is a notebook-first local data workbench rather than a single scratch query
+box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
+[LANGUAGE.md §2.1](LANGUAGE.md#21-notebooks-dsnb)). Key choices:
+- **Single canonical `.dsnb` format & parser**: strictly source-only plain-text Markdown (no
+  persisted cell metadata in v1, no cached outputs on disk; optional local caching under the user's
+  OS cache dir / WASM `IndexedDB` is deferred to M4-07). A small, dependency-free CommonMark
+  top-level fence scanner/serializer (M4-13) and `StitchedProgram` (M4-08) live in `datascript-compiler` (
+  `wasm32`-compatible), reused across `datascript-server`, `ds run`/`ds check`/`ds lsp` (M4-06),
+  `datascript-cli` (`ReplProgram`), and `datascript-wasm` (M5) — `web/` consumes structured cells
+  via `Runtime` and never duplicates the parser; saves are lossless through a server-side content
+  diff against the on-disk file (unchanged cells keep their bytes; no cell IDs on the wire).
+  Supersedes D-048's note that the web UI does not need a shared stitcher.
+- **Cross-cell `let` scope & `DS1085`**: top-to-bottom lexical order keeping `DS1003` no-shadowing
+  (D-007) so `.dsnb` notebooks stay 1:1 with `.ds` scripts. Live `POST /api/check` checks the whole
+  notebook in one pass; single-cell runs, exports and IDE requests prepend **every** upstream `let`
+  (the same `let`s live check binds), and `StitchedProgram` emits one `DS1085` when any upstream
+  `let` has an error, instead of repeating upstream errors. Warnings and upstream queries do not
+  block. This is deliberately coarse: a broken `let` blocks every cell below it, even ones that
+  don't use it. An earlier draft blocked only on the `let`s a cell uses; four review rounds kept
+  finding binder-level edge cases (column vs `let` lookup order, duplicates, spans of text left out
+  of the program), so that refinement moved to M4-11, to be designed with the binder in hand. The
+  rule and the diagnostic's shape are defined once in [WEB_UI.md §3](WEB_UI.md#upstream-let-prepending--ds1085). Lazy
+  `let` re-scans are surfaced via distinct `SourceRef` counts (`PlanNode::Scan`) per result;
+  `let`-only validation suppresses `DS0004`.
+- **Auth, persistence, CSP & workspace safety**: `ds ui` exchanges the launch `?token=` for an
+  `HttpOnly; SameSite=Strict` cookie holding a separate random session id, named per port
+  (`ds_session_<port>`) because cookies are shared across ports on `127.0.0.1` (so reloads stay
+  signed in and two `ds ui` instances don't sign each other out), sends a strict CSP header, stores
+  per-root preferences in the user's OS config dir (`dirs::config_dir()`) so `ds ui`'s random port
+  never resets settings, saves files atomically (per-path lock + temp file + `sync_all` + rename),
+  and inserts paths relative to the active notebook's parent directory. The workspace file API
+  never writes or deletes data files and rejects in-root symlink components
+  ([WEB_UI.md §4.1](WEB_UI.md#41-left-pane--working-directory-tree--attached-tables),
+  [§6](WEB_UI.md#server-auth-csp--api-contract-datascript-server-m4-01-m4-10-m4-14-m4-04--m4-16)).
+- **Staged delivery & shortcuts**: M4 v1 (`M4-08`, `M4-13`, `M4-12`, `M4-01`, `M4-10`, `M4-02`,
+  `M4-15`, `M4-09`, `M4-03`, `M4-04`, `M4-14`) ships a single-notebook view, read-only tree + atomic `.dsnb` creation, Scratchpad quick
+  previews, grid + ECharts (plain table queries stay in Table view by default with a **Visualize**
+  helper appending `| render ...`), auto-save with `409` conflicts, and a right-hand inspector
+  starting collapsed by default. Cell Command Mode, Command Palette (`Cmd/Ctrl+K` primary), and
+  Quick Open follow in `M4-05` ([WEB_UI.md §5](WEB_UI.md#5-keyboard-shortcuts--command-mode));
+  atomic no-clobber rename (`rustix` / `MoveFileExW`) & verify-then-delete folder removal in
+  `M4-16`; multi-file tabs & pinning and Outline/Scope tabs in `M4-17`.
+*(Web UI design session, 2026-11-27.)*
+
+### D-065 — Multi-statement cells use compact result sub-tabs
+**Accepted.** Closes Q-004. Running a DataScript cell (or `.ds` script / VS Code M3-06 run) executes
+all query statements in that cell and displays compact result sub-tabs (`Result 1`, `Result 2`, …,
+using each query's `render` title when present) whenever a run produces more than one output. A
+secondary shortcut (`Cmd/Ctrl+Alt+Enter`, plus cell gutter action) runs only the statement at the
+cursor. `let`-only cells validate bindings (suppressing `DS0004`) and display a compact confirmation
+line rather than an empty grid.
+*(Web UI design session, 2026-11-27.)*
+
+### D-066 — UI result display cap of 10,000 rows with full streaming export
+**Accepted.** Closes Q-007. Interactive UI runtimes (`ds ui`, VS Code M3-06 results panel, and WASM
+M5) cap streamed results at `10_000` rows by default (configurable per workspace root in the user's
+OS config dir for `ds ui` or `localStorage` for WASM, plus per-run override), enforced on streaming
+runs via a row-limiting helper in `datascript-engine` that slices the final batch and drops the
+stream to cancel execution. The helper is extracted from `ResultStream::collect`, which then calls
+it, so there is one truncation implementation (D-043). When truncated, the runtime emits `DS4060`, client-side grid
+sorting and Result Profiler stats label `"of first {N} rows"` using the run's actual `rowLimit`,
+column headers offer **Sort in query** (`| sort by <col> desc/asc`, inserted before any trailing
+`| render ...` or updating an existing `sort` in place), and the footer offers one-click **Export
+full result**. Exports send the immutable run-time cell snapshot (re-executing the cell-relative
+`statementIndex` with the original `now_micros` clock per D-015 and upstream `let` context against
+current disk files) over a two-step cookie+ticket download (`POST /api/export` → one-shot
+`GET /api/export/<ticket>`, [WEB_UI.md §6](WEB_UI.md#server-auth-csp--api-contract-datascript-server-m4-01-m4-10-m4-14-m4-04--m4-16))
+so `datascript_engine::writers` streams straight to disk without buffering in browser memory.
+v1 export formats are CSV and NDJSON (the existing streaming writers, so M4-14 adds none); JSON,
+Parquet and `.xlsx` appear once M2-26, M2-27 and M2-28 add or stream those writers for the `output`
+operator, and the menu lists only what the server can write.
+*(Web UI design session, 2026-11-27.)*
+
+## Proposed (open questions)
 
 ### Q-003 — `dynamic` representation
 JSON-encoded strings (simple, works everywhere) versus Arrow structs/unions or the emerging Arrow
 Variant type (faster, more complex). Decide in M2-03.
-
-### Q-004 — Multiple result statements in the web UI
-Show tabs per result, or stack them? Decide in M4-02.
 
 ### Q-005 — Quoted identifiers vs path strings
 `['order id']` (KQL bracket syntax) is a column name, while `'orders.csv'` after `from` is a
@@ -1117,11 +1203,6 @@ used where a column is expected. Revisit with the first user feedback, carried o
 DuckDB users expect `'data/year=*/month=*/*.parquet'` to expose `year` and `month` as columns.
 DataFusion's `ListingTable` supports this. Decide whether it is automatic, opt-in
 (`read_parquet(..., hive = true)`), or later. Not needed for M1.
-
-### Q-007 — Result size limits in UI runtimes
-The CLI streams; the web UI, VS Code panel and WASM must not buffer a 10 GB result. Proposal: UI
-runtimes fetch the first N rows (default 10 000) with a "results truncated" info diagnostic and an
-option to export the full result. Decide in M4-01.
 
 ### Q-008 — Does KQL error on integer overflow and integer division by zero?
 D-014 says these are runtime errors and calls that "following KQL". Check real KQL behaviour in

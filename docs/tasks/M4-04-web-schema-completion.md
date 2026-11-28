@@ -1,21 +1,44 @@
-# M4-04 — Web UI: schema browser and completion
+# M4-04 — Web UI: result profiler, source schema inspector & IDE completion
 
 **Status:** todo
-**Depends on:** M4-02, M3-02, M2-13
-**Crates:** `web/`, `datascript-server`
+**Depends on:** M4-09, M3-02, M2-13
+**Crates:** `web/`, `datascript-server`, `datascript-compiler`, `datascript-cli`
+**Diagnostic codes:** none
 
 ## Goal
-A schema panel (columns and types per file, expandable) and editor completion and hover backed by
-the same compiler APIs the LSP uses.
+Populate the on-demand right-hand **Contextual Inspector** (DuckDB-style live Result Profiler and
+Source Schema viewer, starting collapsed by default per
+[WEB_UI.md §4.3](../WEB_UI.md#43-right-pane--contextual-inspector-collapsed-by-default)) and wire
+CodeMirror 6 completion, hover, and signature help to `datascript_compiler::ide`. *(Outline and
+Scope tabs follow in M4-17.)*
 
 ## Scope
-- `POST /api/complete` and `POST /api/hover` in `datascript-server`, backed by
-  `datascript_compiler::ide::complete` and `hover` (M3-02, D-057). The server lists files for
-  `Completions::files` as the LSP does. (Moved here from M4-01, which does not depend on M3-02.)
-- Signature help (`ide::signature_help`) the same way, if the editor shows it.
+- **Server IDE endpoints** (`datascript-server`):
+  - `POST /api/complete`, `POST /api/hover`, and `POST /api/signature-help` backed by
+    `datascript_compiler::ide` (M3-02, D-057) over M4-08's `StitchedProgram` (every upstream `let`
+    plus the whole target cell, so completion offers upstream `let`s the cell does not reference
+    yet, [WEB_UI.md §3](../WEB_UI.md#upstream-let-prepending--ds1085)), listing sandboxed
+    files for `Completions::files` (D-016) and passing registered `--table` host tables.
+- **Editor IDE extensions** (`web/`): CodeMirror 6 autocomplete, hover tooltips, and signature help
+  through `Runtime`.
+- **Right-hand Inspector** (`web/`, starts collapsed; opens via `Cmd/Ctrl+Shift+B`, top-bar icon,
+  file click, or grid column-header stats click):
+  - **Live Result Profile**: client-side profiling over loaded Arrow batches (distinct count, null
+    %, distributions, search/sort, labelling `"of first {N} rows"` using the run's actual `rowLimit`
+    when truncated per D-066).
+  - **Source Schema**: file/host-table columns & types plus **Insert `from '<rel>'`** (relative to
+    the active notebook's parent directory), **New preview cell**, and **Describe** (once M2-23
+    lands).
 
 ## Acceptance criteria
-- [ ] Completion and hover results match the LSP for the same text and cursor (shared test vectors).
+- [ ] Completion, hover, and signature-help results match the LSP for the same text and cursor
+      (shared test vectors), plus cross-cell `let` completion tests, including an upstream `let`
+      that the target cell does not reference yet being offered.
+- [ ] Vitest unit tests for the client-side Arrow column profiler (including dynamic truncation
+      labelling with both default and non-default `rowLimit`) and subfolder-relative `Insert from`
+      paths.
+- [ ] Playwright tests verifying the right pane starts collapsed, opens on demand for Result
+      Profile / Source Schema, updates across cells, and drives editor completion/hover.
 
 ## Carried over
 - [ ] (from M3-02) `datascript_compiler::ide::complete` knows no host tables (the LSP has none). When `ds ui` gets host tables, give `complete` a way to receive their names so they are offered after `from`, next to tabular `let`s. File names come back as `Completions::files` for the server to list, as the LSP does in `crates/datascript-lsp/src/ide.rs`.
