@@ -3148,13 +3148,15 @@ async fn surrogate_pairs_count_as_two_utf16_units_on_the_same_line() {
     assert_eq!(published.ranges(), ["0:33-0:37", "0:52-0:57"]);
 
     // A request position after `😀` on its line is read in UTF-16 units too, and the answer's
-    // range is given in them.
+    // range is given in them. With seven `😀` before it, `amount` sits at UTF-16 56..62, bytes
+    // 70..76 and chars 49..55, so the request position 59 (`amo‸unt`) lands inside `amount` only
+    // when read as UTF-16 (as bytes it is inside the string; as chars it is past `> 1`).
     let hover = client
         .at_cursor(
             "textDocument/hover",
             &uri,
             2,
-            "from 'orders.csv' | extend e = '😀' | where amo‸unt > 1",
+            "from 'orders.csv' | extend e = '😀😀😀😀😀😀😀' | where amo‸unt > 1",
         )
         .await;
     assert_eq!(
@@ -3163,7 +3165,7 @@ async fn surrogate_pairs_count_as_two_utf16_units_on_the_same_line() {
     );
     assert_eq!(
         hover["range"],
-        json!({ "start": { "line": 0, "character": 44 }, "end": { "line": 0, "character": 50 } })
+        json!({ "start": { "line": 0, "character": 56 }, "end": { "line": 0, "character": 62 } })
     );
     client.shutdown().await;
 }

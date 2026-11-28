@@ -75,7 +75,12 @@ async function run(executable: string, mode: Mode, ds: string): Promise<number> 
     return await launch(executable, mode, workspace, userData, extensions);
   } finally {
     // Retries: on Windows, VS Code's helper processes may hold files for a moment after exit.
-    fs.rmSync(base, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    // Never let temp-directory cleanup replace the test exit code.
+    try {
+      fs.rmSync(base, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch (error) {
+      console.warn(`warning: could not remove temporary test directory ${base}: ${error}`);
+    }
   }
 }
 

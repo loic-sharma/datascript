@@ -27,6 +27,8 @@ struct Server {
     child: Child,
     input: ChildStdin,
     output: BufReader<ChildStdout>,
+    /// Drains standard error continuously so a noisy server cannot fill the pipe and block.
+    stderr: Option<std::thread::JoinHandle<String>>,
     next_id: i64,
 }
 
@@ -42,10 +44,17 @@ impl Server {
             .unwrap();
         let input = child.stdin.take().unwrap();
         let output = BufReader::new(child.stdout.take().unwrap());
+        let mut stderr_pipe = child.stderr.take().unwrap();
+        let stderr = std::thread::spawn(move || {
+            let mut buf = String::new();
+            stderr_pipe.read_to_string(&mut buf).unwrap();
+            buf
+        });
         let mut server = Server {
             child,
             input,
             output,
+            stderr: Some(stderr),
             next_id: 0,
         };
         let root = uri_of(root);
@@ -123,13 +132,7 @@ impl Server {
             );
             std::thread::sleep(Duration::from_millis(20));
         };
-        let mut stderr = String::new();
-        self.child
-            .stderr
-            .take()
-            .unwrap()
-            .read_to_string(&mut stderr)
-            .unwrap();
+        let stderr = self.stderr.take().unwrap().join().unwrap();
         (status, stderr)
     }
 }
@@ -138,6 +141,9 @@ impl Drop for Server {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        if let Some(stderr) = self.stderr.take() {
+            let _ = stderr.join();
+        }
     }
 }
 
