@@ -12,6 +12,7 @@
 mod calendar;
 mod checked;
 mod errors;
+mod json;
 mod lower;
 mod sources;
 mod udaf;

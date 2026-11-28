@@ -315,7 +315,7 @@ fn reader_options_and_values() {
     assert_lacks(&l, &["schema", "format"]);
     assert_eq!(
         labels("from read_json('a.json', ‸"),
-        ["compression", "format"]
+        ["compression", "format", "infer_rows"]
     );
     assert_eq!(
         labels("from read_csv('orders.csv', header = ‸"),

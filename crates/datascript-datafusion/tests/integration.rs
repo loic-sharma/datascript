@@ -512,6 +512,52 @@ fn an_ndjson_value_past_the_inferred_rows_is_ds3008_at_runtime() {
     let d = &output.diagnostics[0];
     assert_eq!(d.message, "cannot read `late.ndjson`");
     assert!(d.primary.is_some(), "{d:#?}");
+    assert!(said(d).contains("read_json(..., infer_rows = n)"), "{d:#?}");
+}
+
+#[test]
+fn runtime_json_syntax_and_non_object_errors_are_ds3008_without_infer_rows_help() {
+    let dir = TempDir::new().unwrap();
+    write(
+        &dir,
+        "bad_syntax.ndjson",
+        "{\"id\": 1}\n{\"id\": 2}\n{\"id\": \n",
+    );
+    write(&dir, "non_object.ndjson", "{\"id\": 1}\n{\"id\": 2}\n42\n");
+    let session = session();
+    for file in ["bad_syntax.ndjson", "non_object.ndjson"] {
+        let query = format!("from read_json('{file}', infer_rows = 2)");
+        let output = run(&session, &query, &ctx(dir.path()));
+        assert_fails_with(&output, DS3008);
+        let d = &output.diagnostics[0];
+        assert_eq!(d.message, format!("cannot read `{file}`"));
+        assert!(said(d).contains("not valid JSON"), "{d:#?}");
+        assert!(
+            d.help.is_empty(),
+            "syntax/non-object errors must not suggest infer_rows: {d:#?}"
+        );
+    }
+}
+
+#[test]
+fn json_files_with_glob_metacharacters_in_path_read_normally() {
+    let dir = TempDir::new().unwrap();
+    let sub = dir.path().join("work[1]");
+    std::fs::create_dir(&sub).unwrap();
+    std::fs::write(sub.join("report[2024].json"), "{\"id\": 1}\n").unwrap();
+    std::fs::write(sub.join("100%.json"), "[{\"id\": 2}]\n").unwrap();
+    let session = session();
+
+    // Reading via a glob that matches a file with `[2024]` and `%` in its name.
+    assert_eq!(
+        run_ok(&session, "from '*.json' | sort by id asc", &ctx(&sub),),
+        ["id\nlong\n----\n   1\n   2\n"]
+    );
+    // Reading a plain file inside a directory whose path contains `[1]`.
+    assert_eq!(
+        run_ok(&session, "from '100%.json'", &ctx(&sub)),
+        ["id\nlong\n----\n   2\n"]
+    );
 }
 
 #[cfg(feature = "compression")]

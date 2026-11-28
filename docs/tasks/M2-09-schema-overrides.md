@@ -16,5 +16,6 @@ argument.
 
 ## Carried over
 - [ ] (from M2-13) DIAGNOSTICS.md deferred a second `DS2003` help to this task: when a column read from a file has the wrong type, also suggest declaring it, e.g. `read_csv('products.csv', schema = (price: real))`. Add it, with a golden case, and remove the "From M2-09 on" note in DIAGNOSTICS.md.
+- [ ] (from M2-33) The JSON reader decodes into any target schema by key name; pass the declared schema to it for `read_json` rather than casting after the read, and use the M2-33 type-check table for values that do not match a declared type.
 
 ## Follow-ups

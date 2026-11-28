@@ -15,6 +15,7 @@ use datascript_diagnostics::codes::{DS3008, DS4002, DS4003, DS4004};
 use datascript_diagnostics::{Diagnostic, Span};
 
 use crate::checked::ValueOutOfRange;
+use crate::json::{JsonReadError, JsonReadErrorKind};
 
 /// Why a computation failed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -206,6 +207,23 @@ fn read_problem(error: &DataFusionError) -> Option<ReadProblem> {
     walk(error, &mut |e| {
         if found.is_some() {
             return;
+        }
+        if let Some(json_err) = e.downcast_ref::<JsonReadError>() {
+            found = Some(match &json_err.kind {
+                JsonReadErrorKind::Syntax { .. } | JsonReadErrorKind::NonObject { .. } => {
+                    ReadProblem {
+                        label: "a value in this source is not valid JSON",
+                        help: None,
+                    }
+                }
+                JsonReadErrorKind::TypeMismatch { .. } => ReadProblem {
+                    label: "a value in this source does not match its column's type",
+                    help: Some(
+                        "column types are inferred from the first rows of each file; \
+                         `read_json(..., infer_rows = n)` reads more rows to infer them",
+                    ),
+                },
+            });
         }
         if let Some(arrow) = e.downcast_ref::<ArrowError>() {
             found = match arrow {

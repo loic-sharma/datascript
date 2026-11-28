@@ -404,6 +404,60 @@ fn source_files(orders_csv: &str) -> Vec<Fixture> {
             "{\"id\": 1, \"name\": \"ant\"}\n{\"id\": 2, \"name\": \"bee\"}\n",
         ),
         fixture(
+            "json/poly.ndjson",
+            "{\"id\": 1, \"pkg\": {\"scripts\": \"scripts.yaml\"}, \"scripts\": \"scripts.yaml\", \
+             \"tags\": \"core\", \"score\": 1, \"code\": 42, \"big_id\": 18446744073709551615}\n\
+             {\"id\": 2, \"pkg\": {\"scripts\": {\"build\": \"cargo build\"}}, \
+             \"scripts\": {\"build\": \"cargo build\"}, \"tags\": [\"a\", \"b\"], \"score\": 2.5, \
+             \"code\": \"ok\", \"big_id\": 9223372036854775808}\n\
+             {\"id\": 3, \"pkg\": null, \"scripts\": null, \"tags\": null, \"score\": null, \
+             \"code\": null, \"big_id\": null}\n",
+        ),
+        fixture(
+            "json/minified_array.json",
+            "[{\"id\":1,\"meta\":{\"a\":1,\"b\":\"x y\"}},{\"id\":2,\"meta\":\"plain\"}]\n",
+        ),
+        fixture(
+            "json/pretty_array.json",
+            "[\n  {\n    \"id\": 1,\n    \"meta\": {\n      \"a\": [\n        1,\n        \
+             \"hello world\"\n      ],\n      \"b\": {\n        \"k\": \"v\"\n      }\n    }\n  },\n  \
+             {\n    \"id\": 2,\n    \"meta\": \"two words\"\n  }\n]\n",
+        ),
+        fixture(
+            "json/glob_types/a.ndjson",
+            "{\"id\": 1, \"null_then_obj\": null, \"str_or_obj\": \"hello\", \
+             \"num_or_str\": 10, \"widen\": 1, \"always_null\": null}\n",
+        ),
+        fixture(
+            "json/glob_types/b.ndjson",
+            "{\"id\": 2, \"null_then_obj\": {\"k\": 1}, \"str_or_obj\": {\"k\": 2}, \
+             \"num_or_str\": \"ten\", \"widen\": 2.5, \"always_null\": null}\n",
+        ),
+        fixture(
+            "json/glob_layout/a.json",
+            "{\"id\": 1, \"src\": \"ndjson\"}\n{\"id\": 2, \"src\": \"ndjson\"}\n",
+        ),
+        fixture(
+            "json/glob_layout/b.json",
+            "[{\"id\": 3, \"src\": \"array\"}, {\"id\": 4, \"src\": \"array\"}]\n",
+        ),
+        fixture(
+            "json/bom_ndjson.json",
+            b"\xEF\xBB\xBF{\"id\": 1, \"name\": \"bom-ndjson\"}\n".as_slice(),
+        ),
+        fixture(
+            "json/bom_array.json",
+            b"\xEF\xBB\xBF[{\"id\": 1, \"name\": \"bom-array\"}]\n".as_slice(),
+        ),
+        fixture(
+            "json/late_type.ndjson",
+            "{\"id\": 1, \"n\": 1}\n{\"id\": 2, \"n\": 2}\n{\"id\": 3, \"n\": \"oops\"}\n",
+        ),
+        fixture(
+            "json/late_null_obj.ndjson",
+            "{\"id\": 1, \"extra\": null}\n{\"id\": 2, \"extra\": {\"k\": 1}}\n",
+        ),
+        fixture(
             "options/semicolon.txt",
             "1;'a;b';1.5\n2;NA;2.5\n3;plain;NA\n",
         ),

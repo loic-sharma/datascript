@@ -28,5 +28,8 @@ Make `decimal` and `guid` real types. In M1 they exist only as typed nulls (`dec
 ## Carried over
 - [ ] (from M2-20) If M2-20 has landed, apply its always-null conversion error to `todecimal` and
       `toguid` (e.g. `toguid(42)`, `todecimal(datetime(...))`) instead of accepting `ANY`.
+- [ ] (from M2-33) Remove the `Type::Guid` guard in `crates/datascript-compiler/src/binder/sources.rs`
+      and `crates/datascript-compiler/src/ide/mod.rs` when `arrow::from_arrow_source` maps
+      `arrow.uuid` to `guid`.
 
 ## Follow-ups

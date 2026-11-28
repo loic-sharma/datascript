@@ -21,7 +21,7 @@ use datascript_syntax::ast::{self, AstNode};
 use datascript_syntax::{SyntaxKind, SyntaxNode, SyntaxToken};
 
 use crate::Analysis;
-use crate::arrow::from_arrow;
+use crate::arrow::{UnsupportedArrowType, from_arrow};
 use crate::hir::{self, ExprKind, LetValue, Statement};
 use crate::ir::Value;
 
@@ -371,7 +371,16 @@ pub(crate) fn columns(schema: &SchemaRef) -> Vec<Col> {
         .iter()
         .map(|f| Col {
             name: f.name().clone(),
-            ty: from_arrow(f).map_or_else(|_| f.data_type().to_string(), |t| t.name().to_owned()),
+            ty: match from_arrow(f) {
+                Ok(t) if !matches!(t, crate::Type::Dynamic | crate::Type::Guid) => {
+                    t.name().to_owned()
+                }
+                _ => UnsupportedArrowType {
+                    data_type: f.data_type().clone(),
+                    extension: f.extension_type_name().map(str::to_string),
+                }
+                .to_string(),
+            },
         })
         .collect()
 }

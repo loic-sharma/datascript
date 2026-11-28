@@ -1,0 +1,20 @@
+# `read_json(..., infer_rows = n)`: raising `infer_rows` widens a late type change to `arrow.json`,
+# and a column that is all `null` in the sample infers `arrow.json` and accepts objects past
+# `infer_rows`.
+mode: run
+---- query
+from read_json('../../data/json/late_type.ndjson', infer_rows = 3) | sort by id asc;
+from read_json('../../data/json/late_null_obj.ndjson', infer_rows = 1) | sort by id asc
+---- expected
+id   | n
+long | dynamic
+-----+--------
+   1 | 1
+   2 | 2
+   3 | "oops"
+
+id   | extra
+long | dynamic
+-----+--------
+   1 | null
+   2 | {"k":1}

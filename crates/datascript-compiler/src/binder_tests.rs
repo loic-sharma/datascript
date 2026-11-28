@@ -493,3 +493,63 @@ fn stage_schemas_preserve_arrow_only_types() {
         &list_type
     );
 }
+
+#[test]
+fn arrow_json_column_is_ds2008_and_preserves_extension_metadata() {
+    use crate::arrow::{JSON_EXTENSION, to_arrow};
+    use crate::types::Type;
+
+    struct WithJson;
+    impl SchemaProvider for WithJson {
+        fn schema_of(&self, _: &SourceRef) -> SchemaLookup {
+            SchemaLookup::Ready(Arc::new(Schema::new(vec![
+                Field::new("id", DataType::Int64, true),
+                to_arrow("props", Type::Dynamic),
+            ])))
+        }
+    }
+
+    let proj = check(
+        &SourceFile::new("q", "from 'x.ndjson' | project id, props"),
+        FileId(0),
+        &WithJson,
+        &Capabilities::full(),
+    );
+    assert!(proj.diagnostics.is_empty(), "{:?}", proj.diagnostics);
+    assert_eq!(
+        proj.stage_schemas[0]
+            .schema
+            .field_with_name("props")
+            .unwrap()
+            .extension_type_name(),
+        Some(JSON_EXTENSION)
+    );
+    let program = crate::program_of(proj, FileId(0)).unwrap();
+    assert_eq!(
+        program.queries[0]
+            .output_schema
+            .field_with_name("props")
+            .unwrap()
+            .extension_type_name(),
+        Some(JSON_EXTENSION)
+    );
+
+    let bad = check(
+        &SourceFile::new("q", "from 'x.ndjson' | where props == 'x'"),
+        FileId(0),
+        &WithJson,
+        &Capabilities::full(),
+    );
+    assert_eq!(bad.diagnostics.len(), 1);
+    assert_eq!(bad.diagnostics[0].code, codes::DS2008);
+    assert!(
+        bad.diagnostics[0]
+            .primary
+            .as_ref()
+            .unwrap()
+            .message
+            .contains("`Utf8` (extension type `arrow.json`)"),
+        "{:?}",
+        bad.diagnostics[0]
+    );
+}

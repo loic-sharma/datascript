@@ -10,7 +10,7 @@ error[DS3008]: cannot read `../../data/bad/broken.json` as JSON
 1 | from '../../data/bad/broken.json' | take 1;
   |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this file is not valid JSON
   |
-  = note: the reader said: Arrow error: Json error: Not valid JSON: EOF while parsing a value at line 1 column 6
+  = note: the reader said: line 2 is not valid JSON: unexpected end of input while parsing value
 
 error[DS3008]: cannot read `../../data/bad/not_parquet.parquet` as Parquet
   --> query:2:6

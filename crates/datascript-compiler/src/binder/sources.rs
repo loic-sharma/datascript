@@ -26,7 +26,7 @@ use datascript_syntax::display_name;
 
 use super::{Agg, Binder, Cols, Cx, LetEntry, StageSchema, schema_of};
 use crate::Type;
-use crate::arrow::from_arrow;
+use crate::arrow::{UnsupportedArrowType, from_arrow};
 use crate::capabilities::SourceFormat;
 use crate::hir::{Column, Expr, ExprKind, Source};
 use crate::ir::Value;
@@ -416,17 +416,20 @@ impl Binder<'_> {
                     .fields()
                     .iter()
                     .map(|f| match from_arrow(f) {
-                        Ok(ty) => Column {
+                        Ok(ty) if !matches!(ty, Type::Dynamic | Type::Guid) => Column {
                             name: f.name().clone(),
                             ty,
                             read_from: Some(read_from.clone()),
                             arrow_only: None,
                         },
-                        Err(_) => Column {
+                        _ => Column {
                             name: f.name().clone(),
                             ty: Type::Error,
                             read_from: Some(read_from.clone()),
-                            arrow_only: Some(f.data_type().clone()),
+                            arrow_only: Some(UnsupportedArrowType {
+                                data_type: f.data_type().clone(),
+                                extension: f.extension_type_name().map(str::to_string),
+                            }),
                         },
                     })
                     .collect();

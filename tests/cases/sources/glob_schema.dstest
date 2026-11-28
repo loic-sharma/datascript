@@ -1,6 +1,7 @@
 # A glob merges its files' schemas by name. `country` is only in February, so it comes after
-# the columns of January (the first file). `props` is a JSON object: it has no DataScript type in
-# M1 (M2-03), so it can only be projected. `**` matches any number of directories.
+# the columns of January (the first file). `props` is a JSON object: the JSON reader stores it as
+# `Utf8` with extension type `arrow.json`, which has no DataScript type in M1 (M2-03), so it can
+# only be projected. `**` matches any number of directories.
 mode: check
 show: schema
 ---- query
@@ -12,7 +13,7 @@ error[DS2008]: column `props` has a type DataScript cannot use yet
   --> query:3:43
   |
 3 | from '../../data/events/*.ndjson' | where props == 'x'
-  |                                           ^^^^^ this column is `Struct("page": Utf8, "ref": Utf8)` in Arrow
+  |                                           ^^^^^ this column is `Utf8` (extension type `arrow.json`) in Arrow
   |
   = help: it can only be projected as it is: `project props`, `project-away props`
   = note: column `props` was read from ../../data/events/*.ndjson
