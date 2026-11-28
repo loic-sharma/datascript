@@ -29,6 +29,7 @@ use datascript_compiler::capabilities::FunctionSupport;
 use datascript_compiler::ir::{PlanNode, QueryPlan};
 use datascript_compiler::{Capabilities, SourceError, SourceRef};
 use datascript_diagnostics::Diagnostic;
+use datascript_diagnostics::codes::DS3008;
 use datascript_engine::{Engine, ExecContext, ResultStream};
 use futures::StreamExt;
 
@@ -207,6 +208,11 @@ impl Engine for DataFusionEngine {
                     &format!("the source changed while the query ran: {e:?}"),
                 )
             })?;
+            // DataFusion reads a listed file that no longer exists as no rows, which would
+            // print an empty result instead of saying the file is gone.
+            if let Some(gone) = r.files.iter().find(|f| !f.path.is_file()) {
+                return Err(file_gone(scan.span, &gone.shown));
+            }
             resolved.push(r);
         }
         let mut lowering = Lowering::new(resolved, ctx.now_micros);
@@ -232,6 +238,16 @@ impl Engine for DataFusionEngine {
             batches: Box::pin(batches),
         })
     }
+}
+
+/// `DS3008` for a file that was checked but is gone when the query runs.
+fn file_gone(span: datascript_diagnostics::Span, file: &str) -> Diagnostic {
+    Diagnostic::error(DS3008, format!("cannot read `{file}`"))
+        .primary(
+            span,
+            "this file was moved or deleted after the program was checked",
+        )
+        .help("run the program again to check it against the files as they are now")
 }
 
 /// `batch` with the plan's output schema: the canonical types and the field metadata that

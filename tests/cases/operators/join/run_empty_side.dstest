@@ -1,0 +1,99 @@
+# Every `join` kind with an empty side: `none` filters every row out. With an empty right side,
+# inner, semi and `rightouter` give nothing while `leftouter`, `fullouter` and `leftanti` keep
+# every left row; with an empty left side it is the mirror image.
+mode: run
+---- query
+let c = from '../../../data/customers.csv' | where customerId in ('c-001', 'c-200') | project customerId, name;
+let none = from '../../../data/customers.csv' | where customerId == 'nobody' | project customerId, country;
+from c | join none on customerId | sort by customerId asc;
+from c | join kind = leftouter none on customerId | sort by customerId asc;
+from c | join kind = rightouter none on customerId | sort by customerId asc;
+from c | join kind = fullouter none on customerId | sort by customerId asc;
+from c | join kind = leftsemi none on customerId | sort by customerId asc;
+from c | join kind = leftanti none on customerId | sort by customerId asc;
+from c | join kind = rightsemi none on customerId | sort by customerId asc;
+from c | join kind = rightanti none on customerId | sort by customerId asc;
+from none | join c on customerId | sort by customerId asc;
+from none | join kind = leftouter c on customerId | sort by customerId asc;
+from none | join kind = rightouter c on customerId | sort by customerId asc;
+from none | join kind = fullouter c on customerId | sort by customerId asc;
+from none | join kind = leftsemi c on customerId | sort by customerId asc;
+from none | join kind = leftanti c on customerId | sort by customerId asc;
+from none | join kind = rightsemi c on customerId | sort by customerId asc;
+from none | join kind = rightanti c on customerId | sort by customerId asc
+---- expected
+customerId | name   | country
+string     | string | string
+-----------+--------+--------
+
+customerId | name      | country
+string     | string    | string
+-----------+-----------+--------
+c-001      | Ana Silva | null
+c-200      | Mo Haddad | null
+
+customerId | name   | country
+string     | string | string
+-----------+--------+--------
+
+customerId | name      | country
+string     | string    | string
+-----------+-----------+--------
+c-001      | Ana Silva | null
+c-200      | Mo Haddad | null
+
+customerId | name
+string     | string
+-----------+-------
+
+customerId | name
+string     | string
+-----------+----------
+c-001      | Ana Silva
+c-200      | Mo Haddad
+
+customerId | country
+string     | string
+-----------+--------
+
+customerId | country
+string     | string
+-----------+--------
+
+customerId | country | name
+string     | string  | string
+-----------+---------+-------
+
+customerId | country | name
+string     | string  | string
+-----------+---------+-------
+
+customerId | country | name
+string     | string  | string
+-----------+---------+----------
+c-001      | null    | Ana Silva
+c-200      | null    | Mo Haddad
+
+customerId | country | name
+string     | string  | string
+-----------+---------+----------
+c-001      | null    | Ana Silva
+c-200      | null    | Mo Haddad
+
+customerId | country
+string     | string
+-----------+--------
+
+customerId | country
+string     | string
+-----------+--------
+
+customerId | name
+string     | string
+-----------+-------
+
+customerId | name
+string     | string
+-----------+----------
+c-001      | Ana Silva
+c-200      | Mo Haddad

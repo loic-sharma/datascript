@@ -299,6 +299,8 @@ do not accept a trailing `,`.
 - `join` output is the left columns, then the right columns (minus any `on key` columns). Other
   collisions are renamed `name1`, `name2` (as in KQL), and the binder emits an info diagnostic
   (`DS1007`) that says how to rename them explicitly. Semi and anti joins return one side only.
+- A null join key matches nothing, not even another null (SQL equality, §4): inner and semi joins
+  drop rows with a null key, outer joins keep them unmatched, and anti joins keep them.
 - Unnamed aggregates: `sum(amount)` → `sum_amount`; an aggregate over anything other than a single
   column → `sum_`; `count()` → `count_`. A second collision appends `1`, `2`, …. An item that is
   not a bare aggregate call (`sum(a) * 2`) gets `Column1`, … (D-040).

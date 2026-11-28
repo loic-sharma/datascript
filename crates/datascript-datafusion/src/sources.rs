@@ -54,6 +54,9 @@ impl Resolved {
 #[derive(Debug)]
 pub(crate) struct SourceFile {
     pub url: ListingTableUrl,
+    /// The file on disk, and its name as the user wrote it (for messages).
+    pub path: PathBuf,
+    pub shown: String,
     /// The schema DataFusion infers for this file alone.
     pub raw: SchemaRef,
 }
@@ -271,7 +274,15 @@ async fn read(
                     file: shown.clone(),
                     problem: read_problem(&e),
                 })?;
-        files.push((shown, SourceFile { url, raw }));
+        files.push((
+            shown.clone(),
+            SourceFile {
+                url,
+                path,
+                shown,
+                raw,
+            },
+        ));
     }
     let widened = merge(&files)?;
     Ok(Resolved {
