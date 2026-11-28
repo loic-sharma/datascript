@@ -72,6 +72,11 @@ second file with the same nested schema, so the glob (`Merged`) path can be test
 
 ## Acceptance criteria
 - [ ] Q-003 is closed in DECISIONS.md and every rule in "Settle the semantics" is in LANGUAGE.md.
+- [ ] The `dynamic` representation lives behind one internal module in `datascript-datafusion`
+      (parse, path access, canonical compare, conversion to and from Arrow, display as JSON text).
+      Functions, operators (M2-35, M2-36) and source conversion go through it and never touch the
+      storage format directly, so a later switch (e.g. JSON text to Variant) changes that module
+      and the readers only. The decision record for Q-003 says so.
 - [ ] Golden cases over JSON data: member access, nested paths, indexing (including missing key,
       out-of-range and negative index), `dynamic(...)` literals, equality between two `dynamic`
       values that differ only in escapes or key order, and `getschema` showing `dynamic`.
