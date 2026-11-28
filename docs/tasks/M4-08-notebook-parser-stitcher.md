@@ -56,12 +56,12 @@ REPL, and `datascript-wasm` (M5) all share one implementation
        (`mode: "bindings"`);
     3. **`DS1085`** (register active in `codes.rs` & `DIAGNOSTICS.md`): a pure step over the
        diagnostics that checking the stitched program returns (`Session::start` already refuses
-       to run when any of them is an error). When an error-severity diagnostic falls in the
-       prepended upstream text, or an upstream cell cannot be split into statements, it reports one
-       `DS1085` (first broken upstream statement, with the message,
+       to run when any of them is an error). It drops every diagnostic whose primary span falls in
+       the prepended upstream text (errors and warnings; live check shows them on their own
+       cells). If any dropped one was an error, or an upstream cell cannot be split into
+       statements, it reports one `DS1085` (first broken upstream statement, with the message,
        primary span, secondary label, and help in
-       [WEB_UI.md §3](../WEB_UI.md#upstream-let-prepending--ds1085)) instead of those upstream
-       diagnostics. No binder changes.
+       [WEB_UI.md §3](../WEB_UI.md#upstream-let-prepending--ds1085)). No binder changes.
   - Map diagnostic spans back to `(cell_index, local_span)` and UTF-16 positions (D-025).
   - Have `datascript-cli`'s `ReplProgram` delegate to `datascript_compiler::StitchedProgram`.
 
@@ -95,7 +95,7 @@ REPL, and `datascript-wasm` (M5) all share one implementation
       mapping (multi-byte UTF-8/UTF-16), and `DS1085`: fires once for an upstream `let` with a type
       error, for a name declared twice upstream (`DS1003`), and for an upstream cell that cannot
       be split into statements, naming the first broken statement; does *not* fire for an
-      upstream query error or an upstream warning; upstream errors are not repeated next to it.
+      upstream query error or an upstream warning; upstream errors and warnings are not repeated in run output.
       `mode: "statement"` leaves out a broken neighbouring query in the target cell, `mode:
       "bindings"` leaves out a half-typed query, and IDE stitching includes an upstream `let` the
       target does not reference.

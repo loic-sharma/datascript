@@ -153,20 +153,15 @@ A `.dsnb` file is a sequence of cells parsed from and serialized to UTF-8 Markdo
      `WriteResult { version }`, and the client sends that version with its next save.
    - **One save in flight per file**: because every save changes `version`, `ServerRuntime` never
      sends a second `PUT` for a path until the previous one has answered. Edits made meanwhile are
-     merged into one follow-up save, sent with the fresh `version`. After an error response (other
-     than `409`), the save is retried with the old `version`. After a timeout or a lost response the
-     write may or may not have landed, so `ServerRuntime` re-reads the file (`GET /api/file`, which
-     waits on the same per-path lock, so it never reads around a write still in progress):
-     - the returned `version` equals the old `expectedVersion` → the `PUT` never landed; retry it;
-     - otherwise, the returned cells equal the cells it sent, both **normalized** as above (the
-       client applies the same rules: LF, Markdown trimmed, empty Markdown cells dropped) → the
-       `PUT` landed; adopt the returned `version`;
-     - otherwise the file really changed on disk → show the "changed on disk" banner.
-
-     **`PUT` is idempotent**, which covers a slow original `PUT` landing after the retry: when
-     `expectedVersion` does not match but the normalized cells on disk already equal the request's
-     cells, the server answers `200` with the current `version` instead of `409`.
-
+     merged into one follow-up save, sent with the fresh `version`.
+   - **Retrying is just resending**: after an error response other than `409`, a timeout, or a lost
+     response, `ServerRuntime` resends **the same cells** it sent before (not merged newer edits)
+     with the same old `expectedVersion`, then sends newer edits as the follow-up save. This is
+     safe because **`PUT` is idempotent**: when `expectedVersion` does not match but the file on
+     disk already equals the request (normalized cells for `.dsnb`; text with LF line endings for
+     `.ds`), the server answers `200` with the current `version` instead of `409`. So a save that
+     never landed is applied, one that landed (even a slow one that lands after the resend) gets
+     `200`, and only a real external change gets `409` and the "changed on disk" banner.
      Without this, a slow disk turns two quick auto-saves into a `409` and a
      false "changed on disk" banner.
    - **`expectedVersion` is required** on every `PUT` to an existing file: a `PUT` without it is
@@ -252,7 +247,8 @@ restating it.
   statement has an error-severity diagnostic** (lexical, syntax, or semantic, including `DS1003`),
   or an upstream cell has a syntax error that prevents splitting it into statements (it might hide
   a `let`). The run reports one `DS1085`, naming the first broken upstream statement in document
-  order, instead of repeating upstream errors that live check already shows on their own cells.
+  order. A run never shows diagnostics located in upstream text (errors or warnings): live check
+  already shows them on their own cells.
   Errors in upstream query statements and warnings anywhere never block. Errors in cell $k$
   itself are reported normally.
 - **This is deliberately coarse**: a typo in any upstream `let` blocks every cell below it, even a
@@ -478,8 +474,9 @@ clicking a column header's stats trigger.
     Chart/Table toggle (for `| render` queries), fullscreen expand, and overflow menu (duplicate,
     split, copy query, collapse output, delete).
   - **Diagnostics panel**: Renders any compiler or runtime `Diagnostic`s in rustc/Claude-Code style
-    with clickable **Apply fix** buttons for machine-applicable `Suggestion`s (including jump links
-    for `DS1085` upstream cell errors).
+    with clickable **Apply fix** buttons for machine-applicable `Suggestion`s. Secondary labels that
+    point into another cell (e.g. `DS1003`'s first definition, or `DS1085` from a run) render as
+    jump links to that cell.
   - **Tabular output (virtualized Arrow grid, `M4-09`)**:
     - Reads Arrow IPC `RecordBatch`es directly via `apache-arrow` with row and column virtualization
       (`@tanstack/react-virtual`).
@@ -730,7 +727,7 @@ all reuse them:
   diagnostic span back to `{ cellIndex, start, end, line, column }` in UTF-16, D-025).
 - Runs, exports, and IDE requests (`run`, `export`, `complete`, `hover`, `signature_help`) compile
   every upstream `let` statement in document order, separated by `\n;\n` glue segments, followed
-  by the part of the target cell the request needs, and emit `DS1085` under the rule in
-  [§3](#upstream-let-prepending--ds1085).
+  by the part of the target cell the request needs. Runs and exports then apply the `DS1085` rule
+  in [§3](#upstream-let-prepending--ds1085); IDE requests return no diagnostics.
 - Relative file paths inside the notebook resolve against the `.dsnb` file's parent directory (or
   the workspace root for unsaved Scratchpads), always enforced by the D-016 sandbox in `ds ui`.

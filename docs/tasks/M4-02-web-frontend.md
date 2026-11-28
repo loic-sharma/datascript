@@ -40,16 +40,16 @@ M4-04; power-user tabs/shortcuts/file management in M4-05. `Runtime.run` is decl
     `Shift+Enter`, `Esc` per [WEB_UI.md §4.2](../WEB_UI.md#42-center-pane--notebook-canvas)).
   - **DataScript cells**: CodeMirror 6 with DataScript highlighting (D-026), whole-notebook live
     checking (`POST /api/check`), inline squiggles, and rustc/Claude-Code-style diagnostic cards
-    with one-click **Apply fix** and `DS1085` upstream jump links.
+    with one-click **Apply fix** and cross-cell jump links for secondary labels (e.g. `DS1003`;
+    `DS1085` comes from runs, M4-09).
   - Use the fresh `version` returned by every `PUT /api/file` for the next auto-save, keeping **at most one `PUT` per path in flight** and merging edits made meanwhile
     into one follow-up save ([WEB_UI.md §2](../WEB_UI.md#serialization-grammar--canonical-layout)).
 
 ## Acceptance criteria
 - [ ] Vitest unit tests for `ServerRuntime` (including edits made while a slow `PUT` is in
-      flight producing exactly one follow-up `PUT` with the fresh `version` and no `409`, timed-out `PUT`s
-      recovered by re-reading the file: one that landed adopts the new `version`, one that never
-      reached the server is retried, and neither shows a banner, including when the sent cells had
-      CRLF, trailing blank lines, or an empty Markdown cell), notebook-relative
+      flight producing exactly one follow-up `PUT` with the fresh `version` and no `409`, a timed-out `PUT`
+      resent with the same cells and old `version`, with newer edits sent only after it answers,
+      and no banner whether or not the original had landed), notebook-relative
       path calculation (root notebook, nested subfolder notebook, Scratchpad save-location
       warning), and Markdown sanitization.
 - [ ] Playwright smoke test against a real `ds ui`: verifies strict CSP header, page reload

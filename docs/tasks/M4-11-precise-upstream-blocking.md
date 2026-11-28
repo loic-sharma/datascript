@@ -33,8 +33,8 @@ edge cases. Design it with the binder in hand and settle each one in DECISIONS.m
 - [ ] A broken upstream `let` the target does not use no longer blocks the run; one it uses
       directly, through a chain, as a table, or as a `take n` constant still gives one `DS1085`
       (naming the chain when indirect); a column named like a broken `let` does not block.
-- [ ] Live check output is unchanged, and the M4-08 and M4-10 `DS1085` tests are updated to the
-      new rule.
+- [ ] Live check output is unchanged, and the M4-08 and M4-10 `DS1085` tests (and M5-02's, if
+      done) are updated to the new rule.
 - [ ] WEB_UI.md §3, LANGUAGE.md §2.1 and D-062 describe the new rule.
 
 ## Follow-ups
