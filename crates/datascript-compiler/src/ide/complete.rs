@@ -7,7 +7,8 @@
 use datascript_syntax::{OPERATOR_NAMES, SyntaxKind, SyntaxNode, SyntaxToken, display_name};
 
 use super::{
-    Col, Doc, LetInfo, LetKind, keyword_tokens, operator_doc, operator_of, range, reader_of,
+    Col, Doc, LetInfo, LetKind, floor_char_boundary, keyword_tokens, operator_doc, operator_of,
+    range, reader_of,
 };
 use crate::Analysis;
 use crate::binder::{property_names, property_takes_columns, property_words};
@@ -109,7 +110,7 @@ impl Completion {
 /// editors filter and rank them as the user types.
 pub fn complete(src: &SourceFile, analysis: &Analysis, offset: usize) -> Completions {
     let text = src.text();
-    let offset = floor_char_boundary(text, offset.min(text.len()));
+    let offset = floor_char_boundary(text, offset);
     let doc = Doc::new(text, analysis);
     let mut out = Completions {
         start: offset,
@@ -147,13 +148,6 @@ pub fn complete(src: &SourceFile, analysis: &Analysis, offset: usize) -> Complet
     out.items
         .dedup_by(|a, b| a.label == b.label && a.kind == b.kind);
     out
-}
-
-fn floor_char_boundary(text: &str, mut offset: usize) -> usize {
-    while !text.is_char_boundary(offset) {
-        offset -= 1;
-    }
-    offset
 }
 
 /// Where the cursor is: the word being typed, if any, and the token before it.
@@ -531,6 +525,16 @@ fn classify(doc: &Doc<'_>, cursor: &Cursor) -> Context {
                 ])
             } else {
                 expression(input(), !in_by)
+            }
+        }
+        SyntaxKind::EXTEND_OP => {
+            if ends_expression(prev) {
+                Context::AfterExpression {
+                    keywords: vec![],
+                    infix: true,
+                }
+            } else {
+                expression(doc.columns_at(&op, cursor.start), false)
             }
         }
         _ => {

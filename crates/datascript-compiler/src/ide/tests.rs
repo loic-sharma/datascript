@@ -877,3 +877,745 @@ fn join_on_left_and_right_completion_and_hover() {
         None
     );
 }
+
+#[test]
+fn extend_sees_columns_from_earlier_items() {
+    // Earlier item is visible with its inferred type.
+    let c = completions("from 'orders.csv' | extend total = amount * 2, big = ‸");
+    assert_eq!(
+        labels_of(&c, CompletionKind::Column),
+        [&COLUMNS[..], &["total"]].concat()
+    );
+    let total = c.items.iter().find(|i| i.label == "total").unwrap();
+    assert_eq!(total.detail.as_deref(), Some("real"));
+
+    // Chained earlier items are all visible.
+    let c =
+        completions("from 'orders.csv' | extend total = amount * 2, big = total > 100, tag = ‸");
+    assert_eq!(
+        labels_of(&c, CompletionKind::Column),
+        [&COLUMNS[..], &["total", "big"]].concat()
+    );
+    assert_eq!(
+        c.items
+            .iter()
+            .find(|i| i.label == "big")
+            .unwrap()
+            .detail
+            .as_deref(),
+        Some("bool")
+    );
+
+    // Replacing an input column updates its type in place without duplicating it.
+    let c = completions("from 'orders.csv' | extend amount = tostring(amount), x = ‸");
+    assert_eq!(labels_of(&c, CompletionKind::Column), COLUMNS);
+    assert_eq!(
+        c.items
+            .iter()
+            .find(|i| i.label == "amount")
+            .unwrap()
+            .detail
+            .as_deref(),
+        Some("string")
+    );
+
+    // The item being edited does not see itself.
+    let c = completions("from 'orders.csv' | extend total = to‸");
+    assert_eq!(labels_of(&c, CompletionKind::Column), COLUMNS);
+
+    // Incomplete expression inside the current item still sees prior items, not itself.
+    let c = completions("from 'orders.csv' | extend total = amount * 2, big = 1 + ‸");
+    assert_eq!(
+        labels_of(&c, CompletionKind::Column),
+        [&COLUMNS[..], &["total"]].concat()
+    );
+
+    // Syntactically broken `extend` before another stage still sees earlier items.
+    let c = completions("from 'orders.csv' | extend total = amount * 2, big = ‸ | take 5");
+    assert_eq!(
+        labels_of(&c, CompletionKind::Column),
+        [&COLUMNS[..], &["total"]].concat()
+    );
+
+    // Inside a tabular `let` and a subquery.
+    let c = completions("let t = from 'orders.csv' | extend total = amount * 2, big = ‸;");
+    assert_eq!(
+        labels_of(&c, CompletionKind::Column),
+        [&COLUMNS[..], &["total"]].concat()
+    );
+    let c = completions("from (from 'orders.csv' | extend total = amount * 2, big = ‸)");
+    assert_eq!(
+        labels_of(&c, CompletionKind::Column),
+        [&COLUMNS[..], &["total"]].concat()
+    );
+
+    // Hover resolves an earlier `extend` column to its inferred type.
+    let (src, offset) = split("from 'orders.csv' | extend total = amount * 2, big = to‸tal > 100");
+    let analysis = analyze(&src, &Orders);
+    assert_eq!(
+        hover(&src, &analysis, offset)
+            .map(|h| h.markdown)
+            .as_deref(),
+        Some("```ds\ntotal: real\n```\ncolumn")
+    );
+}
+
+#[test]
+fn goto_definition_references_and_rename_for_lets() {
+    let text = "let cutoff = 100;\n\
+                let big = from 'orders.csv' | where amount > cutoff;\n\
+                from big | join big on customerId | where amount > cutoff | take 5;\n";
+    let src = SourceFile::new("q.ds", text);
+    let analysis = analyze(&src, &Orders);
+
+    let cutoff_def = text.find("cutoff").unwrap();
+    let cutoff_use_1 = text[cutoff_def + 6..].find("cutoff").unwrap() + cutoff_def + 6;
+    let cutoff_use_2 = text.rfind("cutoff").unwrap();
+
+    let big_def = text.find("big").unwrap();
+    let big_use_1 = text.find("from big").unwrap() + 5;
+    let big_use_2 = text.find("join big").unwrap() + 5;
+
+    // Full analysis: both tabular (`big`) and row-expression (`cutoff`) `let`s resolve and rename.
+    assert_eq!(
+        goto_definition(&src, Some(&analysis), cutoff_use_2 + 2),
+        Some(cutoff_def..cutoff_def + 6)
+    );
+    // Cursor right at the end of a `let` name before punctuation (`cutoff;`) still resolves.
+    assert_eq!(
+        goto_definition(&src, Some(&analysis), cutoff_use_1 + 6),
+        Some(cutoff_def..cutoff_def + 6)
+    );
+    assert_eq!(
+        prepare_rename(&src, Some(&analysis), cutoff_use_1 + 6),
+        Ok(Some(RenameTarget {
+            start: cutoff_use_1,
+            end: cutoff_use_1 + 6,
+            placeholder: "cutoff".into(),
+        }))
+    );
+    assert_eq!(
+        references(&src, Some(&analysis), cutoff_def + 1, true),
+        vec![
+            cutoff_def..cutoff_def + 6,
+            cutoff_use_1..cutoff_use_1 + 6,
+            cutoff_use_2..cutoff_use_2 + 6,
+        ]
+    );
+    assert_eq!(
+        references(&src, Some(&analysis), cutoff_use_1 + 1, false),
+        vec![
+            cutoff_use_1..cutoff_use_1 + 6,
+            cutoff_use_2..cutoff_use_2 + 6,
+        ]
+    );
+
+    // Tabular `let` (`big`, used only in no-column table positions) works identically with full
+    // analysis and in syntax-only mode (`None`).
+    for analysis_opt in [Some(&analysis), None] {
+        assert_eq!(
+            goto_definition(&src, analysis_opt, big_use_2 + 1),
+            Some(big_def..big_def + 3)
+        );
+        assert_eq!(
+            references(&src, analysis_opt, big_use_1, true),
+            vec![
+                big_def..big_def + 3,
+                big_use_1..big_use_1 + 3,
+                big_use_2..big_use_2 + 3,
+            ]
+        );
+        assert_eq!(
+            prepare_rename(&src, analysis_opt, big_use_1 + 1),
+            Ok(Some(RenameTarget {
+                start: big_use_1,
+                end: big_use_1 + 3,
+                placeholder: "big".into(),
+            }))
+        );
+        let edits = rename(&src, analysis_opt, big_use_1 + 1, "large_orders").unwrap();
+        assert_eq!(
+            edits,
+            vec![
+                RenameEdit {
+                    start: big_def,
+                    end: big_def + 3,
+                    replacement: "large_orders".into(),
+                },
+                RenameEdit {
+                    start: big_use_1,
+                    end: big_use_1 + 3,
+                    replacement: "large_orders".into(),
+                },
+                RenameEdit {
+                    start: big_use_2,
+                    end: big_use_2 + 3,
+                    replacement: "large_orders".into(),
+                },
+            ]
+        );
+    }
+
+    // Columns, keywords and unknown names do not jump or rename.
+    let amount_off = text.find("amount").unwrap();
+    assert_eq!(goto_definition(&src, Some(&analysis), amount_off), None);
+    assert_eq!(prepare_rename(&src, Some(&analysis), amount_off), Ok(None));
+    assert_eq!(
+        rename(&src, Some(&analysis), amount_off, "x"),
+        Err(RenameError::NotRenamable)
+    );
+    // Collision with an existing `let` is rejected.
+    assert_eq!(
+        rename(&src, Some(&analysis), big_def, "cutoff"),
+        Err(RenameError::AlreadyDefined("cutoff".into()))
+    );
+}
+
+#[test]
+fn unknown_schema_excludes_ambiguous_row_refs_and_refuses_rename() {
+    let text = "let amount = 5;\n\
+                from 'orders.csv' | where amount > 1 | take amount\n";
+    let src = SourceFile::new("q.ds", text);
+    let no_schema_analysis = analyze(&src, &crate::NoSchemas);
+
+    let let_amount = text.find("amount").unwrap();
+    let where_amount = text.find("where amount").unwrap() + 6;
+    let take_amount = text.rfind("amount").unwrap();
+
+    for (analysis_opt, expected_syntax_only) in [(None, true), (Some(&no_schema_analysis), false)] {
+        // Row-expression site with unknown schema is excluded from goto, references, and readonly tokens.
+        assert_eq!(goto_definition(&src, analysis_opt, where_amount), None);
+        // No-column site (`take amount`) still resolves unambiguously.
+        assert_eq!(
+            goto_definition(&src, analysis_opt, take_amount),
+            Some(let_amount..let_amount + 6)
+        );
+        assert_eq!(
+            references(&src, analysis_opt, let_amount, false),
+            vec![take_amount..take_amount + 6]
+        );
+        let tokens = semantic_tokens(&src, analysis_opt);
+        let where_tok = tokens
+            .iter()
+            .find(|t| t.start == where_amount && t.end == where_amount + 6)
+            .unwrap();
+        assert!(
+            !where_tok
+                .modifiers
+                .contains(SemanticTokenModifiers::READONLY)
+        );
+        let take_tok = tokens
+            .iter()
+            .find(|t| t.start == take_amount && t.end == take_amount + 6)
+            .unwrap();
+        assert!(
+            take_tok
+                .modifiers
+                .contains(SemanticTokenModifiers::READONLY)
+        );
+
+        // Both `prepare_rename` and `rename` refuse from the definition, `take`, or `where` site.
+        for offset in [let_amount, take_amount, where_amount] {
+            assert_eq!(
+                prepare_rename(&src, analysis_opt, offset),
+                Err(RenameError::UnknownSchema {
+                    syntax_only: expected_syntax_only
+                })
+            );
+            assert_eq!(
+                rename(&src, analysis_opt, offset, "threshold"),
+                Err(RenameError::UnknownSchema {
+                    syntax_only: expected_syntax_only
+                })
+            );
+        }
+    }
+}
+
+#[test]
+fn rename_rejects_name_shadowed_by_in_scope_column() {
+    let text = "let cutoff = 100;\n\
+                from 'orders.csv' | where amount > cutoff\n";
+    let src = SourceFile::new("q.ds", text);
+    let analysis = analyze(&src, &Orders);
+    let cutoff_def = text.find("cutoff").unwrap();
+
+    // `amount` is an input column at line 2 -> rejected so query meaning cannot silently change.
+    assert_eq!(
+        rename(&src, Some(&analysis), cutoff_def, "amount"),
+        Err(RenameError::ShadowedByColumn {
+            name: "amount".into(),
+            line: 2,
+        })
+    );
+    // Non-colliding name still succeeds.
+    assert!(rename(&src, Some(&analysis), cutoff_def, "threshold").is_ok());
+
+    // Earlier `extend` item column also blocks the rename (D-040).
+    let ext_text = "let cutoff = 100;\n\
+                    from 'orders.csv' | extend total = amount * 2, big = total > cutoff\n";
+    let ext_src = SourceFile::new("ext.ds", ext_text);
+    let ext_analysis = analyze(&ext_src, &Orders);
+    let ext_def = ext_text.find("cutoff").unwrap();
+    assert_eq!(
+        rename(&ext_src, Some(&ext_analysis), ext_def, "total"),
+        Err(RenameError::ShadowedByColumn {
+            name: "total".into(),
+            line: 2,
+        })
+    );
+
+    // No-column positions (`take`) are not shadowed by columns.
+    let take_text = "let limit = 5;\nfrom 'orders.csv' | take limit\n";
+    let take_src = SourceFile::new("take.ds", take_text);
+    let take_analysis = analyze(&take_src, &Orders);
+    assert!(rename(&take_src, Some(&take_analysis), 4, "amount").is_ok());
+}
+
+#[test]
+fn let_resolution_respects_column_shadowing_and_non_let_positions() {
+    // Column `amount` shadows `let amount` in row expressions when schemas are known (D-038),
+    // but `let amount` is still resolved in `take` (constant count) and in syntax-only mode.
+    let text = "let amount = 5;\n\
+                let sum = 1;\n\
+                from 'orders.csv'\n\
+                | where amount > 0\n\
+                | extend x = 1, amount = 2, y = amount\n\
+                | summarize sum(amount) by customerId\n\
+                | take amount\n";
+    let src = SourceFile::new("q.ds", text);
+    let analysis = analyze(&src, &Orders);
+
+    let let_amount = text.find("amount").unwrap();
+    let where_amount = text.find("where amount").unwrap() + 6;
+    let extend_y_amount = text.find("y = amount").unwrap() + 4;
+    let sum_call = text.find("sum(amount)").unwrap();
+    let take_amount = text.rfind("amount").unwrap();
+
+    // With full analysis: `where amount` and `extend y = amount` are columns, `take amount` is the `let`.
+    assert_eq!(goto_definition(&src, Some(&analysis), where_amount), None);
+    assert_eq!(
+        goto_definition(&src, Some(&analysis), extend_y_amount),
+        None
+    );
+    assert_eq!(
+        goto_definition(&src, Some(&analysis), take_amount),
+        Some(let_amount..let_amount + 6)
+    );
+    assert_eq!(
+        references(&src, Some(&analysis), let_amount, false),
+        vec![take_amount..take_amount + 6]
+    );
+
+    // Function callee `sum(...)` never resolves to `let sum`.
+    assert_eq!(goto_definition(&src, Some(&analysis), sum_call), None);
+    assert_eq!(goto_definition(&src, None, sum_call), None);
+
+    // A `let` shadowed by an earlier `extend` item (not an input column): `total + 1` still
+    // resolves to `let total`, while `y = total` resolves to the column made by the prior item.
+    let ext_text = "let total = 1;\nfrom 'orders.csv' | extend total = total + 1, y = total\n";
+    let ext_src = SourceFile::new("ext.ds", ext_text);
+    let ext_analysis = analyze(&ext_src, &Orders);
+    let total_def = ext_text.find("total").unwrap();
+    let total_rhs_1 = ext_text.find("total + 1").unwrap();
+    let total_rhs_2 = ext_text.find("y = total").unwrap() + 4;
+    assert_eq!(
+        goto_definition(&ext_src, Some(&ext_analysis), total_rhs_1),
+        Some(total_def..total_def + 5)
+    );
+    assert_eq!(
+        goto_definition(&ext_src, Some(&ext_analysis), total_rhs_2),
+        None
+    );
+    assert_eq!(
+        references(&ext_src, Some(&ext_analysis), total_def, false),
+        vec![total_rhs_1..total_rhs_1 + 5]
+    );
+
+    // Non-`let` positions (`join ... on`, `$left.col`, `project-rename`, `render xcolumn`,
+    // `distinct`, self/forward references, duplicate `let`) never resolve to `let`.
+    let edge = "let a = a + b;\n\
+                let b = 1;\n\
+                let b = 2;\n\
+                let title = 'Sales';\n\
+                from 'orders.csv'\n\
+                | join 'orders.csv' on $left.b == $right.b\n\
+                | render barchart with (title = title, xcolumn = b, legend = hidden)\n";
+    let edge_src = SourceFile::new("edge.ds", edge);
+    let b_def = edge.find("let b = 1").unwrap() + 4;
+    let b_dup = edge.find("let b = 2").unwrap() + 4;
+    let self_a = edge.find("= a").unwrap() + 2;
+    let fwd_b = edge.find("+ b").unwrap() + 2;
+    let join_b = edge.find("$left.b").unwrap() + 6;
+    let render_xcol_b = edge.find("xcolumn = b").unwrap() + 10;
+    let title_def = edge.find("let title").unwrap() + 4;
+    let title_val = edge.find("title = title").unwrap() + 8;
+
+    assert_eq!(goto_definition(&edge_src, None, self_a), None);
+    assert_eq!(goto_definition(&edge_src, None, fwd_b), None);
+    assert_eq!(goto_definition(&edge_src, None, join_b), None);
+    assert_eq!(goto_definition(&edge_src, None, render_xcol_b), None);
+    assert_eq!(goto_definition(&edge_src, None, b_dup), None);
+    assert_eq!(
+        references(&edge_src, None, b_def, true),
+        vec![b_def..b_def + 1]
+    );
+    // Render scalar property `title = title` DOES resolve to `let title`.
+    assert_eq!(
+        goto_definition(&edge_src, None, title_val),
+        Some(title_def..title_def + 5)
+    );
+}
+
+#[test]
+fn rename_handles_quoted_identifiers_and_validation() {
+    let text = "let ['my limit'] = 5;\nfrom 'orders.csv' | take ['my limit']\n";
+    let src = SourceFile::new("q.ds", text);
+    let def = text.find("['my limit']").unwrap();
+    let use_off = text.rfind("['my limit']").unwrap();
+
+    assert_eq!(
+        prepare_rename(&src, None, use_off + 2),
+        Ok(Some(RenameTarget {
+            start: use_off,
+            end: use_off + 12,
+            placeholder: "my limit".into(),
+        }))
+    );
+    // Plain identifier needs no quotes; spaces and reserved words are quoted automatically.
+    let plain = rename(&src, None, def, "max_rows").unwrap();
+    assert_eq!(plain[0].replacement, "max_rows");
+    assert_eq!(plain[1].replacement, "max_rows");
+
+    let spaced = rename(&src, None, def, "row limit").unwrap();
+    assert_eq!(spaced[0].replacement, "['row limit']");
+
+    let reserved = rename(&src, None, def, "and").unwrap();
+    assert_eq!(reserved[0].replacement, "['and']");
+
+    let already_quoted = rename(&src, None, def, "['row limit']").unwrap();
+    assert_eq!(already_quoted[0].replacement, "['row limit']");
+
+    let bracketed = rename(&src, None, def, "[total]").unwrap();
+    assert_eq!(bracketed[0].replacement, "['[total]']");
+
+    assert!(matches!(
+        rename(&src, None, def, ""),
+        Err(RenameError::InvalidName(_))
+    ));
+    assert!(matches!(
+        rename(&src, None, def, "   "),
+        Err(RenameError::InvalidName(_))
+    ));
+    assert!(matches!(
+        rename(&src, None, def, "a\nb"),
+        Err(RenameError::InvalidName(_))
+    ));
+    assert!(matches!(
+        rename(&src, None, def, "['']"),
+        Err(RenameError::InvalidName(_))
+    ));
+}
+
+#[test]
+fn document_symbols_for_lets_and_queries() {
+    let text = "let cutoff = 100;\n\
+                let big = from 'orders.csv' | where amount > cutoff;\n\
+                from big | count;\n\
+                from 'orders.csv' | take 5\n";
+    let src = SourceFile::new("q.ds", text);
+    let analysis = analyze(&src, &Orders);
+
+    let full = document_symbols(&src, Some(&analysis));
+    assert_eq!(full.len(), 4);
+    assert_eq!(full[0].name, "cutoff");
+    assert_eq!(full[0].kind, SymbolKind::Variable);
+    assert_eq!(full[0].detail.as_deref(), Some("long"));
+    assert_eq!(full[1].name, "big");
+    assert_eq!(full[1].kind, SymbolKind::Table);
+    assert_eq!(full[1].detail.as_deref(), Some("table (4 columns)"));
+    assert_eq!(full[2].name, "query 1");
+    assert_eq!(full[2].kind, SymbolKind::Query);
+    assert_eq!(full[2].detail.as_deref(), Some("from big"));
+    assert_eq!(full[3].name, "query 2");
+    assert_eq!(full[3].kind, SymbolKind::Query);
+    assert_eq!(full[3].detail.as_deref(), Some("from 'orders.csv'"));
+    for s in &full {
+        assert!(s.start <= s.selection_start && s.selection_end <= s.end);
+    }
+
+    // Syntax-only mode still reports every symbol with syntactic details.
+    let syntax = document_symbols(&src, None);
+    assert_eq!(syntax.len(), 4);
+    assert_eq!(syntax[0].detail.as_deref(), Some("scalar"));
+    assert_eq!(syntax[1].detail.as_deref(), Some("table"));
+    assert_eq!(syntax[2].detail.as_deref(), Some("from big"));
+
+    // Duplicate `let` of a different kind keeps its own syntactic fallback detail instead of
+    // inheriting the first binding's HIR type.
+    let dup = SourceFile::new("dup.ds", "let x = 1;\nlet x = from 'orders.csv';\n");
+    let dup_analysis = analyze(&dup, &Orders);
+    let dup_syms = document_symbols(&dup, Some(&dup_analysis));
+    assert_eq!(dup_syms.len(), 2);
+    assert_eq!(dup_syms[0].kind, SymbolKind::Variable);
+    assert_eq!(dup_syms[0].detail.as_deref(), Some("long"));
+    assert_eq!(dup_syms[1].kind, SymbolKind::Table);
+    assert_eq!(dup_syms[1].detail.as_deref(), Some("table"));
+}
+
+#[test]
+fn semantic_tokens_classify_contextual_keywords_and_syntax() {
+    let text = "// comment\n\
+                let limit = 10;\n\
+                from 'orders.csv'\n\
+                | where by > 1 and on == has and from != long(null)\n\
+                | summarize n = count() by by\n\
+                | sort by on asc nulls last\n\
+                | join kind = inner 'orders.csv' on $left.kind == $right.on\n\
+                | project-away by, on*\n\
+                | render barchart with (kind = stacked, xcolumn = by)\n";
+    let src = SourceFile::new("q.ds", text);
+    let tokens = semantic_tokens(&src, None);
+
+    // Strictly ascending and non-overlapping.
+    for pair in tokens.windows(2) {
+        assert!(
+            pair[0].end <= pair[1].start,
+            "overlapping or unsorted tokens: {:?} and {:?}",
+            pair[0],
+            pair[1]
+        );
+    }
+
+    let tagged: Vec<(&str, SemanticTokenKind, SemanticTokenModifiers)> = tokens
+        .iter()
+        .map(|t| (&text[t.start..t.end], t.kind, t.modifiers))
+        .collect();
+
+    let find_at = |needle: &str, nth: usize| {
+        tagged
+            .iter()
+            .filter(|(s, _, _)| *s == needle)
+            .nth(nth)
+            .copied()
+            .unwrap_or_else(|| panic!("missing #{nth} `{needle}` in {tagged:?}"))
+    };
+
+    assert_eq!(
+        find_at("// comment", 0),
+        (
+            "// comment",
+            SemanticTokenKind::Comment,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    assert_eq!(
+        find_at("let", 0),
+        (
+            "let",
+            SemanticTokenKind::Keyword,
+            SemanticTokenModifiers::DECLARATION
+        )
+    );
+    assert_eq!(
+        find_at("limit", 0),
+        (
+            "limit",
+            SemanticTokenKind::Variable,
+            SemanticTokenModifiers::DECLARATION.union(SemanticTokenModifiers::READONLY)
+        )
+    );
+    // `from` at pipeline head is a keyword; `from` inside `where` is a column variable.
+    assert_eq!(
+        find_at("from", 0),
+        (
+            "from",
+            SemanticTokenKind::Keyword,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    assert_eq!(
+        find_at("from", 1),
+        (
+            "from",
+            SemanticTokenKind::Variable,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    // Pipeline operators get Keyword + DEFAULT_LIBRARY, including merged `project-away`.
+    assert_eq!(
+        find_at("where", 0),
+        (
+            "where",
+            SemanticTokenKind::Keyword,
+            SemanticTokenModifiers::DEFAULT_LIBRARY
+        )
+    );
+    assert_eq!(
+        find_at("project-away", 0),
+        (
+            "project-away",
+            SemanticTokenKind::Keyword,
+            SemanticTokenModifiers::DEFAULT_LIBRARY
+        )
+    );
+    // Contextual keywords used as columns in `where` are Variable, not Keyword/Operator.
+    assert_eq!(
+        find_at("by", 0),
+        (
+            "by",
+            SemanticTokenKind::Variable,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    assert_eq!(
+        find_at("on", 0),
+        (
+            "on",
+            SemanticTokenKind::Variable,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    assert_eq!(
+        find_at("has", 0),
+        (
+            "has",
+            SemanticTokenKind::Variable,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    // `long(null)` has Type + EnumMember.
+    assert_eq!(
+        find_at("long", 0),
+        (
+            "long",
+            SemanticTokenKind::Type,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    assert_eq!(
+        find_at("null", 0),
+        (
+            "null",
+            SemanticTokenKind::EnumMember,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    // `summarize n = count() by by`: `count` is Function+DEFAULT_LIBRARY, first `by` is Keyword, second `by` is Variable.
+    assert_eq!(
+        find_at("count", 0),
+        (
+            "count",
+            SemanticTokenKind::Function,
+            SemanticTokenModifiers::DEFAULT_LIBRARY
+        )
+    );
+    assert_eq!(
+        find_at("by", 1),
+        (
+            "by",
+            SemanticTokenKind::Keyword,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    assert_eq!(
+        find_at("by", 2),
+        (
+            "by",
+            SemanticTokenKind::Variable,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    // `join kind = inner ... on $left.kind == $right.on`
+    assert_eq!(
+        find_at("kind", 0),
+        (
+            "kind",
+            SemanticTokenKind::Keyword,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    assert_eq!(
+        find_at("inner", 0),
+        (
+            "inner",
+            SemanticTokenKind::EnumMember,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    assert_eq!(
+        find_at("$left", 0),
+        (
+            "$left",
+            SemanticTokenKind::Variable,
+            SemanticTokenModifiers::DEFAULT_LIBRARY
+        )
+    );
+    assert_eq!(
+        find_at("kind", 1),
+        (
+            "kind",
+            SemanticTokenKind::Variable,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    // `render barchart with (kind = stacked, xcolumn = by)`
+    assert_eq!(
+        find_at("barchart", 0),
+        (
+            "barchart",
+            SemanticTokenKind::EnumMember,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    assert_eq!(
+        find_at("kind", 2),
+        (
+            "kind",
+            SemanticTokenKind::Property,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    assert_eq!(
+        find_at("stacked", 0),
+        (
+            "stacked",
+            SemanticTokenKind::EnumMember,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    assert_eq!(
+        find_at("xcolumn", 0),
+        (
+            "xcolumn",
+            SemanticTokenKind::Property,
+            SemanticTokenModifiers::NONE
+        )
+    );
+    assert_eq!(
+        find_at("by", 5),
+        (
+            "by",
+            SemanticTokenKind::Variable,
+            SemanticTokenModifiers::NONE
+        )
+    );
+
+    // Built-in readers (`read_csv`) get Function + DEFAULT_LIBRARY, and reader options get Property.
+    let reader_src = SourceFile::new("r.ds", "from read_csv('orders.csv', header = true)");
+    let reader_tokens = semantic_tokens(&reader_src, None);
+    let reader_tagged: Vec<(&str, SemanticTokenKind, SemanticTokenModifiers)> = reader_tokens
+        .iter()
+        .map(|t| (&reader_src.text()[t.start..t.end], t.kind, t.modifiers))
+        .collect();
+    assert!(reader_tagged.contains(&(
+        "read_csv",
+        SemanticTokenKind::Function,
+        SemanticTokenModifiers::DEFAULT_LIBRARY,
+    )));
+    assert!(reader_tagged.contains(&(
+        "header",
+        SemanticTokenKind::Property,
+        SemanticTokenModifiers::NONE,
+    )));
+}

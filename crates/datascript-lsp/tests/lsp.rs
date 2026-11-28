@@ -2185,3 +2185,696 @@ async fn code_lens_on_syntax_errors_and_closed_or_unknown_uri() {
 
     client.shutdown().await;
 }
+
+// ── Quick fixes, navigation, rename, symbols and semantic tokens (M3-03) ────────────────────
+
+#[tokio::test(flavor = "multi_thread")]
+async fn code_actions_offer_quick_fixes_from_diagnostics() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("fixes.ds");
+    // Line 0: syntax error DS0110 (`=`), lint warning DS2103 (`sort by`), semantic error DS1001 (`amout`).
+    // Line 1: unknown format DS3002 (`'data.txt'`, `MaybeIncorrect` fix).
+    let text = "from 'orders.csv' | where amount = 10 | sort by amount | project amout;\n\
+                from 'data.txt' | count\n";
+    client.open(&uri, text).await;
+    let published = client.diagnostics(&uri).await;
+    assert!(
+        published.codes().contains(&"DS0110"),
+        "{:?}",
+        published.codes()
+    );
+    assert!(
+        published.codes().contains(&"DS2103"),
+        "{:?}",
+        published.codes()
+    );
+    assert!(
+        published.codes().contains(&"DS1001"),
+        "{:?}",
+        published.codes()
+    );
+    assert!(
+        published.codes().contains(&"DS3002"),
+        "{:?}",
+        published.codes()
+    );
+
+    // Quick fix for `=` (DS0110) is preferred and replaces `=` with `==`.
+    let eq_col = text.find("= 10").unwrap() as u32;
+    let actions = client
+        .request(
+            "textDocument/codeAction",
+            json!({
+                "textDocument": { "uri": uri },
+                "range": {
+                    "start": { "line": 0, "character": eq_col },
+                    "end": { "line": 0, "character": eq_col + 1 }
+                },
+                "context": { "diagnostics": [] }
+            }),
+        )
+        .await;
+    let arr = actions.as_array().unwrap();
+    assert_eq!(arr.len(), 1, "{actions}");
+    assert_eq!(arr[0]["kind"], "quickfix");
+    assert_eq!(arr[0]["isPreferred"], true);
+    assert_eq!(arr[0]["diagnostics"][0]["code"], "DS0110");
+    assert_eq!(arr[0]["edit"]["changes"][&uri][0]["newText"], "==");
+
+    // Quick fix for `sort by amount` (DS2103) inserts ` asc`.
+    let sort_col = text.find("by amount").unwrap() as u32 + 3;
+    let actions = client
+        .request(
+            "textDocument/codeAction",
+            json!({
+                "textDocument": { "uri": uri },
+                "range": {
+                    "start": { "line": 0, "character": sort_col },
+                    "end": { "line": 0, "character": sort_col }
+                },
+                "context": { "diagnostics": [] }
+            }),
+        )
+        .await;
+    let arr = actions.as_array().unwrap();
+    assert_eq!(arr.len(), 1, "{actions}");
+    assert_eq!(arr[0]["isPreferred"], true);
+    assert_eq!(arr[0]["diagnostics"][0]["code"], "DS2103");
+    assert_eq!(arr[0]["edit"]["changes"][&uri][0]["newText"], " asc");
+
+    // Quick fix for typo `amout` (DS1001) replaces with `amount`.
+    let typo_col = text.find("amout").unwrap() as u32;
+    let actions = client
+        .request(
+            "textDocument/codeAction",
+            json!({
+                "textDocument": { "uri": uri },
+                "range": {
+                    "start": { "line": 0, "character": typo_col },
+                    "end": { "line": 0, "character": typo_col + 5 }
+                },
+                "context": { "diagnostics": [] }
+            }),
+        )
+        .await;
+    let arr = actions.as_array().unwrap();
+    assert_eq!(arr.len(), 1, "{actions}");
+    assert_eq!(arr[0]["isPreferred"], true);
+    assert_eq!(arr[0]["diagnostics"][0]["code"], "DS1001");
+    assert_eq!(arr[0]["edit"]["changes"][&uri][0]["newText"], "amount");
+
+    // `MaybeIncorrect` suggestion (DS3002) is offered with `isPreferred: false`.
+    let actions = client
+        .request(
+            "textDocument/codeAction",
+            json!({
+                "textDocument": { "uri": uri },
+                "range": {
+                    "start": { "line": 1, "character": 5 },
+                    "end": { "line": 1, "character": 15 }
+                },
+                "context": { "diagnostics": [] }
+            }),
+        )
+        .await;
+    let arr = actions.as_array().unwrap();
+    assert_eq!(arr.len(), 1, "{actions}");
+    assert_eq!(arr[0]["isPreferred"], false);
+    assert_eq!(arr[0]["diagnostics"][0]["code"], "DS3002");
+    assert_eq!(
+        arr[0]["edit"]["changes"][&uri][0]["newText"],
+        "read_csv('data.txt')"
+    );
+
+    // Asking for non-quickfix or narrower quickfix sub-kinds returns empty.
+    for only in [json!(["refactor"]), json!(["quickfix.other"])] {
+        let filtered = client
+            .request(
+                "textDocument/codeAction",
+                json!({
+                    "textDocument": { "uri": uri },
+                    "range": {
+                        "start": { "line": 0, "character": eq_col },
+                        "end": { "line": 0, "character": eq_col + 1 }
+                    },
+                    "context": { "diagnostics": [], "only": only }
+                }),
+            )
+            .await;
+        assert_eq!(filtered, json!([]));
+    }
+
+    // Multi-edit quick fix: DS2103 on `sort by amount, customerId` produces 2 edits in one action.
+    let multi_uri = client.uri("multi_edit.ds");
+    client
+        .open(
+            &multi_uri,
+            "from 'orders.csv' | sort by amount, customerId\n",
+        )
+        .await;
+    assert_eq!(client.diagnostics(&multi_uri).await.codes(), ["DS2103"]);
+    let actions = client
+        .request(
+            "textDocument/codeAction",
+            json!({
+                "textDocument": { "uri": multi_uri },
+                "range": {
+                    "start": { "line": 0, "character": 28 },
+                    "end": { "line": 0, "character": 34 }
+                },
+                "context": { "diagnostics": [] }
+            }),
+        )
+        .await;
+    let arr = actions.as_array().unwrap();
+    assert_eq!(arr.len(), 1, "{actions}");
+    assert_eq!(arr[0]["isPreferred"], true);
+    let edits = arr[0]["edit"]["changes"][&multi_uri].as_array().unwrap();
+    assert_eq!(edits.len(), 2, "{actions}");
+    assert_eq!(edits[0]["newText"], " asc");
+    assert_eq!(edits[1]["newText"], " asc");
+
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn goto_definition_references_and_rename_for_lets() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("nav.ds");
+    let text = "let cutoff = 15;\n\
+                let big = from 'orders.csv' | where amount > cutoff;\n\
+                from big | where amount > cutoff | count\n";
+    client.open(&uri, text).await;
+    assert_eq!(client.diagnostics(&uri).await.codes(), Vec::<&str>::new());
+
+    // Go to definition from `big` on line 2 -> line 1 col 4..7.
+    let def = client
+        .request(
+            "textDocument/definition",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 2, "character": 6 }
+            }),
+        )
+        .await;
+    assert_eq!(
+        def,
+        json!({
+            "uri": uri,
+            "range": {
+                "start": { "line": 1, "character": 4 },
+                "end": { "line": 1, "character": 7 }
+            }
+        })
+    );
+
+    // Go to definition on a column (`amount`) returns null.
+    let none = client
+        .request(
+            "textDocument/definition",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 1, "character": 38 }
+            }),
+        )
+        .await;
+    assert_eq!(none, Value::Null);
+
+    // Find references for `cutoff`, with and without declaration.
+    let refs_with_decl = client
+        .request(
+            "textDocument/references",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 2, "character": 28 },
+                "context": { "includeDeclaration": true }
+            }),
+        )
+        .await;
+    let ref_lines: Vec<u64> = refs_with_decl
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|loc| loc["range"]["start"]["line"].as_u64().unwrap())
+        .collect();
+    assert_eq!(ref_lines, [0, 1, 2]);
+
+    let refs_no_decl = client
+        .request(
+            "textDocument/references",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 0, "character": 5 },
+                "context": { "includeDeclaration": false }
+            }),
+        )
+        .await;
+    let ref_lines: Vec<u64> = refs_no_decl
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|loc| loc["range"]["start"]["line"].as_u64().unwrap())
+        .collect();
+    assert_eq!(ref_lines, [1, 2]);
+
+    // Prepare rename on `cutoff` returns range + placeholder; on a column returns null.
+    let prep = client
+        .request(
+            "textDocument/prepareRename",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 1, "character": 46 }
+            }),
+        )
+        .await;
+    assert_eq!(
+        prep,
+        json!({
+            "range": {
+                "start": { "line": 1, "character": 45 },
+                "end": { "line": 1, "character": 51 }
+            },
+            "placeholder": "cutoff"
+        })
+    );
+    let prep_col = client
+        .request(
+            "textDocument/prepareRename",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 1, "character": 38 }
+            }),
+        )
+        .await;
+    assert_eq!(prep_col, Value::Null);
+
+    // Rename `cutoff` -> `min amount` (auto-quoted) returns 3 edits.
+    let edit = client
+        .request(
+            "textDocument/rename",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 0, "character": 5 },
+                "newName": "min amount"
+            }),
+        )
+        .await;
+    let edits = edit["changes"][&uri].as_array().unwrap();
+    assert_eq!(edits.len(), 3, "{edit}");
+    for e in edits {
+        assert_eq!(e["newText"], "['min amount']");
+    }
+
+    // Renaming `cutoff` to `big` (already defined) returns an invalid_params error.
+    let err = client
+        .request_response(
+            "textDocument/rename",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 0, "character": 5 },
+                "newName": "big"
+            }),
+        )
+        .await;
+    assert!(
+        err["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("already defined"),
+        "{err}"
+    );
+
+    // Renaming `cutoff` to `amount` (a column in scope at line 2) returns an invalid_params error.
+    let col_err = client
+        .request_response(
+            "textDocument/rename",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 0, "character": 5 },
+                "newName": "amount"
+            }),
+        )
+        .await;
+    assert!(
+        col_err["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("is a column at line 2"),
+        "{col_err}"
+    );
+
+    // Column shadowing in full mode: `let amount = 5;` is NOT referenced by `where amount > 0`.
+    let shadow_uri = client.uri("shadow.ds");
+    client
+        .open(
+            &shadow_uri,
+            "let amount = 5;\nfrom 'orders.csv' | where amount > 0 | take amount\n",
+        )
+        .await;
+    assert_eq!(
+        client.diagnostics(&shadow_uri).await.codes(),
+        Vec::<&str>::new()
+    );
+    let shadow_refs = client
+        .request(
+            "textDocument/references",
+            json!({
+                "textDocument": { "uri": shadow_uri },
+                "position": { "line": 0, "character": 5 },
+                "context": { "includeDeclaration": false }
+            }),
+        )
+        .await;
+    let arr = shadow_refs.as_array().unwrap();
+    assert_eq!(
+        arr.len(),
+        1,
+        "only `take amount`, not `where amount`: {shadow_refs}"
+    );
+    assert_eq!(arr[0]["range"]["start"]["character"], 44);
+
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn document_symbols_lists_lets_and_queries() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    let uri = client.uri("symbols.ds");
+    let text = "let cutoff = 15;\n\
+                let big = from 'orders.csv' | where amount > cutoff;\n\
+                from big | count;\n\
+                from 'orders.csv' | take 1\n";
+    client.open(&uri, text).await;
+    assert_eq!(client.diagnostics(&uri).await.codes(), Vec::<&str>::new());
+
+    let symbols = client
+        .request(
+            "textDocument/documentSymbol",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    let arr = symbols.as_array().unwrap();
+    assert_eq!(arr.len(), 4, "{symbols}");
+    assert_eq!(arr[0]["name"], "cutoff");
+    assert_eq!(arr[0]["kind"], 13); // SymbolKind::VARIABLE
+    assert_eq!(arr[0]["detail"], "long");
+    assert_eq!(arr[1]["name"], "big");
+    assert_eq!(arr[1]["kind"], 23); // SymbolKind::STRUCT
+    assert_eq!(arr[1]["detail"], "table (3 columns)");
+    assert_eq!(arr[2]["name"], "query 1");
+    assert_eq!(arr[2]["kind"], 19); // SymbolKind::OBJECT
+    assert_eq!(arr[2]["detail"], "from big");
+    assert_eq!(arr[3]["name"], "query 2");
+    assert_eq!(arr[3]["detail"], "from 'orders.csv'");
+
+    client.shutdown().await;
+}
+
+/// Decodes LSP delta-encoded semantic tokens into `(line, start, len, type_index, modifiers)`.
+fn decode_semantic_tokens(result: &Value) -> Vec<(u32, u32, u32, u32, u32)> {
+    let data = result["data"].as_array().unwrap();
+    let (chunks, remainder) = data.as_chunks::<5>();
+    assert!(remainder.is_empty());
+    let mut out = Vec::with_capacity(chunks.len());
+    let mut line = 0u32;
+    let mut start = 0u32;
+    for chunk in chunks {
+        let dl = chunk[0].as_u64().unwrap() as u32;
+        let ds = chunk[1].as_u64().unwrap() as u32;
+        let len = chunk[2].as_u64().unwrap() as u32;
+        let ty = chunk[3].as_u64().unwrap() as u32;
+        let mods = chunk[4].as_u64().unwrap() as u32;
+        line += dl;
+        start = if dl == 0 { start + ds } else { ds };
+        out.push((line, start, len, ty, mods));
+    }
+    out
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn semantic_tokens_full_encodes_tokens_and_fixes_contextual_keywords() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    let uri = client.uri("tokens.ds");
+    // Includes multi-line block comment, emoji UTF-16 offset, contextual keywords as columns,
+    // and a hyphenated operator (`project-away`).
+    let text = "/* line 1\nline 2 */\n\
+                from '😀.csv' | where by > 1 and has == on | project-away by\n";
+    client.open(&uri, text).await;
+
+    let result = client
+        .request(
+            "textDocument/semanticTokens/full",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    let tokens = decode_semantic_tokens(&result);
+
+    // Multi-line block comment is split across lines 0 and 1.
+    assert_eq!(tokens[0], (0, 0, 9, 0, 0)); // `/* line 1` -> comment
+    assert_eq!(tokens[1], (1, 0, 9, 0, 0)); // `line 2 */` -> comment
+
+    // Line 2: `from` (keyword=1), `'😀.csv'` (string=9, UTF-16 len 8), `|` (operator=2),
+    // `where` (keyword=1, defaultLibrary=4), `by` (variable=6), `>` (operator=2), `1` (number=8),
+    // `and` (operator=2), `has` (variable=6), `==` (operator=2), `on` (variable=6),
+    // `|` (operator=2), `project-away` (keyword=1, defaultLibrary=4), `by` (variable=6).
+    let line2: Vec<_> = tokens.into_iter().filter(|t| t.0 == 2).collect();
+    assert_eq!(
+        line2,
+        [
+            (2, 0, 4, 1, 0),   // from
+            (2, 5, 8, 9, 0),   // '😀.csv' (2 UTF-16 units for 😀)
+            (2, 14, 1, 2, 0),  // |
+            (2, 16, 5, 1, 4),  // where
+            (2, 22, 2, 6, 0),  // by (column!)
+            (2, 25, 1, 2, 0),  // >
+            (2, 27, 1, 8, 0),  // 1
+            (2, 29, 3, 2, 0),  // and
+            (2, 33, 3, 6, 0),  // has (column!)
+            (2, 37, 2, 2, 0),  // ==
+            (2, 40, 2, 6, 0),  // on (column!)
+            (2, 43, 1, 2, 0),  // |
+            (2, 45, 12, 1, 4), // project-away
+            (2, 58, 2, 6, 0),  // by (column!)
+        ]
+    );
+
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn extend_and_join_side_completion_in_lsp() {
+    let mut client = Client::start(datafusion(), one_publish(20), false).await;
+    client.write("orders.csv", ORDERS);
+    client.write("customers.csv", "id,name\nc-1,Alice\n");
+    let uri = client.uri("comp.ds");
+    client.open(&uri, "").await;
+
+    // `extend` item sees earlier items.
+    let items = client
+        .complete(
+            &uri,
+            2,
+            "from 'orders.csv' | extend total = amount * 2, big = ‸",
+        )
+        .await;
+    assert!(items.contains(&"total".to_owned()), "{items:?}");
+    assert!(items.contains(&"amount".to_owned()), "{items:?}");
+
+    // `$left.` and `$right.` in `join` conditions offer only that side's columns.
+    let right = client
+        .complete(
+            &uri,
+            3,
+            "from 'orders.csv' | join 'customers.csv' on $left.customerId == $right.‸",
+        )
+        .await;
+    assert_eq!(right, ["id", "name"]);
+
+    let left = client
+        .complete(
+            &uri,
+            4,
+            "from 'orders.csv' | join 'customers.csv' on $left.‸",
+        )
+        .await;
+    assert_eq!(left, ["orderId", "customerId", "amount"]);
+
+    client.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn syntax_only_mode_supports_navigation_rename_symbols_tokens_and_syntax_fixes() {
+    // `NoReads` panics on any schema lookup: every feature below must work from the parse alone.
+    let mut client = Client::start_with(
+        Arc::new(NoReads(DataFusionEngine::default())),
+        one_publish(20),
+        false,
+        json!({ "syntaxOnly": true }),
+    )
+    .await;
+    let uri = client.uri("untrusted.ds");
+    let text = "let limit = 15;\n\
+                let amount = 5;\n\
+                from 'orders.csv' | where by = amount | take limit | project amout\n";
+    client.open(&uri, text).await;
+    assert_eq!(client.diagnostics(&uri).await.codes(), ["DS0110"]);
+
+    // Code actions return syntax quick fix (DS0110), and NOT semantic fixes.
+    let eq_col = text.lines().nth(2).unwrap().find("= amount").unwrap() as u32;
+    let actions = client
+        .request(
+            "textDocument/codeAction",
+            json!({
+                "textDocument": { "uri": uri },
+                "range": {
+                    "start": { "line": 2, "character": eq_col },
+                    "end": { "line": 2, "character": eq_col + 1 }
+                },
+                "context": { "diagnostics": [] }
+            }),
+        )
+        .await;
+    let arr = actions.as_array().unwrap();
+    assert_eq!(arr.len(), 1, "{actions}");
+    assert_eq!(arr[0]["diagnostics"][0]["code"], "DS0110");
+
+    // Go to definition, references, prepareRename and rename work without reading files for
+    // no-column positions (`take limit`).
+    let limit_col = text.lines().nth(2).unwrap().find("limit").unwrap() as u32;
+    let def = client
+        .request(
+            "textDocument/definition",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 2, "character": limit_col + 1 }
+            }),
+        )
+        .await;
+    assert_eq!(def["range"]["start"]["line"], 0);
+    assert_eq!(def["range"]["start"]["character"], 4);
+
+    let refs = client
+        .request(
+            "textDocument/references",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 0, "character": 5 },
+                "context": { "includeDeclaration": true }
+            }),
+        )
+        .await;
+    assert_eq!(refs.as_array().unwrap().len(), 2);
+
+    let prep = client
+        .request(
+            "textDocument/prepareRename",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 2, "character": limit_col + 1 }
+            }),
+        )
+        .await;
+    assert_eq!(prep["placeholder"], "limit");
+
+    let renamed = client
+        .request(
+            "textDocument/rename",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 2, "character": limit_col + 1 },
+                "newName": "max_rows"
+            }),
+        )
+        .await;
+    assert_eq!(renamed["changes"][&uri].as_array().unwrap().len(), 2);
+
+    // Row-expression `amount` in syntax-only mode has unknown schema: excluded from definition/
+    // references, and prepareRename/rename refuse rather than risk rewriting a column.
+    let amount_col = text.lines().nth(2).unwrap().find("amount").unwrap() as u32;
+    let row_def = client
+        .request(
+            "textDocument/definition",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 2, "character": amount_col + 1 }
+            }),
+        )
+        .await;
+    assert_eq!(row_def, Value::Null);
+    let prep_err = client
+        .request_response(
+            "textDocument/prepareRename",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 1, "character": 5 }
+            }),
+        )
+        .await;
+    assert!(
+        prep_err["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("input schema"),
+        "{prep_err}"
+    );
+    let rename_err = client
+        .request_response(
+            "textDocument/rename",
+            json!({
+                "textDocument": { "uri": uri },
+                "position": { "line": 1, "character": 5 },
+                "newName": "threshold"
+            }),
+        )
+        .await;
+    assert!(
+        rename_err["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("input schema"),
+        "{rename_err}"
+    );
+
+    // Document symbols work from the parse alone.
+    let symbols = client
+        .request(
+            "textDocument/documentSymbol",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    let arr = symbols.as_array().unwrap();
+    assert_eq!(arr.len(), 3);
+    assert_eq!(arr[0]["name"], "limit");
+    assert_eq!(arr[0]["detail"], "scalar");
+    assert_eq!(arr[1]["name"], "amount");
+    assert_eq!(arr[1]["detail"], "scalar");
+    assert_eq!(arr[2]["name"], "query 1");
+
+    // Semantic tokens work from the parse alone and classify `by` in `where by = amount` as variable,
+    // without falsely marking ambiguous `amount` as `readonly`.
+    let tokens = client
+        .request(
+            "textDocument/semanticTokens/full",
+            json!({ "textDocument": { "uri": uri } }),
+        )
+        .await;
+    let decoded = decode_semantic_tokens(&tokens);
+    let by_col = text.lines().nth(2).unwrap().find("by").unwrap() as u32;
+    assert!(
+        decoded.contains(&(2, by_col, 2, 6, 0)),
+        "`by` should be variable (6): {decoded:?}"
+    );
+    assert!(
+        decoded.contains(&(2, amount_col, 6, 6, 0)),
+        "ambiguous `amount` should not have readonly modifier: {decoded:?}"
+    );
+    assert!(
+        decoded.contains(&(2, limit_col, 5, 6, 2)),
+        "unambiguous `take limit` should have readonly modifier (2): {decoded:?}"
+    );
+
+    client.shutdown().await;
+}

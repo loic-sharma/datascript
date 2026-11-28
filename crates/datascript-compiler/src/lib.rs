@@ -10,7 +10,8 @@
 //! - [`ir`]: the logical plan IR and its `explain` printout.
 //! - [`lints`]: warnings for programs that run but probably not as intended (M1-14).
 //! - [`check`] and [`compile`]: the entry points that parse, bind and plan a program.
-//! - [`ide`]: completion, hover and signature help over an [`Analysis`] (M3-02).
+//! - [`ide`]: completion, hover, signature help, `let` navigation/rename, document symbols and
+//!   semantic tokens (M3-02, M3-03).
 //!
 //! This crate does not depend on DataFusion, tokio or the filesystem, and builds for
 //! `wasm32-unknown-unknown`.
@@ -51,7 +52,7 @@ pub struct Analysis {
     pub hir: hir::Hir,
     /// Syntax and semantic diagnostics, sorted and capped.
     pub diagnostics: Vec<Diagnostic>,
-    /// The schema after each pipeline stage whose schema is known.
+    /// The schema after each pipeline stage (and each `extend` item) whose schema is known.
     pub stage_schemas: Vec<StageSchema>,
     /// Sources the provider answered [`SchemaLookup::Pending`] for, sorted. The session fetches
     /// them and checks again (D-022).

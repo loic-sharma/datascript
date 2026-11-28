@@ -8,7 +8,7 @@ use datascript_diagnostics::{Diagnostic, Span, Suggestion, did_you_mean};
 use datascript_syntax::ast::{self, AstNode, SortDirection};
 use datascript_syntax::display_name;
 
-use super::{Agg, Binder, Cols, Cx};
+use super::{Agg, Binder, Cols, Cx, StageSchema, schema_of};
 use crate::Type;
 use crate::hir::{Column, Expr, ExprKind, Op, ProjectItem, SortKey, Source};
 
@@ -300,16 +300,16 @@ impl Binder<'_> {
         op: &ast::ExtendOp,
         columns: &Option<Vec<Column>>,
     ) -> (Op, Option<Vec<Column>>) {
-        let ast_items: Vec<(Naming, ast::Expr)> = op
+        let ast_items: Vec<(Span, Naming, ast::Expr)> = op
             .items()
-            .filter_map(|item| Some((self.naming_of(&item)?, item.expr()?)))
+            .filter_map(|item| Some((self.span(&item), self.naming_of(&item)?, item.expr()?)))
             .collect();
-        let namings: Vec<Naming> = ast_items.iter().map(|(n, _)| n.clone()).collect();
+        let namings: Vec<Naming> = ast_items.iter().map(|(_, n, _)| n.clone()).collect();
         let reserved: HashSet<String> = columns.iter().flatten().map(|c| c.name.clone()).collect();
         let names = self.assign_names(&namings, &reserved);
         let mut current = columns.clone();
         let mut items = Vec::new();
-        for ((_, expr), name) in ast_items.iter().zip(names) {
+        for ((item_span, _, expr), name) in ast_items.iter().zip(names) {
             let cx = Cx {
                 cols: Cols::of(&current),
                 agg: Agg::Row("`extend`"),
@@ -328,6 +328,10 @@ impl Binder<'_> {
                     Some(existing) => *existing = column,
                     None => cols.push(column),
                 }
+                self.stage_schemas.push(StageSchema {
+                    span: *item_span,
+                    schema: schema_of(cols),
+                });
             }
             items.push(ProjectItem { name, expr: bound });
         }

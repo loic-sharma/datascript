@@ -1,18 +1,24 @@
-//! Completion, hover and signature help: the compiler's answers (`datascript_compiler::ide`)
-//! converted to LSP types, plus the one thing the compiler cannot do, listing files.
+//! Editor features: the compiler's answers (`datascript_compiler::ide`) converted to LSP types,
+//! quick fixes from diagnostic suggestions, and listing files for path completion.
 
+use std::collections::HashMap;
 use std::path::Path;
 
-use datascript_compiler::ide::{self, CompletionKind, Completions, FileCompletion};
+use datascript_compiler::ide::{
+    self, CompletionKind, Completions, DocumentSymbol, FileCompletion, RenameEdit, RenameTarget,
+    SemanticToken, SemanticTokenKind, SemanticTokenModifiers, SymbolKind,
+};
 use datascript_compiler::source::format_of_path;
-use datascript_diagnostics::{FileId, SourceFile, Span};
+use datascript_diagnostics::{Applicability, Diagnostic, FileId, SourceFile, Span};
 use tower_lsp_server::ls_types::{
-    self as lsp, Command, CompletionItem, CompletionItemKind, CompletionTextEdit, Documentation,
-    InsertTextFormat, MarkupContent, MarkupKind, ParameterInformation, ParameterLabel,
-    SignatureInformation, TextEdit,
+    self as lsp, CodeAction, CodeActionKind, CodeActionOrCommand, Command, CompletionItem,
+    CompletionItemKind, CompletionTextEdit, Documentation, InsertTextFormat, MarkupContent,
+    MarkupKind, ParameterInformation, ParameterLabel, PrepareRenameResponse, SemanticTokenModifier,
+    SemanticTokenType, SemanticTokens, SemanticTokensLegend, SignatureInformation, TextEdit, Uri,
+    WorkspaceEdit,
 };
 
-use crate::convert::range_of;
+use crate::convert::{self, range_of};
 
 /// The most file names one completion lists.
 const MAX_FILES: usize = 500;
@@ -195,6 +201,270 @@ fn utf16_len(s: &str) -> u32 {
     s.encode_utf16().count() as u32
 }
 
+/// Quick-fix code actions for every diagnostic overlapping `range` that carries a
+/// `MachineApplicable` or `MaybeIncorrect` suggestion.
+pub(crate) fn code_actions(
+    src: &SourceFile,
+    uri: &Uri,
+    diagnostics: &[Diagnostic],
+    range: lsp::Range,
+) -> Vec<CodeActionOrCommand> {
+    let mut actions = Vec::new();
+    for diag in diagnostics {
+        let diag_range = diag
+            .primary
+            .as_ref()
+            .map_or_else(lsp::Range::default, |label| range_of(src, label.span));
+        if !ranges_overlap(diag_range, range) {
+            continue;
+        }
+        let lsp_diag = convert::to_lsp(diag, src, uri);
+        for help in &diag.help {
+            let Some(suggestion) = &help.suggestion else {
+                continue;
+            };
+            let is_preferred = match suggestion.applicability {
+                Applicability::MachineApplicable => true,
+                Applicability::MaybeIncorrect => false,
+                Applicability::HasPlaceholders => continue,
+            };
+            if suggestion.edits.is_empty() {
+                continue;
+            }
+            let edits: Vec<TextEdit> = suggestion
+                .edits
+                .iter()
+                .map(|edit| TextEdit {
+                    range: range_of(src, edit.span),
+                    new_text: edit.replacement.clone(),
+                })
+                .collect();
+            let mut changes = HashMap::new();
+            changes.insert(uri.clone(), edits);
+            actions.push(CodeActionOrCommand::CodeAction(CodeAction {
+                title: help.message.clone(),
+                kind: Some(CodeActionKind::QUICKFIX),
+                diagnostics: Some(vec![lsp_diag.clone()]),
+                edit: Some(WorkspaceEdit {
+                    changes: Some(changes),
+                    ..WorkspaceEdit::default()
+                }),
+                is_preferred: Some(is_preferred),
+                ..CodeAction::default()
+            }));
+        }
+    }
+    actions
+}
+
+/// Whether two LSP ranges overlap, including touching at a point cursor.
+fn ranges_overlap(a: lsp::Range, b: lsp::Range) -> bool {
+    a.start <= b.end && b.start <= a.end
+}
+
+/// Whether a `codeAction` request's `context.only` filter allows quick fixes.
+pub(crate) fn allows_quickfix(only: Option<&[CodeActionKind]>) -> bool {
+    let Some(kinds) = only else {
+        return true;
+    };
+    let quickfix_kind = CodeActionKind::QUICKFIX;
+    let quickfix = quickfix_kind.as_str();
+    kinds.iter().any(|k| {
+        let s = k.as_str();
+        s.is_empty() || s == quickfix || quickfix.starts_with(&format!("{s}."))
+    })
+}
+
+/// Converts a compiler [`RenameTarget`] into an LSP prepare-rename response.
+pub(crate) fn prepare_rename(
+    src: &SourceFile,
+    file: FileId,
+    target: RenameTarget,
+) -> PrepareRenameResponse {
+    PrepareRenameResponse::RangeWithPlaceholder {
+        range: range_of(src, span(file, target.start, target.end)),
+        placeholder: target.placeholder,
+    }
+}
+
+/// Converts compiler [`RenameEdit`]s into an LSP [`WorkspaceEdit`] for `uri`.
+pub(crate) fn workspace_edit(
+    src: &SourceFile,
+    file: FileId,
+    uri: &Uri,
+    edits: Vec<RenameEdit>,
+) -> WorkspaceEdit {
+    let lsp_edits: Vec<TextEdit> = edits
+        .into_iter()
+        .map(|e| TextEdit {
+            range: range_of(src, span(file, e.start, e.end)),
+            new_text: e.replacement,
+        })
+        .collect();
+    let mut changes = HashMap::new();
+    changes.insert(uri.clone(), lsp_edits);
+    WorkspaceEdit {
+        changes: Some(changes),
+        ..WorkspaceEdit::default()
+    }
+}
+
+/// Converts compiler [`DocumentSymbol`]s into LSP [`lsp::DocumentSymbol`]s.
+pub(crate) fn document_symbols(
+    src: &SourceFile,
+    file: FileId,
+    symbols: Vec<DocumentSymbol>,
+) -> Vec<lsp::DocumentSymbol> {
+    symbols
+        .into_iter()
+        .map(|s| {
+            let kind = match s.kind {
+                SymbolKind::Variable => lsp::SymbolKind::VARIABLE,
+                SymbolKind::Table => lsp::SymbolKind::STRUCT,
+                SymbolKind::Query => lsp::SymbolKind::OBJECT,
+            };
+            #[allow(deprecated)] // `deprecated` field on `ls_types::DocumentSymbol`
+            lsp::DocumentSymbol {
+                name: s.name,
+                detail: s.detail,
+                kind,
+                tags: None,
+                deprecated: None,
+                range: range_of(src, span(file, s.start, s.end)),
+                selection_range: range_of(src, span(file, s.selection_start, s.selection_end)),
+                children: None,
+            }
+        })
+        .collect()
+}
+
+/// The token types advertised in [`semantic_tokens_legend`], in index order.
+pub const SEMANTIC_TOKEN_TYPES: &[SemanticTokenType] = &[
+    SemanticTokenType::COMMENT,
+    SemanticTokenType::KEYWORD,
+    SemanticTokenType::OPERATOR,
+    SemanticTokenType::ENUM_MEMBER,
+    SemanticTokenType::FUNCTION,
+    SemanticTokenType::TYPE,
+    SemanticTokenType::VARIABLE,
+    SemanticTokenType::PROPERTY,
+    SemanticTokenType::NUMBER,
+    SemanticTokenType::STRING,
+];
+
+/// The token modifiers advertised in [`semantic_tokens_legend`], in bit order matching
+/// [`SemanticTokenModifiers`].
+pub const SEMANTIC_TOKEN_MODIFIERS: &[SemanticTokenModifier] = &[
+    SemanticTokenModifier::DECLARATION,
+    SemanticTokenModifier::READONLY,
+    SemanticTokenModifier::DEFAULT_LIBRARY,
+];
+
+/// The server's semantic-tokens legend.
+pub(crate) fn semantic_tokens_legend() -> SemanticTokensLegend {
+    SemanticTokensLegend {
+        token_types: SEMANTIC_TOKEN_TYPES.to_vec(),
+        token_modifiers: SEMANTIC_TOKEN_MODIFIERS.to_vec(),
+    }
+}
+
+fn token_type_index(kind: SemanticTokenKind) -> u32 {
+    match kind {
+        SemanticTokenKind::Comment => 0,
+        SemanticTokenKind::Keyword => 1,
+        SemanticTokenKind::Operator => 2,
+        SemanticTokenKind::EnumMember => 3,
+        SemanticTokenKind::Function => 4,
+        SemanticTokenKind::Type => 5,
+        SemanticTokenKind::Variable => 6,
+        SemanticTokenKind::Property => 7,
+        SemanticTokenKind::Number => 8,
+        SemanticTokenKind::String => 9,
+    }
+}
+
+fn modifier_bits(modifiers: SemanticTokenModifiers) -> u32 {
+    let mut bits = 0u32;
+    if modifiers.contains(SemanticTokenModifiers::DECLARATION) {
+        bits |= 1 << 0;
+    }
+    if modifiers.contains(SemanticTokenModifiers::READONLY) {
+        bits |= 1 << 1;
+    }
+    if modifiers.contains(SemanticTokenModifiers::DEFAULT_LIBRARY) {
+        bits |= 1 << 2;
+    }
+    bits
+}
+
+/// Encodes compiler [`SemanticToken`]s into LSP delta-encoded [`SemanticTokens`], splitting any
+/// multi-line token (such as a block comment) into one token per line.
+pub(crate) fn semantic_tokens(src: &SourceFile, tokens: Vec<SemanticToken>) -> SemanticTokens {
+    let text = src.text();
+    let mut data = Vec::with_capacity(tokens.len());
+    let mut prev_line = 0u32;
+    let mut prev_start = 0u32;
+
+    for token in tokens {
+        let token_type = token_type_index(token.kind);
+        let token_modifiers_bitset = modifier_bits(token.modifiers);
+        for (seg_start, seg_end) in split_lines(text, token.start, token.end) {
+            let length = utf16_len(&text[seg_start..seg_end]);
+            if length == 0 {
+                continue;
+            }
+            let pos = src.utf16_line_col(seg_start as u32);
+            let line = pos.line - 1;
+            let start = pos.column - 1;
+            let delta_line = line.saturating_sub(prev_line);
+            let delta_start = if delta_line == 0 {
+                start.saturating_sub(prev_start)
+            } else {
+                start
+            };
+            data.push(lsp::SemanticToken {
+                delta_line,
+                delta_start,
+                length,
+                token_type,
+                token_modifiers_bitset,
+            });
+            prev_line = line;
+            prev_start = start;
+        }
+    }
+
+    SemanticTokens {
+        result_id: None,
+        data,
+    }
+}
+
+/// Splits `start..end` into non-empty single-line byte ranges (ending at `\n`, `\r\n` or `\r`).
+fn split_lines(text: &str, start: usize, end: usize) -> Vec<(usize, usize)> {
+    let mut out = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = start;
+    while i < end {
+        let mut line_end = i;
+        while line_end < end && bytes[line_end] != b'\n' && bytes[line_end] != b'\r' {
+            line_end += 1;
+        }
+        if line_end > i {
+            out.push((i, line_end));
+        }
+        if line_end >= end {
+            break;
+        }
+        i = if bytes[line_end] == b'\r' && line_end + 1 < end && bytes[line_end + 1] == b'\n' {
+            line_end + 2
+        } else {
+            line_end + 1
+        };
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use datascript_compiler::{Capabilities, NoSchemas, check};
@@ -217,5 +487,34 @@ mod tests {
             panic!("a text edit");
         };
         assert_eq!(edit.new_text, "strlen");
+    }
+
+    #[test]
+    fn code_actions_skip_placeholders_and_narrow_only_filter() {
+        use datascript_diagnostics::{Suggestion, codes};
+
+        let src = SourceFile::new("q.ds", "from t");
+        let uri: Uri = "file:///w/q.ds".parse().unwrap();
+        let diag = Diagnostic::error(codes::DS0101, "placeholder test")
+            .primary(Span::new(FileId(0), 0, 4), "")
+            .help_with(
+                "fill in placeholder",
+                Suggestion::new(
+                    vec![datascript_diagnostics::TextEdit::new(
+                        Span::new(FileId(0), 0, 4),
+                        "from <expr>",
+                    )],
+                    Applicability::HasPlaceholders,
+                ),
+            );
+        assert!(code_actions(&src, &uri, &[diag], lsp::Range::default()).is_empty());
+
+        assert!(allows_quickfix(None));
+        assert!(allows_quickfix(Some(&[CodeActionKind::QUICKFIX])));
+        assert!(allows_quickfix(Some(&[CodeActionKind::EMPTY])));
+        assert!(!allows_quickfix(Some(&[CodeActionKind::new(
+            "quickfix.other"
+        )])));
+        assert!(!allows_quickfix(Some(&[CodeActionKind::REFACTOR])));
     }
 }

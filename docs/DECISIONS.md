@@ -923,6 +923,57 @@ KQL rejects trailing commas, so queries that use them cannot be pasted verbatim 
   no constant, `severity: None`), never to be reused.
 *(M2-19, 2026-11-22.)*
 
+### D-060 — Quick fixes, `let` navigation, document symbols and semantic tokens (M3-03)
+**Accepted.**
+
+- **Shared in `datascript_compiler::ide` with `Option<&Analysis>`.** `goto_definition`,
+  `references`, `prepare_rename`, `rename`, `document_symbols` and `semantic_tokens` live in the
+  compiler so the LSP, `ds ui` and WASM give the same answers. Each takes `Option<&Analysis>`:
+  with `None` (syntax-only mode, D-053) document symbols, semantic tokens and no-column `let`
+  positions (`let` RHS, `from`, `join` right, `union`, `take`, `top` count, scalar `render`
+  properties) work from the syntax tree alone and read no files. In row-expression positions where
+  columns win over scalar `let`s (D-038), a name resolves to a `let` only when the operator's input
+  columns are known and do not contain it: when schemas are unavailable (syntax-only mode, or a
+  missing/unreadable source), those ambiguous sites are excluded from `goto_definition`,
+  `references` and `semantic_tokens` (`readonly`) so real columns are never mistaken for `let`s,
+  and `prepare_rename` / `rename` refuse rather than risk rewriting column references.
+- **Quick-fix code actions.** `textDocument/codeAction` checks the document's diagnostics whose
+  primary span overlaps the requested range (only lexical and syntax diagnostics in syntax-only
+  mode). `MachineApplicable` suggestions become preferred quick fixes (`isPreferred: true`);
+  `MaybeIncorrect` suggestions become non-preferred quick fixes (`isPreferred: false`), so the
+  user can still pick ambiguous rewrites such as `DS0106`'s `,` vs `;` or `DS3002`'s
+  `read_csv(...)` manually without auto-fix applying them. `HasPlaceholders` is skipped.
+- **`let` rename validation, quoting and LSP request errors.** Renaming a `let` to a name with
+  spaces or a reserved word quotes it with `['...']` (`display_name`); an already-quoted `['...']`
+  name is accepted too. Empty names, control characters/line breaks, collisions with another `let`
+  in the same document (`DS1003`), collisions with an in-scope column at any row-expression
+  reference (including columns made by earlier `extend` items, D-038/D-040), and ambiguous
+  unknown-schema row-expression sites are rejected with `InvalidParams`. Duplicate `let`
+  definitions are never merged into the first binding's references. LSP request-level refusals
+  (`prepareRename`/`rename` `ResponseError`s) carry plain one-line messages in DataScript's house
+  style rather than full `Diagnostic` structs, because JSON-RPC errors have no diagnostic span or
+  label structure.
+- **Document symbols.** Top-level `let` statements (`VARIABLE` for scalar, `STRUCT` for tabular,
+  matching completion) and query statements (`OBJECT`, named `query 1`, `query 2`, … with a
+  single-line source preview in `detail`).
+- **Semantic tokens and TextMate alignment.** The legend uses standard LSP token types (`comment`,
+  `keyword`, `operator`, `enumMember`, `function`, `type`, `variable`, `property`, `number`,
+  `string`) and modifiers (`declaration`, `readonly`, `defaultLibrary`). `editors/vscode/package.json`
+  maps them via `semanticTokenScopes` onto the TextMate scopes in `datascript.tmLanguage.json`
+  (`keyword.defaultLibrary` → `keyword.control.operator.datascript`, `keyword.declaration` →
+  `storage.type.let.datascript`, `variable` → `variable.other.datascript`,
+  `variable.defaultLibrary` → `variable.language.datascript`, `function` →
+  `entity.name.function.datascript`, …) so themes color both identically, while contextual keywords
+  (`by`, `on`, `has`, `in`, `kind`, `from`, …) used as column or `let` names get `variable`.
+  Multi-line tokens (such as block comments) are split per line when delta-encoding for the LSP.
+- **`extend` prior items and broken subqueries.** `bind_extend` records the cumulative schema
+  after each bound `extend` item in `Analysis::stage_schemas` so `Doc::columns_at` resolves prior
+  items without walking the HIR. When a trailing syntax error marks an `extend` or parenthesized
+  subquery broken, the binder still binds complete items / the inner pipeline under a
+  diagnostic-suppressing guard to populate `stage_schemas`, then returns `Op::Error` /
+  `Source::Error` so lints never fire inside syntactically broken nodes.
+*(M3-03, 2026-11-27.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack
