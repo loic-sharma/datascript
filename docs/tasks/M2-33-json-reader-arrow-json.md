@@ -33,8 +33,11 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
 ## Scope
 - **Custom JSON/NDJSON `FileFormat` and `FileSource`** (a self-contained module, e.g.
   `crates/datascript-datafusion/src/json.rs`):
-  - **Top-level schema inference** over the first `infer_rows` records (default
-    `DEFAULT_INFER_ROWS = 1000`):
+  - **Top-level schema inference** over the first `infer_rows` records of **each file**
+    (default `DEFAULT_INFER_ROWS = 1000`). Each column's type is the **join** of the kinds of
+    the values sampled for it, under one rule set; a glob's schema is the same join taken over
+    every file's sample (see "One schema per JSON source" below), so there are no separate glob
+    merge rules:
     - `Null` + any type `T` → `T`.
     - `Int64` + `Float64` → `Float64`.
     - A JSON number infers `Int64` only when it is an integer in the `i64` range with no fraction
@@ -44,12 +47,12 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       them as `Float64` (as `arrow-json` does) would round a column of such IDs in every row;
       it also avoids surprising `DS4003` errors.
     - **Accepted rounding:** integers inside the `i64` range but beyond ±2^53 lose precision
-      when they end up in a `Float64` column (`Int64` + `Float64` in one file's sample, a glob
-      merging `long` + `real`, or an in-range integer read past `infer_rows` into a `Float64`
+      when they end up in a `Float64` column (`Int64` + `Float64` in the sample of one file or
+      of a glob's files, or an in-range integer read past `infer_rows` into a `Float64`
       column). That is how any `real` column behaves, and widening these to `arrow.json`
-      instead would make the glob merge depend on values the merge never sees. A column that
-      holds only integers stays `Int64` and exact. Record this in DECISIONS.md next to the
-      out-of-`i64` rule.
+      instead would make a column's type depend on magnitudes past `infer_rows`, which
+      inference never sees. A column that holds only integers stays `Int64` and exact. Record
+      this in DECISIONS.md next to the out-of-`i64` rule.
     - Numbers whose magnitude overflows `f64` (for example `1e400`) → `Utf8` + `arrow.json` for
       the same reason, rather than storing infinity.
     - Consistent scalar columns infer `Boolean`, `Int64`, `Float64`, or `Utf8`.
@@ -58,10 +61,10 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       well as scalar + object/array) is inferred as `Utf8` with extension type `arrow.json`
       (`datascript_compiler::arrow::JSON_EXTENSION`). Widening mixed scalars to `arrow.json`
       rather than plain `Utf8` preserves JSON types losslessly (`1` vs. `"1"`) for `dynamic`/KQL.
-    - **All-null columns:** a key whose sampled values are all JSON `null` infers Arrow `Null` for
-      that file (so glob merging lets another file's type win, as for CSV, D-044). If no file of
-      the source gives it a type, the merged column is `Utf8` + `arrow.json` (not `string` as
-      for CSV), so any later value can be stored losslessly instead of failing the type check.
+    - **All-null columns:** `null` is the bottom of the join, so another file's type wins. A
+      column whose sampled values are all JSON `null` in every file of the source becomes
+      `Utf8` + `arrow.json` (not `string` as for CSV), so any later value can be stored
+      losslessly instead of failing the type check.
     - **Keys first seen past `infer_rows`** are not in the schema and are dropped silently (as
       `arrow-json` and DuckDB do). Document this in LANGUAGE.md §3.1 next to `infer_rows`.
     - Duplicate keys within one **top-level** JSON object: **last wins** (matches `serde_json`
@@ -92,10 +95,10 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       is on line 1).
   - **Schema-driven streaming decoder and projection pushdown:**
     - The decoder decodes records into **any target schema it is given**, matching keys by name,
-      not only the schema it inferred for that file. `lower.rs::scan` passes the merged
-      (widened) schema for JSON sources, so every file of a glob is read by one table with one
-      schema and no post-read casts are needed. This also lets [M2-09](M2-09-schema-overrides.md)
-      plug a user-declared `schema = (...)` straight into the reader.
+      not only the schema its own sample would give. Every file of a JSON source is read into
+      the source's one schema (see "One schema per JSON source"), so no post-read casts are
+      needed. This also lets [M2-09](M2-09-schema-overrides.md) plug a user-declared
+      `schema = (...)` straight into the reader.
     - **Encoding inside `arrow.json` columns:** every non-null value—including scalars—is stored
       as its JSON text: a string row is stored with quotes (e.g. `"\"scripts.yaml\""`), a number
       keeps its original JSON spelling, booleans are `true`/`false`, and objects and arrays are
@@ -114,16 +117,20 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       | `Float64` | any JSON number except integers outside the `i64` range and numbers that overflow `f64` (in-range integers are converted, rounding beyond ±2^53 as described under "Accepted rounding") | type mismatch (including integers outside `i64` and numbers such as `1e400`, which would become infinity; inference stores both as `arrow.json`, so this keeps the type check consistent with inference) |
       | `Utf8` (no extension) | strings | type mismatch (objects, arrays, numbers, booleans) |
       | `Utf8` + `arrow.json` | anything | — |
-      `null` is accepted in every column.
+      `null` is accepted in every column. Every column of the target schema is checked in
+      every record, **whether or not the query projects it** (see below), so whether a file
+      reads never depends on the query. Keys absent from the target schema are not checked.
     - Parse only top-level keys per JSON object record (e.g. via `serde_json::value::RawValue` or
       a lightweight streaming scanner), slicing nested objects/arrays for `arrow.json` columns
       without recursing into nested keys.
-    - Implement `FileSource::try_pushdown_projection` so unprojected columns (including large
-      nested JSON blobs) are skipped during scanning. Type checks run only on projected
-      columns, so a type mismatch in a column the query never reads (or in any column, for a
-      query such as `count` that projects none) is not an error; syntax errors and non-object
-      records are still reported for every record. Record this in DECISIONS.md and LANGUAGE.md
-      §3.1 (DuckDB behaves the same way).
+    - Implement `FileSource::try_pushdown_projection` so no Arrow values are built for
+      unprojected columns (including large nested JSON blobs, which are neither copied nor
+      whitespace-stripped). The decoder tokenizes every top-level value anyway to check syntax,
+      so checking each value's JSON kind against its column type costs next to nothing; a type
+      mismatch in a column the query never reads (or in any column, for `count`) is still a
+      `DS3008`, like syntax errors and non-object records. Record this in DECISIONS.md (DuckDB
+      skips unprojected columns entirely; DataScript prefers results that do not depend on the
+      projection, and `infer_rows` is the fix either way).
     - Respect `batch_size`, fill missing keys with `null`, and ignore keys absent from the
       target schema.
     - **Read each file whole, from byte 0:** override `FileSource::supports_repartitioning` to
@@ -151,37 +158,26 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       help that names `read_json(..., infer_rows = n)` (not `read_csv`).
 
     The note may still carry the error's own text; M2-34 replaces it with structured notes.
-- **Schema merging (`crates/datascript-datafusion/src/sources.rs`):**
-  - `Merged::Arrow` currently stores only `DataType` and strips field metadata in `Merged::field`.
-    Add a dedicated `Merged::Json` variant: `Merged::of` maps a `Utf8` + `arrow.json` field to it
-    **before** calling `from_arrow_source`, and `Merged::field` turns it back into `Utf8` with the
-    `arrow.json` metadata, so these columns do not silently degrade into `Type::String`. Checking
-    the extension first keeps the rules below working after [M2-03](M2-03-dynamic-type.md) makes
-    `from_arrow_source` map `arrow.json` to `Type::Dynamic`; otherwise `Typed(String)` +
-    `Typed(Dynamic)` would go through `Type::common` and turn working globs back into `DS3005`.
-  - **For every format** (Parquet files can carry `arrow.json` columns too): `Merged::Json` +
-    `Merged::Json` → `Merged::Json`, and `Merged::Null` + `Merged::Json` → `Merged::Json`.
-    `Merged::name()` shows `Merged::Json` as `dynamic` in `DS3005` messages.
-  - **Glob merging for JSON sources** (the merge needs to know the source is JSON):
-    - `Merged::Null` + `Merged::Json` → `Merged::Json`.
-    - `Merged::Typed(_)` + `Merged::Json` → `Merged::Json`.
-    - `Merged::Typed(a)` + `Merged::Typed(b)` → `Type::common(a, b)` when there is one (e.g.
-      `long` + `real` → `real`), else `Merged::Json`, never `DS3005`. This matches what one file
-      holding both types in its first `infer_rows` records infers. Merging only ever widens
-      (`long` → `real` → `arrow.json`) and every wider type accepts the narrower one's values,
-      so adding a file never turns a working read into a failing one (unless the new file is
-      itself malformed). The converse does not hold, because each file is sampled on its own:
-      a file whose column changes type past `infer_rows` fails alone but can read once another
-      file widens that column.
-    - These are safe because the decoder reads every file into the merged schema and encodes
-      scalars as JSON text (strings quoted), rather than casting a file's column after the read.
-      Real globs (daily log files where one file holds only strings in a field and another holds
-      numbers or objects) then work.
-    - `Merged::Null` with no other type → `Merged::Json` (see "All-null columns").
-    - CSV, TSV and Parquet merging is otherwise unchanged (`Type::common`, else `DS3005`; for
-      Parquet, `Merged::Typed(_)` + `Merged::Json` is still `DS3005`).
-  - With one schema for all JSON files, `Resolved::uniform` / the per-file `UNION ALL` path in
-    `lower.rs::scan` is no longer needed for JSON sources (keep it for CSV).
+- **One schema per JSON source (`crates/datascript-datafusion/src/sources.rs`):**
+  - For JSON sources, `read` samples each file through the JSON module (so a failure still
+    names its file), joins the per-file column kinds with the inference rule set above (columns
+    in order of first appearance, files in path order), and uses the result as both
+    `Resolved::widened` and every `SourceFile::raw`. JSON sources **skip `merge` and `Merged`
+    entirely**: no `Merged::Json` variant and no JSON-specific merge rules, and JSON globs never
+    report `DS3005`.
+  - Because every file's `raw` is the same schema, `Resolved::uniform` is true, and
+    `lower.rs::scan` already reads the whole glob with one `ListingTable` and no casts; it
+    needs no JSON-specific path. The per-file `UNION ALL` path stays for CSV and TSV.
+  - Implement the `FileFormat::infer_schema` the trait requires with the same functions
+    (sample each object, then join), so the two can never disagree.
+  - Joining only ever widens (`long` → `real` → `arrow.json`) and every wider type accepts the
+    narrower one's values, so adding a file never turns a working read into a failing one
+    (unless the new file is itself malformed). Real globs (daily log files where one file holds
+    only strings in a field and another holds numbers or objects) then work, because the decoder
+    reads every file into the joined schema and encodes scalars as JSON text (strings quoted).
+  - CSV, TSV and Parquet merging is unchanged (`Type::common`, else `DS3005`). Parquet columns
+    carrying `arrow.json` still lose their metadata in `Merged::field` (today's behavior); that
+    is left to [M2-03](M2-03-dynamic-type.md) (see the hand-off below).
   - Until [M2-03](M2-03-dynamic-type.md) lands, `from_arrow_source` continues to report `Utf8`
     with `arrow.json` as an unsupported pass-through type (`DS2008` when used in expressions;
     allowed in `project`, `project-away`, `take`, etc.).
@@ -213,20 +209,21 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
     rounding of in-range integers beyond ±2^53 in `Float64` columns, all-null
     columns, per-file array-vs-NDJSON detection, leading BOM skipped, top-level duplicate keys →
     last wins, whitespace-only normalization of nested values, the type-check table, type checks
-    only on projected columns, files read whole (no byte-range splitting), and the JSON glob
-    merge rules (`Typed` + `arrow.json` and `Typed(a)` + `Typed(b)` with no common type both →
-    `arrow.json`, never `DS3005`). Amend D-044, which says globs with differing schemas are read
-    file by file and combined with `UNION ALL`: from M2-33 that holds only for CSV and TSV, and
-    JSON globs are read by one table with the merged schema.
+    on every column regardless of projection, files read whole (no byte-range splitting), and
+    a JSON source's schema being one join over every file's sample (never `DS3005`). Amend
+    D-044, which says a glob's per-file schemas are merged by name (differing ones read file by
+    file with `UNION ALL`) and that all-null columns read as `string`: from M2-33 both hold only
+    for CSV, TSV and Parquet; JSON globs get one inferred schema, are read by one table, and an
+    all-null column is `arrow.json`.
   - Update [M5-01](M5-01-wasm-build.md)'s carried-over bullet from M2-13 to remove `is_json_array`
     once it reads through `ObjectStore` (keeping "Test JSON, NDJSON and globs on wasm32").
   - Add a carried-over line to [M2-03](M2-03-dynamic-type.md): `(from M2-33) the JSON reader now
     produces Utf8 + arrow.json for nested and mixed columns, never Struct/List (Parquet still
     produces Struct/List, so mapping those stays in scope); nested values are stored as written
     minus whitespace, so dynamic equality, grouping and duplicate-key handling must work on parsed
-    values (see M2-33's DECISIONS.md entry); the glob merge checks for arrow.json (Merged::Json)
-    before from_arrow_source, so keep that order when from_arrow_source starts mapping arrow.json
-    to dynamic`.
+    values (see M2-33's DECISIONS.md entry); JSON sources skip the glob merge, but Parquet
+    columns carrying arrow.json still go through Merged, whose Merged::Arrow drops field metadata
+    so they read as string: make Merged keep arrow.json (dynamic) when from_arrow_source maps it`.
   - Add a carried-over line to [M2-12](M2-12-runtime-source-errors.md): `(from M2-33) a JSON
     glob is read by one table, not one ListingTable per file; name the failing JSON file from
     the path in M2-33's structured reader error instead`.
@@ -244,16 +241,17 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       - JSON array (`[{...}, ...]`) with nested and heterogeneous fields (including a minified
         single-line array and a pretty-printed multi-line array, whose nested values come out
         without whitespace),
-      - glob merging: `Null` + `arrow.json`, `string` + `arrow.json` and `long` + `string`
-        all merge to `arrow.json` (with the `string` file's values quoted in the output and the
-        `long` file's numbers unquoted), and `long` + `real` merges to `real`,
+      - JSON globs whose files sample differently: all-`null` + object, `string` + object and
+        `long` + `string` all give `arrow.json` (with the `string` file's values quoted in the
+        output and the `long` file's numbers unquoted), `long` + `real` gives `real`, and a
+        column all-`null` in every file gives `arrow.json`,
       - integers outside `i64` (e.g. `18446744073709551615`) inferred as `arrow.json` with
         their exact digits,
       - a `*.json` glob mixing an NDJSON file and a JSON-array file (each read in its own
         layout), and BOM-prefixed NDJSON and JSON-array files (the array auto-detected as an
         array),
-      - a type mismatch past `infer_rows` in a column the query does not project is not an
-        error,
+      - a type mismatch past `infer_rows` in a column the query does not project is still
+        `DS3008`, both for a `project` of another column and for `count`,
       - a column that is all `null` in the sample and holds an object past `infer_rows`
         (stored as `arrow.json`),
       - a runtime type mismatch past `infer_rows` reported as `DS3008` (not `DS4002`) with the
@@ -268,8 +266,10 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       duplicate keys last-wins, nested duplicate keys
       kept, whitespace removal outside strings only, missing/extra keys, keys first seen past
       `infer_rows` dropped, every row of the type-check table, decoding into a wider target
-      schema than the file's own, multi-batch streaming, streaming JSON array scanner,
-      projection pushdown skipping unprojected columns, and a file larger than
+      schema than the file's own, joining per-file samples (the same result as one file holding
+      all the samples), multi-batch streaming, streaming JSON array scanner, projection pushdown
+      building no values for unprojected columns while still type-checking them, and a file
+      larger than
       `repartition_file_min_size` (or with that threshold lowered) read as one range, with
       correct line numbers in errors past the first range's size).
 - [ ] `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,

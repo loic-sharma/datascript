@@ -174,10 +174,10 @@ turn into a big-bang port.
 
 M2-22, M2-24…M2-28, M2-33, M7-01 and M7-02 all touch source resolution or the reader and writer
 catalogs (`source::READERS`, `is_glob`, `SourceRef::for_path` and the DataFusion source code); run
-them one at a time, or keep each to its own modules. M2-33 also rewrites the JSON scan path in
-`crates/datascript-datafusion/src/lower.rs` and the glob merge in `sources.rs`, which M2-12 (per-file
-error attribution) and M2-09 (reader schema overrides; M2-33 leaves it a carried-over item) also
-change, so run M2-12 and M2-09 one at a time with M2-33. M2-33 also edits M5-01's carried-over
+them one at a time, or keep each to its own modules. M2-33 also changes how JSON sources are
+resolved and read (`sources.rs` gives each JSON source one schema, so `lower.rs::scan` reads it
+with one table), which M2-12 (per-file error attribution) and M2-09 (reader schema overrides;
+M2-33 leaves it a carried-over item) also change, so run M2-12 and M2-09 one at a time with M2-33. M2-33 also edits M5-01's carried-over
 `is_json_array` item. M2-34 waits for M2-33, and M2-33, M2-34 and M2-12 all edit
 `crates/datascript-datafusion/src/errors.rs`, so run them one at a time. M2-23
 (`describe`), M2-25 (`output`) and M2-26 (writer option syntax) edit `datascript-syntax`, so none
