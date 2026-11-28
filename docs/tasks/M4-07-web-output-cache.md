@@ -10,8 +10,11 @@ Optionally persist each cell's last rendered result locally outside the reposito
 `.dsnb` files strictly source-only on disk (D-062).
 
 ## Scope
-- Store each cell's last Arrow IPC batches, `RenderSpec`, timing/sourceCount metadata, and cell
-  source fingerprint in browser `IndexedDB`, keyed by workspace root + notebook path + cell index.
+- Store each cell's last Arrow IPC batches, `RenderSpec`, timing/`sourceCount`/`rowLimit` metadata,
+  and cell source + upstream-`let` fingerprint in browser `IndexedDB`, **keyed by workspace root +
+  notebook path + cell source fingerprint** (storing cell index only as a disambiguation hint when
+  two cells have identical source) so inserting, deleting, or reordering cells preserves cached
+  outputs.
 - Never write cache files inside the working directory or next to `.dsnb` files.
 - On opening a `.dsnb` notebook, hydrate matching cells with their cached outputs marked **Stale**
   (and show a subtle "Cached from previous session · click Run to refresh" indicator).
@@ -20,7 +23,8 @@ Optionally persist each cell's last rendered result locally outside the reposito
 
 ## Acceptance criteria
 - [ ] Unit tests for cache serialization, LRU eviction, quota-error handling, and fingerprint
-      matching.
+      matching across cell insertion, deletion, and reordering (including duplicate identical
+      cells).
 - [ ] Playwright test verifying that reloading a saved `.dsnb` restores cached outputs with a
       **Stale** badge without modifying the `.dsnb` file on disk.
 

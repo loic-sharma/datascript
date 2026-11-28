@@ -22,14 +22,14 @@ APIs the LSP uses. *(Outline and Scope tabs follow in M4-05.)*
   - CodeMirror 6 autocomplete (columns, operators, functions, `let`s, host tables, sandboxed file
     paths), hover tooltips, and function signature help popups driven through `Runtime`.
 - **Right-hand Contextual Inspector** (`web/`, starts collapsed by default):
-  - Opens on demand via `Cmd/Ctrl+Alt+B`, the top-bar inspector icon, selecting a data file in the
-    left tree, or clicking a grid column header's stats badge.
+  - Opens on demand via `Cmd/Ctrl+Shift+B`, the top-bar inspector icon, selecting a data file in
+    the left tree, or clicking a grid column header's stats badge.
   - **Live Result Profile** (when a cell with results is focused): total rows (explicitly labelled
-    `"of first 10,000 rows"` when truncated per D-064) & column count, copy-schema button, column
-    filter & sort (`Default`, `Name`, `Null %`, `Distinct`), and per-column rows showing type
-    badge, distinct count, null % badge, and expandable distribution summary / min–max / top
-    values—computed client-side over the cell's Arrow `RecordBatch`es so it works identically in
-    WASM (M5-03).
+    `"of first {N} rows"` using the run's actual `rowLimit` when truncated per D-064) & column
+    count, copy-schema button, column filter & sort (`Default`, `Name`, `Null %`, `Distinct`), and
+    per-column rows showing type badge, distinct count, null % badge, and expandable distribution
+    summary / min–max / top values—computed client-side over the cell's Arrow `RecordBatch`es so it
+    works identically in WASM (M5-03).
   - **Source Schema** (when a data file or attached table is selected in the left tree): path,
     format, size, searchable column list (`name`, DataScript/Arrow type), and quick actions
     (**Insert `from '...'`**, **New preview cell**, and **Describe** once M2-23 lands).
@@ -38,7 +38,8 @@ APIs the LSP uses. *(Outline and Scope tabs follow in M4-05.)*
 - [ ] Completion, hover, and signature-help results match the LSP for the same text and cursor
       (shared test vectors), plus tests for cross-cell `let` completion in notebooks.
 - [ ] Vitest unit tests for the client-side Arrow column profiler (null %, distinct counts,
-      numeric/string/datetime summaries, empty tables, and truncated-sample labelling).
+      numeric/string/datetime summaries, empty tables, and dynamic truncated-sample labelling with
+      both default and non-default `rowLimit`).
 - [ ] Playwright tests verifying the right pane starts collapsed, opens on demand for Result
       Profile / Source Schema, updates when switching focused cells, and provides editor
       completion/hover.

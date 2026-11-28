@@ -10,14 +10,18 @@ results truncated per D-064; `DS4061` upstream cell has errors per D-062) (D-018
 `ds ui [dir]` starts an axum server on 127.0.0.1 with a random port, prints the URL and opens the
 browser. Access requires a per-launch token in the URL; check the `Origin` header on API/WS
 requests. Implements the M4 v1 server API specified in
-[WEB_UI.md §6](../WEB_UI.md#server-api-contract-datascript-server-m4-01--m4-04) (file rename/delete
+[WEB_UI.md §6](../WEB_UI.md#server-api-contract-datascript-server-m4-01-m4-04--m4-05) (file rename/delete
 lands in M4-05).
 
 ## Scope
 - **Shared `.dsnb` parser & cross-cell program stitcher** (`datascript-compiler`, D-062):
-  - Implement the canonical, pure, `wasm32`-compatible `.dsnb` Markdown parser/serializer in
-    `datascript-compiler` so `datascript-server` (M4-01/M4-04), `ds run`/`ds check` and `ds lsp`
-    (M4-06), and `datascript-wasm` (M5) all reuse it.
+  - Implement the single canonical, pure, `wasm32`-compatible `.dsnb` Markdown parser/serializer
+    in `datascript-compiler` so `datascript-server` (M4-01/M4-04), `ds run`/`ds check` and
+    `ds lsp` (M4-06), and `datascript-wasm` (M5) all reuse it—`web/` never duplicates the parser.
+    Follow CommonMark fenced-code-block rules (nested ` ```ds ` inside a longer non-`ds` fence
+    stays prose), serialize DataScript cells with a backtick fence strictly longer than any
+    backtick run in the cell, and escape/unescape any literal standalone `<!-- ds:cell -->` line
+    inside a Markdown cell (`<!-- ds:cell:literal -->`) for lossless round-trips.
   - Extract the pure segment-stitching and span-mapping primitive (`StitchedProgram`) from
     `datascript-cli`'s `ReplProgram` into `datascript-compiler`, have `ReplProgram` delegate to it,
     and use it in `datascript-server` so upstream `let` statements (`0..targetCellIndex`) prepend
@@ -37,27 +41,35 @@ lands in M4-05).
   - `GET /api/files?dir=&includeHidden=`: full working-directory tree (hiding `.git`,
     `node_modules`, `target`, dotfiles unless `includeHidden=true`; no path traversal).
   - `GET /api/file?path=`, `POST /api/file` (create `.dsnb`/`.ds`), `PUT /api/file` (save
-    `.dsnb`/`.ds`): writes carry an optional `expectedVersion` (mtime + hash) and return
-    `409 Conflict` if changed on disk (D-062). Strictly enforce read-only data files: refuse
-    creating or writing any path whose extension is not `.dsnb` or `.ds`, and refuse `POST` when
-    the target path already exists. *(File/folder rename `PATCH` and delete `DELETE` are added in
-    M4-05.)*
+    `.dsnb`/`.ds`): `GET` returns canonical parsed cells (+ frontmatter) for `.dsnb` and raw text
+    for `.ds`, plus `version` (etag); `PUT` accepts structured cells for `.dsnb` (serialized via
+    `datascript-compiler`) with optional `expectedVersion` and returns `409 Conflict` if changed on
+    disk (D-062). Strictly enforce read-only data files:
+    - Refuse creating or writing any path whose extension is not `.dsnb` or `.ds`, or where the
+      path or any parent component under the root is a **symlink** (`symlink_metadata`/`O_NOFOLLOW`,
+      blocking in-root symlinks like `notes.ds -> data/orders.csv`).
+    - Create files atomically with `OpenOptions::create_new(true)` (`O_CREAT|O_EXCL`) so `POST`
+      can never race to overwrite an existing file.
+    *(Folder create `POST /api/dir`, rename `PATCH /api/file`, and delete `DELETE /api/file` are
+    added in M4-05.)*
   - `GET /api/schema?source=`: inspect a file or host table schema via `Session`.
 - **Notebook-aware check, streaming run, cancellation & ticketed streaming export**:
   - `POST /api/check`: checks a script or notebook cell via `StitchedProgram`; returns per-cell
     UTF-16 JSON diagnostics and active `let` scope summaries.
   - `WS /api/ws`: multiplexed WebSocket for (1) streaming query runs (`run` / `cancel` using
-    `Session::start` + the streaming row-limit helper → `started` event carrying `nowMicros` and
-    scanned `sourceCount` from the `QueryPlan`, capped Arrow IPC batches + `RenderSpec` +
-    diagnostics + timing; emits `DS4060` info on truncation per D-064, and `DS4061` — `"cannot run
-    cell because an upstream cell has errors"` with a secondary label pointing at the broken
-    upstream cell — when running a cell whose upstream `let` cell has errors; supports running a
-    whole cell or a single statement index) and (2) filesystem watch events (updating the tree and
-    invalidating `Session`'s schema cache).
+    `Session::start` + the streaming row-limit helper → `started` event carrying `nowMicros`,
+    `rowLimit`, and scanned `sourceCount` from the `QueryPlan`, capped Arrow IPC batches +
+    `RenderSpec` + diagnostics + timing; emits `DS4060` info on truncation per D-064, and `DS4061`
+    — `"cannot run cell because an upstream cell has errors"` with a secondary label pointing at
+    the broken upstream cell — when running a cell whose upstream `let` cell has errors; supports
+    running a whole cell or a single statement index) and (2) filesystem watch events (updating the
+    tree and invalidating `Session`'s schema cache).
   - **Two-step zero-buffering streaming export** (D-064):
-    - `POST /api/export` (standard Bearer token + `Origin` check) accepts
-      `{ path, cells, targetCellIndex, statementIndex, nowMicros, format }`, validates the request,
-      and mints a short-lived single-use download URL `/api/export/<ticket>`.
+    - `POST /api/export` (standard Bearer token + `Origin` check) accepts the run-time cell
+      snapshot `{ path, cells, targetCellIndex, statementIndex, nowMicros, format }` (where
+      `statementIndex` is 0-based among the target cell's own query statements, ignoring upstream
+      and local `let` statements), validates the request, and mints a short-lived single-use
+      download URL `/api/export/<ticket>`.
     - `GET /api/export/<ticket>` skips `Origin` (omitted by browsers on GET navigations), checks
       `Sec-Fetch-Site: same-origin` when present, consumes the one-shot ticket atomically, and
       streams the full uncapped result as `Content-Disposition: attachment` via
@@ -82,13 +94,18 @@ Design-review additions:
   - auth (missing/wrong token, bad `Origin` on API/WS, one-shot ticket replay/expiry and
     `Sec-Fetch-Site` check on `GET /api/export/<ticket>`);
   - path traversal and workspace safety: read-only rejection on `.csv`/`.parquet` creates/writes,
-    refusal to create over an already-existing file, and `409` version conflicts;
-  - `.dsnb` parser round-trip tests and `StitchedProgram` cross-cell `let` checking/execution with
+    in-root symlink rejection (e.g. `notes.ds -> data/orders.csv` refused by `PUT`/`POST`),
+    atomic `O_CREAT|O_EXCL` refusal to create over an already-existing file, and `409` version
+    conflicts;
+  - `.dsnb` parser round-trip tests (including a DataScript cell containing ```` ``` ````, a
+    ` ```ds ` block nested inside a 4-backtick non-`ds` fence, and a Markdown cell containing a
+    literal `<!-- ds:cell -->` line) and `StitchedProgram` cross-cell `let` checking/execution with
     mapped UTF-16 spans and `DS4061` when running a cell with a broken upstream cell;
-  - WebSocket streaming + cancellation + `sourceCount` metadata + streaming row-cap
-    slicing/truncation (`DS4060`) over a result exceeding `row_limit`;
-  - two-step streaming export reusing `nowMicros` (verified with `now()`/`ago()`), exact
-    `statementIndex` on a multi-statement cell, and upstream `let`s.
+  - WebSocket streaming + cancellation + `sourceCount` / `rowLimit` metadata + streaming row-cap
+    slicing/truncation (`DS4060`) over a result exceeding both default and custom `row_limit`;
+  - two-step streaming export reusing the run-time cell snapshot, `nowMicros` (verified with
+    `now()`/`ago()`), exact cell-relative `statementIndex` on a multi-statement cell with local
+    and upstream `let`s.
 - [ ] `datascript-cli`'s REPL tests pass unchanged after delegating `ReplProgram` to
       `datascript-compiler`'s `StitchedProgram`, and `datascript-compiler` still passes the
       `wasm32-unknown-unknown` check.

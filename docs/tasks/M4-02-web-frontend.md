@@ -19,10 +19,10 @@ Command Mode, Command Palette, Quick Open, and Outline/Scope tabs follow in M4-0
     against M4-01).
   - Keep result rendering primitives (`web/src/components/results/`: virtualized Arrow grid and
     diagnostic cards) decoupled from the notebook shell so M3-06 can import them directly.
-- **`.dsnb` notebook parser & lossless serializer** (D-062):
-  - Parse source-only plain-text Markdown `.dsnb` files (YAML frontmatter preserved, ` ```ds `
-    fences → DataScript cells, prose → Markdown cells, `<!-- ds:cell -->` adjacent Markdown
-    delimiter) with round-trip unit tests matching M4-01's canonical Rust parser.
+- **`.dsnb` notebook loading & saving** (D-062):
+  - Consume structured `.dsnb` cells directly from `Runtime` (`GET /api/file` / `PUT /api/file`
+    backed by `datascript-compiler`'s single canonical Rust parser/serializer—no duplicate `.dsnb`
+    parser in TypeScript).
   - Open plain `.ds` scripts as a single-editor view, and open an unsaved **Scratchpad** notebook
     on launch when no notebook is open—showing a dismissible quick-preview strip of discovered data
     files with one-click **Preview** (`from '<relpath>' | take 100` + auto-run).
@@ -55,15 +55,20 @@ Command Mode, Command Palette, Quick Open, and Outline/Scope tabs follow in M4-0
     cells (D-063).
   - **Virtualized Arrow results grid**: row numbers, compact column headers (type badge + subtle
     null indicator), `NULL` styling, column resizing, click-to-copy cell/row, fullscreen expand
-    (`[ ]`), `DS4060` truncation banner (10k default, D-064), truncation-labelled client-side sort
-    (`"sorted first 10,000 rows"` when truncated), **Sort in query** column-header action (appends
-    or updates `| sort by <col>` and re-runs over all rows), and streaming **Export full result**
-    menu (passing `nowMicros`, `statementIndex`, and upstream `let` context).
+    (`[ ]`), `DS4060` truncation banner using the run's actual `rowLimit` (default 10k, D-064),
+    truncation-labelled client-side sort (`"sorted first {N} rows"` using `rowLimit` when
+    truncated), **Sort in query** column-header action (inserts `| sort by <col> desc` or `asc` —
+    always explicit so `DS2103` never fires, D-005 — **before any trailing `| render ...`** or
+    updates an existing `sort` in place, then re-runs over all rows), and streaming **Export full
+    result** menu (sending the immutable cell snapshot captured at run time, `nowMicros`,
+    cell-relative `statementIndex`, and upstream `let` context).
 
 ## Acceptance criteria
-- [ ] Vitest unit tests for `.dsnb` lossless round-trip parsing/serialization, cross-cell staleness
-      fingerprinting, `ServerRuntime`, "Sort in query" query rewrite, and virtualized grid
-      formatting.
+- [ ] Vitest unit tests for cross-cell staleness fingerprinting, `ServerRuntime`, "Sort in query"
+      query rewrites (including a query ending in `| render timechart`, updating an existing
+      `sort`, and always emitting explicit `asc`/`desc`), dynamic truncation labels with a
+      non-default `rowLimit`, run-time export snapshot capture (including after editing a cell into
+      Stale state), and virtualized grid formatting.
 - [ ] Playwright smoke test against a real `ds ui`: opens Scratchpad with quick-preview strip,
       previews a fixture CSV in one click, runs a multi-cell notebook with shared `let` (verifying
       scanned source count and `DS4061` on broken upstream `let`), reorders cells, saves as
