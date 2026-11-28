@@ -39,9 +39,10 @@ structured diagnostics below.
        for JSON arrays), with the concise parser reason in the note (no `Arrow error: Json error:`
        wrapper noise).
     2. **Non-object top-level record** (inference or runtime):
-       - When line 1 starts with `[` while reading as NDJSON (e.g. a `.jsonl`/`.ndjson` file or
-         `read_json(..., format = 'ndjson')`), explain that the file holds a JSON array rather
-         than one object per line and add a `help` suggesting `read_json(..., format = 'array')`.
+       - When the file's first non-whitespace character (after any UTF-8 BOM) is `[` while
+         reading as NDJSON (e.g. a `.jsonl`/`.ndjson` file or
+         `read_json(..., format = "ndjson")`), explain that the file holds a JSON array rather
+         than one object per line and add a `help` suggesting `read_json(..., format = "array")`.
        - Otherwise report which line/record is not a JSON object and what JSON kind was found
          (e.g. a string, number, boolean, or array).
     3. **Runtime type conflict past `infer_rows`:** when a top-level column inferred as a scalar
@@ -66,7 +67,7 @@ structured diagnostics below.
       - malformed JSON syntax during schema inference and past `infer_rows` at runtime (reports
         the line number for NDJSON and record index + line number for JSON arrays),
       - a JSON array file read as NDJSON (explains why and suggests
-        `read_json(..., format = 'array')`),
+        `read_json(..., format = "array")`),
       - a bare scalar or array line mid-file in NDJSON and a non-object element in a minified
         single-line JSON array (reports location and kind found),
       - a top-level column whose type changes past `infer_rows` at runtime (including a plain

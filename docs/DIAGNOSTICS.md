@@ -141,7 +141,6 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS2310–DS2319 | M2-10 `decimal` and `guid` |
 | DS2320–DS2329 | M2-20 conversions that can never succeed |
 | DS3060–DS3064 | M2-12 runtime read errors (none expected; DS3008 is reused) |
-| DS3075–DS3079 | M2-34 JSON/NDJSON read diagnostics (none expected; DS3008 is reused) |
 | DS3065–DS3069, DS4060–DS4064 | M4-01 local web UI server (Q-007's "results truncated" info diagnostic; DS3007 above) |
 | DS3070–DS3074 | M2-22 CSV sniffing |
 | DS0290–DS0294 | M2-23 `describe` operator |
@@ -152,6 +151,7 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS3085–DS3089 | M2-28 Excel writer |
 | DS3100–DS3119 | M7-01 HTTPS sources |
 | DS3120–DS3139 | M7-02 S3, GCS and Azure sources |
+| DS3075–DS3079 | M2-34 JSON/NDJSON read diagnostics (none expected; DS3008 is reused) |
 
 **Retired codes**: DS0127 (D-059), DS2007 (D-020), DS2101 (D-050). List them here when a code is retired.
 
