@@ -923,6 +923,46 @@ KQL rejects trailing commas, so queries that use them cannot be pasted verbatim 
   no constant, `severity: None`), never to be reused.
 *(M2-19, 2026-11-22.)*
 
+### D-060 — Quick fixes, `let` navigation, document symbols and semantic tokens (M3-03)
+**Accepted.**
+
+- **Shared in `datascript_compiler::ide` with `Option<&Analysis>`.** `goto_definition`,
+  `references`, `prepare_rename`, `rename`, `document_symbols` and `semantic_tokens` live in the
+  compiler so the LSP, `ds ui` and WASM give the same answers. Each takes `Option<&Analysis>`:
+  with `None` (syntax-only mode, D-053) every feature works from the syntax tree alone and reads
+  no files; with `Some` they also use bound types in document symbols and exclude row-expression
+  references where a known column shadows a `let` (D-038).
+- **Quick-fix code actions.** `textDocument/codeAction` checks the document's diagnostics whose
+  primary span overlaps the requested range (only lexical and syntax diagnostics in syntax-only
+  mode). `MachineApplicable` suggestions become preferred quick fixes (`isPreferred: true`);
+  `MaybeIncorrect` suggestions become non-preferred quick fixes (`isPreferred: false`), so the
+  user can still pick ambiguous rewrites such as `DS0106`'s `,` vs `;` or `DS3002`'s
+  `read_csv(...)` manually without auto-fix applying them. `HasPlaceholders` is skipped.
+- **`let` rename validation and quoting.** Renaming a `let` to a name with spaces or a reserved
+  word quotes it with `['...']` (`display_name`); an already-quoted `['...']` name is accepted
+  too. Empty names, control characters/line breaks, and collisions with another `let` in the same
+  document (`DS1003`) are rejected with `InvalidParams`. Duplicate `let` definitions are never
+  merged into the first binding's references.
+- **Document symbols.** Top-level `let` statements (`VARIABLE` for scalar, `STRUCT` for tabular,
+  matching completion) and query statements (`OBJECT`, named `query 1`, `query 2`, … with a
+  single-line source preview in `detail`).
+- **Semantic tokens and TextMate alignment.** The legend uses standard LSP token types (`comment`,
+  `keyword`, `operator`, `enumMember`, `function`, `type`, `variable`, `property`, `number`,
+  `string`) and modifiers (`declaration`, `readonly`, `defaultLibrary`). `editors/vscode/package.json`
+  maps them via `semanticTokenScopes` onto the TextMate scopes in `datascript.tmLanguage.json`
+  (`keyword.defaultLibrary` → `keyword.control.operator.datascript`, `keyword.declaration` →
+  `storage.type.let.datascript`, `variable` → `variable.other.datascript`,
+  `variable.defaultLibrary` → `variable.language.datascript`, `function` →
+  `entity.name.function.datascript`, …) so themes color both identically, while contextual keywords
+  (`by`, `on`, `has`, `in`, `kind`, `from`, …) used as column or `let` names get `variable`.
+  Multi-line tokens (such as block comments) are split per line when delta-encoding for the LSP.
+- **`extend` prior items and broken subqueries.** `Doc::columns_at` folds complete prior items
+  (those ending before the last `,` preceding the cursor) from `hir::Op::Extend` into the input
+  columns for both completion and hover, and the binder still binds complete `extend` items and
+  parenthesized subqueries under a diagnostic-suppressing guard when a trailing syntax error marks
+  the enclosing node broken.
+*(M3-03, 2026-11-27.)*
+
 ## Proposed (open questions)
 
 ### Q-002 — Web front-end stack

@@ -63,6 +63,52 @@
         "path": "./syntaxes/datascript.tmLanguage.json"
       }
     ],
+    "semanticTokenScopes": [
+      {
+        "language": "datascript",
+        "scopes": {
+          "comment": [
+            "comment.datascript"
+          ],
+          "keyword": [
+            "keyword.other.datascript"
+          ],
+          "keyword.defaultLibrary": [
+            "keyword.control.operator.datascript"
+          ],
+          "keyword.declaration": [
+            "storage.type.let.datascript"
+          ],
+          "operator": [
+            "keyword.operator.datascript"
+          ],
+          "enumMember": [
+            "constant.language.datascript"
+          ],
+          "function": [
+            "entity.name.function.datascript"
+          ],
+          "type": [
+            "support.type.datascript"
+          ],
+          "variable": [
+            "variable.other.datascript"
+          ],
+          "variable.defaultLibrary": [
+            "variable.language.datascript"
+          ],
+          "property": [
+            "variable.other.datascript"
+          ],
+          "number": [
+            "constant.numeric.datascript"
+          ],
+          "string": [
+            "string.quoted.datascript"
+          ]
+        }
+      }
+    ],
     "snippets": [
       {
         "language": "datascript",

@@ -1,10 +1,14 @@
-//! Editor features over an [`Analysis`]: [`complete`], [`hover`] and [`signature_help`].
+//! Editor features over an [`Analysis`] and syntax tree: [`complete`], [`hover`],
+//! [`signature_help`], [`goto_definition`], [`references`], [`prepare_rename`], [`rename`],
+//! [`document_symbols`] and [`semantic_tokens`].
 //!
 //! They live in the compiler so the language server, the `ds ui` server and WASM give the same
-//! answers for the same text (ARCHITECTURE.md § Semantics). Each takes the text that was checked,
-//! the [`Analysis`] of it and a byte offset, parses the text again (parsing is cheap) and reads
-//! the analysis for what only binding knows: the columns after each stage and the types of
-//! `let`s. Offsets and ranges are byte offsets into the text; frontends convert them.
+//! answers for the same text (ARCHITECTURE.md § Semantics). Features that need schemas
+//! ([`complete`], [`hover`], [`signature_help`]) take the checked text and its [`Analysis`].
+//! Features that work in syntax-only mode (D-053: `let` navigation and rename, document symbols,
+//! semantic tokens) take an optional [`Analysis`]: with `None` they work from the parse alone;
+//! with `Some` they also use bound types and know when a column shadows a `let` (D-038).
+//! Offsets and ranges are byte offsets into the text; frontends convert them.
 //!
 //! None of them reads a file. File names inside path strings are the frontend's job:
 //! [`Completions::files`] says when and what to list.
@@ -18,16 +22,26 @@ use datascript_syntax::{SyntaxKind, SyntaxNode, SyntaxToken};
 
 use crate::Analysis;
 use crate::arrow::from_arrow;
-use crate::hir::{ExprKind, LetValue, Statement};
+use crate::hir::{self, ExprKind, LetValue, Op, Pipeline, Source, Statement};
 use crate::ir::Value;
 
 mod complete;
 mod hover;
+mod lets;
+mod semantic_tokens;
 mod signature;
+mod symbols;
 
 pub use complete::{Completion, CompletionKind, Completions, FileCompletion, complete};
 pub use hover::{Hover, hover};
+pub use lets::{
+    RenameEdit, RenameError, RenameTarget, goto_definition, prepare_rename, references, rename,
+};
+pub use semantic_tokens::{
+    SemanticToken, SemanticTokenKind, SemanticTokenModifiers, semantic_tokens,
+};
 pub use signature::{SignatureHelp, SignatureInfo, signature_help};
+pub use symbols::{DocumentSymbol, SymbolKind, document_symbols};
 
 /// What each operator does, in one line (completion details and hover).
 pub fn operator_doc(name: &str) -> Option<&'static str> {
@@ -166,6 +180,74 @@ impl<'a> Doc<'a> {
             prev = p.prev_sibling();
         }
         self.output_of(&prev?)
+    }
+
+    /// The columns in scope at byte `offset` inside `op`. For `extend`, this includes columns
+    /// made or replaced by items before the comma preceding `offset` (D-040).
+    pub fn columns_at(&self, op: &SyntaxNode, offset: usize) -> Option<Vec<Col>> {
+        let mut cols = self.input_of(op)?;
+        if op.kind() != SyntaxKind::EXTEND_OP {
+            return Some(cols);
+        }
+        // Only items before the last `,` preceding `offset` are complete prior items.
+        let Some(last_comma) = op
+            .children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .filter(|t| t.kind() == SyntaxKind::COMMA && range(t).start < offset)
+            .map(|t| range(&t).start)
+            .max()
+        else {
+            return Some(cols);
+        };
+        let Some(stage) = self.find_stage(range_of(op)) else {
+            return Some(cols);
+        };
+        let Op::Extend(items) = &stage.op else {
+            return Some(cols);
+        };
+        let Some(extend) = ast::ExtendOp::cast(op.clone()) else {
+            return Some(cols);
+        };
+        for ast_item in extend.items() {
+            if range_of(ast_item.syntax()).end > last_comma {
+                break;
+            }
+            let Some(expr) = ast_item.expr() else {
+                continue;
+            };
+            let expr_range = range_of(expr.syntax());
+            let Some(bound) = items
+                .iter()
+                .find(|item| item.expr.span.range() == expr_range)
+            else {
+                continue;
+            };
+            let col = Col {
+                name: bound.name.clone(),
+                ty: bound.expr.ty.name().to_owned(),
+            };
+            match cols.iter_mut().find(|c| c.name == col.name) {
+                Some(existing) => *existing = col,
+                None => cols.push(col),
+            }
+        }
+        Some(cols)
+    }
+
+    fn find_stage(&self, span: Range<usize>) -> Option<&'a hir::Stage> {
+        for stmt in &self.analysis.hir.statements {
+            let pipeline = match stmt {
+                Statement::Let(b) => match &b.value {
+                    LetValue::Table(p) => p,
+                    _ => continue,
+                },
+                Statement::Query(q) => &q.pipeline,
+            };
+            if let Some(stage) = find_stage_in_pipeline(pipeline, &span) {
+                return Some(stage);
+            }
+        }
+        None
     }
 
     /// The columns of the right table of a `join` operator.
@@ -338,6 +420,61 @@ pub(crate) fn reader_of(call: &SyntaxNode) -> Option<&'static crate::source::Rea
 pub(crate) fn callee_of(call: &SyntaxNode) -> Option<(String, SyntaxNode)> {
     let callee = call.children().find(|c| c.kind() == SyntaxKind::NAME_REF)?;
     Some((name_of(&callee)?, callee))
+}
+
+fn find_stage_in_pipeline<'a>(
+    pipeline: &'a Pipeline,
+    span: &Range<usize>,
+) -> Option<&'a hir::Stage> {
+    if let Some(found) = find_stage_in_source(&pipeline.source, span) {
+        return Some(found);
+    }
+    for stage in &pipeline.stages {
+        if stage.span.range() == *span {
+            return Some(stage);
+        }
+        match &stage.op {
+            Op::Join(join) => {
+                if let Some(found) = find_stage_in_source(&join.right, span) {
+                    return Some(found);
+                }
+            }
+            Op::Union(sources) => {
+                for src in sources {
+                    if let Some(found) = find_stage_in_source(src, span) {
+                        return Some(found);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn find_stage_in_source<'a>(source: &'a Source, span: &Range<usize>) -> Option<&'a hir::Stage> {
+    match source {
+        Source::Subquery { pipeline, .. } => find_stage_in_pipeline(pipeline, span),
+        Source::Scan { .. } | Source::Let { .. } | Source::Error { .. } => None,
+    }
+}
+
+/// Clamps `offset` to a UTF-8 char boundary at or before `offset.min(text.len())`.
+pub(crate) fn floor_char_boundary(text: &str, offset: usize) -> usize {
+    let mut offset = offset.min(text.len());
+    while !text.is_char_boundary(offset) {
+        offset -= 1;
+    }
+    offset
+}
+
+/// The token at `offset` in `tokens`: the one containing it, or else the one ending at it.
+pub(crate) fn token_at(tokens: &[SyntaxToken], offset: usize) -> Option<&SyntaxToken> {
+    let containing = tokens.iter().find(|t| {
+        let r = range(t);
+        r.start <= offset && offset < r.end
+    });
+    containing.or_else(|| tokens.iter().find(|t| range(t).end == offset))
 }
 
 #[cfg(test)]

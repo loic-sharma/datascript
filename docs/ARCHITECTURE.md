@@ -134,12 +134,14 @@ statement do not stop other statements from being checked.
 - **Binder output**: a typed HIR where every column reference is resolved and every expression
   has a type. The binder computes the output schema of each pipeline stage, which also drives
   column completion in the LSP.
-- **Editor features** (`datascript_compiler::ide`): `complete`, `hover` and `signature_help` live
-  in the compiler, so the LSP, the `ds ui` server and WASM return the same answers for the same
-  text. Each takes the checked text, its `Analysis` and a byte offset, parses the text again, and
-  reads the stage schemas and `let` types from the analysis. The compiler reads no files: when
-  file names fit at the cursor, `Completions::files` says which directory the frontend should
-  list (D-057).
+- **Editor features** (`datascript_compiler::ide`): `complete`, `hover`, `signature_help`,
+  `goto_definition`, `references`, `prepare_rename`, `rename`, `document_symbols` and
+  `semantic_tokens` live in the compiler, so the LSP, the `ds ui` server and WASM return the same
+  answers for the same text. `complete`, `hover` and `signature_help` take `(src, analysis,
+  offset)`; the syntax-only-capable features take `Option<&Analysis>`, working from the parse alone
+  when `None` and adding bound types / D-038 column shadowing when `Some` (D-057, D-060). The
+  compiler reads no files: when file names fit at the cursor, `Completions::files` says which
+  directory the frontend should list.
 - **Logical plan IR**: a small, engine-neutral relational algebra:
   `Scan, Filter, Project, Aggregate, Sort, Limit, TopN, Join, Union, Distinct, Values`, with an
   expression IR (`Column, Literal, Call(fn_id, args), Cast, Case, …`). `ds explain` pretty-prints it.
@@ -155,10 +157,16 @@ pub fn check(src: &SourceFile, file: FileId, schemas: &dyn SchemaProvider, caps:
 pub fn compile(src: &SourceFile, file: FileId, schemas: &dyn SchemaProvider, caps: &Capabilities)
     -> Result<Program, Vec<Diagnostic>>;
 pub fn program_of(analysis: Analysis, file: FileId) -> Result<Program, Vec<Diagnostic>>;
-// datascript_compiler::ide (D-057): `src` must be the text `analysis` checked; offsets are bytes.
+// datascript_compiler::ide (D-057, D-060): `src` must be the text `analysis` checked; offsets are bytes.
 pub fn complete(src: &SourceFile, analysis: &Analysis, offset: usize) -> Completions;
 pub fn hover(src: &SourceFile, analysis: &Analysis, offset: usize) -> Option<Hover>;
 pub fn signature_help(src: &SourceFile, analysis: &Analysis, offset: usize) -> Option<SignatureHelp>;
+pub fn goto_definition(src: &SourceFile, analysis: Option<&Analysis>, offset: usize) -> Option<Range<usize>>;
+pub fn references(src: &SourceFile, analysis: Option<&Analysis>, offset: usize, include_declaration: bool) -> Vec<Range<usize>>;
+pub fn prepare_rename(src: &SourceFile, analysis: Option<&Analysis>, offset: usize) -> Option<RenameTarget>;
+pub fn rename(src: &SourceFile, analysis: Option<&Analysis>, offset: usize, new_name: &str) -> Result<Vec<RenameEdit>, RenameError>;
+pub fn document_symbols(src: &SourceFile, analysis: Option<&Analysis>) -> Vec<DocumentSymbol>;
+pub fn semantic_tokens(src: &SourceFile, analysis: Option<&Analysis>) -> Vec<SemanticToken>;
 ```
 
 `SourceFile` holds a file's name and text but not its `FileId`, which the caller's `SourceMap`
@@ -321,7 +329,7 @@ The web UI renders JSON diagnostics in the editor and can show the same snippet 
 |---|---|---|
 | CLI | `datascript-cli` | `ds check`, `ds run`, `ds explain`, `ds fmt`; output as table, CSV, JSON, NDJSON or Arrow IPC; exit codes 0/1/2, 130 on Ctrl-C (D-046) |
 | REPL | `datascript-cli` | `ds` with no args; reedline; Enter submits complete input ending in `;`, or on a blank line; lets kept as text across inputs, each input its own `<repl:N>` snippet (D-048); `.schema`, `.tables`, `.format`, `.help`, `.quit`; piped stdin runs the same loop without the editor |
-| LSP | `datascript-lsp` | `ds lsp`; tower-lsp-server, incremental sync, a debounced `Session::check` per document with syntax errors first when schemas are slow, schema cache cleared on watched file changes (D-052); completion, hover and signature help from `datascript_compiler::ide` over a fresh check, files listed by the server (M3-02, D-057); Run CodeLens and a custom `datascript/run` request that runs the open document's current text and returns the text `ds run` prints, the query running on its own task so cancellation is immediate (M3-05, D-054, D-056) |
+| LSP | `datascript-lsp` | `ds lsp`; tower-lsp-server, incremental sync, a debounced `Session::check` per document with syntax errors first when schemas are slow, schema cache cleared on watched file changes (D-052); completion, hover, signature help, quick-fix code actions, `let` definition/references/rename, document symbols and semantic tokens from `datascript_compiler::ide`, files listed by the server, working from the parse alone in syntax-only mode (M3-02, M3-03, D-057, D-060); Run CodeLens and a custom `datascript/run` request that runs the open document's current text and returns the text `ds run` prints, the query running on its own task so cancellation is immediate (M3-05, D-054, D-056) |
 | VS Code | `editors/vscode` | TS client, TextMate grammar, "▶ Run" CodeLens above each query statement, printing the result in a terminal as `ds run` does (M3-05); later a results webview reusing `web/` components (M3-06). Honors Workspace Trust: in an untrusted workspace the server runs syntax-only (no schema reads, no Run), started with `initializationOptions.syntaxOnly`, and the server path comes from user settings only (D-053) |
 | Local web UI | `datascript-server` + `web/` | `ds ui` starts axum on 127.0.0.1 with a random port and a session token, serves the embedded SPA, exposes a JSON/WebSocket API. Query sources are confined to the root directory (D-016) |
 | WASM | `datascript-wasm` + `web/` | Same SPA with a client-side runtime adapter; files come from drag-drop, File System Access API, or URLs |

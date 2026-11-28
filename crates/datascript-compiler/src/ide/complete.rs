@@ -533,6 +533,16 @@ fn classify(doc: &Doc<'_>, cursor: &Cursor) -> Context {
                 expression(input(), !in_by)
             }
         }
+        SyntaxKind::EXTEND_OP => {
+            if ends_expression(prev) {
+                Context::AfterExpression {
+                    keywords: vec![],
+                    infix: true,
+                }
+            } else {
+                expression(doc.columns_at(&op, cursor.start), false)
+            }
+        }
         _ => {
             if ends_expression(prev) {
                 Context::AfterExpression {

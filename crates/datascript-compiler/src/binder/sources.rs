@@ -50,6 +50,16 @@ impl Binder<'_> {
         let span = self.span(source);
         let error = (Source::Error { span }, None);
         if self.broken.contains(source.syntax()) {
+            // Still bind a parenthesized subquery's inner pipeline so completion and hover work
+            // while editing right before `)`, without cascading semantic errors.
+            if let ast::Expr::Paren(paren) = source
+                && let Some(ast::Expr::Pipeline(inner)) = paren.inner()
+            {
+                let saved = self.diagnostics.len();
+                let pipeline = self.bind_pipeline(&inner);
+                self.diagnostics.truncate(saved);
+                return (Source::Subquery { span, pipeline }, None);
+            }
             return error;
         }
         match source {

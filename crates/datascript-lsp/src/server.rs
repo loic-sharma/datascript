@@ -12,13 +12,18 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::sync::Mutex;
 use tower_lsp_server::jsonrpc::{self, Result};
 use tower_lsp_server::ls_types::{
-    self as lsp, CodeLens, CodeLensOptions, CodeLensParams, CompletionOptions, CompletionParams,
-    CompletionResponse, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+    self as lsp, CodeActionKind, CodeActionOptions, CodeActionParams, CodeActionProviderCapability,
+    CodeActionResponse, CodeLens, CodeLensOptions, CodeLensParams, CompletionOptions,
+    CompletionParams, CompletionResponse, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
     DidChangeWatchedFilesRegistrationOptions, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, FileSystemWatcher, GlobPattern, HoverParams,
-    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, Registration,
-    ServerCapabilities, ServerInfo, SignatureHelpOptions, SignatureHelpParams,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions, Uri,
+    DidOpenTextDocumentParams, DocumentSymbolParams, DocumentSymbolResponse, FileSystemWatcher,
+    GlobPattern, GotoDefinitionParams, GotoDefinitionResponse, HoverParams,
+    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, Location,
+    OneOf, PrepareRenameResponse, ReferenceParams, Registration, RenameOptions, RenameParams,
+    SemanticTokensFullOptions, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo, SignatureHelpOptions,
+    SignatureHelpParams, TextDocumentPositionParams, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextDocumentSyncOptions, Uri, WorkspaceEdit,
 };
 use tower_lsp_server::{Client, ClientSocket, LanguageServer, LspService, Server};
 
@@ -222,9 +227,15 @@ impl LanguageServer for Backend {
                 code_lens_provider: Some(CodeLensOptions {
                     resolve_provider: Some(false),
                 }),
+                code_action_provider: Some(CodeActionProviderCapability::Options(
+                    CodeActionOptions {
+                        code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
+                        ..CodeActionOptions::default()
+                    },
+                )),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(
-                        ["|", "(", ",", "=", "'", "\"", "/"]
+                        ["|", "(", ",", "=", ".", "'", "\"", "/"]
                             .map(String::from)
                             .to_vec(),
                     ),
@@ -236,6 +247,23 @@ impl LanguageServer for Backend {
                     retrigger_characters: None,
                     work_done_progress_options: Default::default(),
                 }),
+                definition_provider: Some(OneOf::Left(true)),
+                references_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(OneOf::Right(RenameOptions {
+                    prepare_provider: Some(true),
+                    work_done_progress_options: Default::default(),
+                })),
+                document_symbol_provider: Some(OneOf::Left(true)),
+                semantic_tokens_provider: Some(
+                    SemanticTokensServerCapabilities::SemanticTokensOptions(
+                        SemanticTokensOptions {
+                            legend: ide::semantic_tokens_legend(),
+                            full: Some(SemanticTokensFullOptions::Bool(true)),
+                            range: None,
+                            work_done_progress_options: Default::default(),
+                        },
+                    ),
+                ),
                 ..ServerCapabilities::default()
             },
             server_info: Some(ServerInfo {
@@ -412,6 +440,171 @@ impl LanguageServer for Backend {
             }
         }
     }
+
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        if !ide::allows_quickfix(params.context.only.as_deref()) {
+            return Ok(Some(Vec::new()));
+        }
+        let uri = params.text_document.uri;
+        let Some((file, analysis)) = self.state.analyze_optional(&uri).await else {
+            return Ok(None);
+        };
+        let diagnostics = match analysis {
+            Some(analysis) => analysis.diagnostics,
+            // In syntax-only mode, quick fixes come only from lexical and syntax diagnostics.
+            None => syntax_diagnostics(&file),
+        };
+        Ok(Some(ide::code_actions(
+            &file,
+            &uri,
+            &diagnostics,
+            params.range,
+        )))
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let at = params.text_document_position_params;
+        let uri = at.text_document.uri;
+        let Some((file, analysis)) = self.state.analyze_optional(&uri).await else {
+            return Ok(None);
+        };
+        let offset = offset_at(file.text(), at.position);
+        match catch_panic(Some(FILE), "finding the definition", || {
+            datascript_compiler::ide::goto_definition(&file, analysis.as_ref(), offset)
+        }) {
+            Ok(Some(r)) => {
+                let range = convert::range_of(
+                    &file,
+                    datascript_diagnostics::Span::new(FILE, r.start as u32, r.end as u32),
+                );
+                Ok(Some(GotoDefinitionResponse::Scalar(Location::new(
+                    uri, range,
+                ))))
+            }
+            Ok(None) => Ok(None),
+            Err(crash) => {
+                self.log_crash(&crash).await;
+                Ok(None)
+            }
+        }
+    }
+
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        let at = params.text_document_position;
+        let uri = at.text_document.uri;
+        let Some((file, analysis)) = self.state.analyze_optional(&uri).await else {
+            return Ok(None);
+        };
+        let offset = offset_at(file.text(), at.position);
+        let include_decl = params.context.include_declaration;
+        match catch_panic(Some(FILE), "finding references", || {
+            datascript_compiler::ide::references(&file, analysis.as_ref(), offset, include_decl)
+        }) {
+            Ok(ranges) => {
+                let locs: Vec<Location> = ranges
+                    .into_iter()
+                    .map(|r| {
+                        let range = convert::range_of(
+                            &file,
+                            datascript_diagnostics::Span::new(FILE, r.start as u32, r.end as u32),
+                        );
+                        Location::new(uri.clone(), range)
+                    })
+                    .collect();
+                Ok(Some(locs))
+            }
+            Err(crash) => {
+                self.log_crash(&crash).await;
+                Ok(None)
+            }
+        }
+    }
+
+    async fn prepare_rename(
+        &self,
+        params: TextDocumentPositionParams,
+    ) -> Result<Option<PrepareRenameResponse>> {
+        let uri = params.text_document.uri;
+        let Some((file, analysis)) = self.state.analyze_optional(&uri).await else {
+            return Ok(None);
+        };
+        let offset = offset_at(file.text(), params.position);
+        match catch_panic(Some(FILE), "preparing rename", || {
+            datascript_compiler::ide::prepare_rename(&file, analysis.as_ref(), offset)
+        }) {
+            Ok(found) => Ok(found.map(|target| ide::prepare_rename(&file, FILE, target))),
+            Err(crash) => {
+                self.log_crash(&crash).await;
+                Ok(None)
+            }
+        }
+    }
+
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let at = params.text_document_position;
+        let uri = at.text_document.uri;
+        let Some((file, analysis)) = self.state.analyze_optional(&uri).await else {
+            return Ok(None);
+        };
+        let offset = offset_at(file.text(), at.position);
+        let new_name = params.new_name;
+        match catch_panic(Some(FILE), "renaming", || {
+            datascript_compiler::ide::rename(&file, analysis.as_ref(), offset, &new_name)
+        }) {
+            Ok(Ok(edits)) => Ok(Some(ide::workspace_edit(&file, FILE, &uri, edits))),
+            Ok(Err(datascript_compiler::ide::RenameError::NotRenamable)) => Ok(None),
+            Ok(Err(err)) => Err(jsonrpc::Error::invalid_params(err.to_string())),
+            Err(crash) => {
+                self.log_crash(&crash).await;
+                Ok(None)
+            }
+        }
+    }
+
+    async fn document_symbol(
+        &self,
+        params: DocumentSymbolParams,
+    ) -> Result<Option<DocumentSymbolResponse>> {
+        let uri = params.text_document.uri;
+        let Some((file, analysis)) = self.state.analyze_optional(&uri).await else {
+            return Ok(None);
+        };
+        match catch_panic(Some(FILE), "finding document symbols", || {
+            datascript_compiler::ide::document_symbols(&file, analysis.as_ref())
+        }) {
+            Ok(symbols) => Ok(Some(DocumentSymbolResponse::Nested(ide::document_symbols(
+                &file, FILE, symbols,
+            )))),
+            Err(crash) => {
+                self.log_crash(&crash).await;
+                Ok(None)
+            }
+        }
+    }
+
+    async fn semantic_tokens_full(
+        &self,
+        params: SemanticTokensParams,
+    ) -> Result<Option<SemanticTokensResult>> {
+        let uri = params.text_document.uri;
+        let Some((file, analysis)) = self.state.analyze_optional(&uri).await else {
+            return Ok(None);
+        };
+        match catch_panic(Some(FILE), "computing semantic tokens", || {
+            datascript_compiler::ide::semantic_tokens(&file, analysis.as_ref())
+        }) {
+            Ok(tokens) => Ok(Some(SemanticTokensResult::Tokens(ide::semantic_tokens(
+                &file, tokens,
+            )))),
+            Err(crash) => {
+                self.log_crash(&crash).await;
+                Ok(None)
+            }
+        }
+    }
 }
 
 /// A document checked for a request at a position.
@@ -522,6 +715,25 @@ impl Backend {
 }
 
 impl State {
+    /// Returns the document's text and, unless the server is in syntax-only mode (D-053), its
+    /// fresh [`Analysis`]. A syntax-only server returns `None` for the analysis and reads no
+    /// files.
+    async fn analyze_optional(
+        &self,
+        uri: &Uri,
+    ) -> Option<(SourceFile, Option<datascript_compiler::Analysis>)> {
+        let text = self.text_of(uri).await?;
+        let file = SourceFile::new(self.display_name(uri), text);
+        if self.syntax_only.load(Ordering::Relaxed) {
+            return Some((file, None));
+        }
+        let path = file_path(uri);
+        let base_dir = self.base_dir(path.as_deref());
+        let ctx = self.session.exec_context(&base_dir);
+        let analysis = self.session.check(&file, FILE, &ctx).await;
+        Some((file, Some(analysis)))
+    }
+
     /// Checks the server's text of `uri` for a request at `position`. A syntax-only server
     /// checks without schemas, so it reads no files and knows no columns (D-053).
     async fn analyze(&self, uri: &Uri, position: lsp::Position) -> Option<AtCursor> {

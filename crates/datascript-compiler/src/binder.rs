@@ -361,6 +361,14 @@ impl<'a> Binder<'a> {
                     }
                     None
                 }
+                Operator::Extend(extend) => {
+                    // Still bind complete items so completion and hover in a later item see
+                    // columns made by earlier items (D-040), without cascading errors.
+                    let saved = self.diagnostics.len();
+                    let (bound, _) = self.bind_extend(extend, columns);
+                    self.diagnostics.truncate(saved);
+                    return (bound, None);
+                }
                 _ => None,
             };
             return (Op::Error, after);

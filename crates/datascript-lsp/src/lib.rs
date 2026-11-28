@@ -6,12 +6,14 @@
 //! cached by the [`Session`](datascript_engine::Session); when the client reports a changed data
 //! file, the cache is cleared and open documents are checked again.
 //!
-//! Completion, hover and signature help (M3-02, D-057) come from `datascript_compiler::ide` over
-//! a fresh check of the server's text; the server adds file names inside path strings.
+//! Completion, hover, signature help, quick-fix code actions, `let` navigation and rename,
+//! document symbols and semantic tokens (M3-02, M3-03, D-057, D-060) come from
+//! `datascript_compiler::ide`; the server adds file names inside path strings.
 //!
 //! With the `initializationOptions` `{ "syntaxOnly": true }` it reports only lexical and syntax
-//! errors and reads no files (completion then offers no columns and no files), for workspaces
-//! the user does not trust.
+//! errors and reads no files (completion offers no columns and no files; navigation, rename,
+//! document symbols and semantic tokens work from the parse alone; code actions come only from
+//! syntax diagnostics), for workspaces the user does not trust.
 //!
 //! Run (M3-05, D-054): a "▶ Run" CodeLens over each query statement, and the custom request
 //! `datascript/run` ([`RunParams`] → [`RunResult`]) that runs the server's text of an open

@@ -10,7 +10,8 @@
 //! - [`ir`]: the logical plan IR and its `explain` printout.
 //! - [`lints`]: warnings for programs that run but probably not as intended (M1-14).
 //! - [`check`] and [`compile`]: the entry points that parse, bind and plan a program.
-//! - [`ide`]: completion, hover and signature help over an [`Analysis`] (M3-02).
+//! - [`ide`]: completion, hover, signature help, `let` navigation/rename, document symbols and
+//!   semantic tokens (M3-02, M3-03).
 //!
 //! This crate does not depend on DataFusion, tokio or the filesystem, and builds for
 //! `wasm32-unknown-unknown`.

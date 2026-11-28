@@ -99,7 +99,7 @@ pub fn hover(src: &SourceFile, analysis: &Analysis, offset: usize) -> Option<Hov
             // A column, or else a scalar `let`.
             if let Some(op) = operator_of(&token)
                 && let Some(col) = doc
-                    .input_of(&op)
+                    .columns_at(&op, r.start)
                     .and_then(|cols| cols.into_iter().find(|c| c.name == name))
             {
                 return Some(at(format!(
