@@ -43,6 +43,9 @@ structured diagnostics below.
          reading as NDJSON (e.g. a `.jsonl`/`.ndjson` file or
          `read_json(..., format = "ndjson")`), explain that the file holds a JSON array rather
          than one object per line and add a `help` suggesting `read_json(..., format = "array")`.
+         Auto-detected `.json` files never hit this case, because M2-33 detects the layout per
+         file and skips a leading BOM; the help is only for an explicit NDJSON choice, where
+         `format = "array"` applies to the whole source.
        - Otherwise report which line/record is not a JSON object and what JSON kind was found
          (e.g. a string, number, boolean, or array).
     3. **Runtime type conflict past `infer_rows`:** when a top-level column inferred as a scalar

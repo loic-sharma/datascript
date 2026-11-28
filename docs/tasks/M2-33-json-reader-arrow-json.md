@@ -42,6 +42,8 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
     - Integers outside the `i64` range (for example `u64` IDs and hashes) → `Utf8` +
       `arrow.json`, which keeps their exact digits. This deliberately differs from `arrow-json`,
       which infers `Float64` and silently rounds them; it also avoids surprising `DS4003` errors.
+    - Numbers whose magnitude overflows `f64` (for example `1e400`) → `Utf8` + `arrow.json` for
+      the same reason, rather than storing infinity.
     - Consistent scalar columns infer `Boolean`, `Int64`, `Float64`, or `Utf8`.
     - Any top-level column that contains a JSON **object**, a JSON **array**, or **any other mix
       of JSON types** (including mixed scalars such as `Int64` + `Utf8` or `Boolean` + `Utf8`, as
@@ -70,6 +72,16 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       `std::fs` (removing `is_json_array`'s `std::fs` call, which builds for `wasm32` but would
       fail at runtime in the browser; `single_file`/`glob_files` still use `std::fs` until
       [M5-01](M5-01-wasm-build.md)).
+    - **Detect array-vs-NDJSON per file** for auto-detected `.json` sources, both when sampling
+      and when the `FileSource` opens each file. Today `sources.rs` checks only `paths[0]` and
+      applies its answer to the whole glob; once one table reads every file, a `*.json` glob
+      mixing NDJSON and array files must still read each file in its own layout. An explicit
+      `format = "ndjson"`/`"array"` (or a `.ndjson`/`.jsonl` extension) still applies to every
+      file.
+    - **Skip a leading UTF-8 BOM** (`EF BB BF`) before detection and decoding. `serde_json`
+      rejects it, and today `is_json_array` treats it as the first non-whitespace character, so
+      a BOM-prefixed array file is misdetected as NDJSON. Line numbers are unaffected (the BOM
+      is on line 1).
   - **Schema-driven streaming decoder and projection pushdown:**
     - The decoder decodes records into **any target schema it is given**, matching keys by name,
       not only the schema it inferred for that file. `lower.rs::scan` passes the merged
@@ -91,7 +103,7 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       |---|---|---|
       | `Boolean` | `true`, `false` | type mismatch (including the strings `"true"`/`"false"`) |
       | `Int64` | integers in the `i64` range, with no fraction or exponent | type mismatch (including `1.0`, `1.5`, `1e3` and integers outside `i64`) |
-      | `Float64` | any JSON number except integers outside the `i64` range (in-range integers are converted) | type mismatch (including integers outside `i64`, which would otherwise be rounded silently; inference stores them as `arrow.json` for the same reason) |
+      | `Float64` | any JSON number except integers outside the `i64` range and numbers that overflow `f64` (in-range integers are converted) | type mismatch (including integers outside `i64`, which would otherwise be rounded silently, and numbers such as `1e400`, which would become infinity; inference stores both as `arrow.json` for the same reason) |
       | `Utf8` (no extension) | strings | type mismatch (objects, arrays, numbers, booleans) |
       | `Utf8` + `arrow.json` | anything | — |
       `null` is accepted in every column.
@@ -178,9 +190,12 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
     `path_formats.dstest`, `path_formats_run.dstest`, `host_table_real.dstest`, and
     `tests/cases/operators/join/run_multi_key.dstest` (reads `events/*.ndjson`).
   - Update [LANGUAGE.md](../LANGUAGE.md) (§3.1 `read_json` options, including `infer_rows` and
-    dropped late keys; §5.1 JSON nested/mixed columns) and record the inference, encoding and
+    dropped late keys; §5.1 JSON nested/mixed columns, and the §5.1 type-mapping row
+    "Null → `string`", which must say that for JSON sources an all-null column becomes
+    `Utf8` + `arrow.json` instead) and record the inference, encoding and
     merging rules in [DECISIONS.md](../DECISIONS.md): mixed scalars → `arrow.json`, out-of-range
-    integers → `arrow.json` (unlike `arrow-json`), all-null columns, top-level duplicate keys →
+    integers and `f64`-overflowing numbers → `arrow.json` (unlike `arrow-json`), all-null
+    columns, per-file array-vs-NDJSON detection, leading BOM skipped, top-level duplicate keys →
     last wins, whitespace-only normalization of nested values, the type-check table, type checks
     only on projected columns, files read whole (no byte-range splitting), and the JSON glob
     merge rules (`Typed` + `arrow.json` and `Typed(a)` + `Typed(b)` with no common type both →
@@ -218,6 +233,9 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
         `long` file's numbers unquoted), and `long` + `real` merges to `real`,
       - integers outside `i64` (e.g. `18446744073709551615`) inferred as `arrow.json` with
         their exact digits,
+      - a `*.json` glob mixing an NDJSON file and a JSON-array file (each read in its own
+        layout), and BOM-prefixed NDJSON and JSON-array files (the array auto-detected as an
+        array),
       - a type mismatch past `infer_rows` in a column the query does not project is not an
         error,
       - a column that is all `null` in the sample and holds an object past `infer_rows`
@@ -228,7 +246,8 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
         JSON tests listed above,
       - `read_json(..., infer_rows = n)` happy path and invalid option values (`DS2041`).
 - [ ] Unit tests for the custom JSON schema inference and streaming decoder (empty files, blank
-      lines, integers outside `i64` → `arrow.json`, `1.0`/`1e3` → `Float64`, top-level
+      lines, a leading BOM, integers outside `i64` and `1e400` → `arrow.json`,
+      `1.0`/`1e3` → `Float64`, top-level
       duplicate keys last-wins, nested duplicate keys
       kept, whitespace removal outside strings only, missing/extra keys, keys first seen past
       `infer_rows` dropped, every row of the type-check table, decoding into a wider target

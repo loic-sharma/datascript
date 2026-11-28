@@ -149,9 +149,9 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS2330–DS2339 | M2-26 `output` writer functions, options and compression |
 | DS3093–DS3099 | M2-27 `output`: Parquet, self-overwrite check and read-back check |
 | DS3085–DS3089 | M2-28 Excel writer |
+| DS3075–DS3079 | M2-34 JSON/NDJSON read diagnostics (none expected; DS3008 is reused) |
 | DS3100–DS3119 | M7-01 HTTPS sources |
 | DS3120–DS3139 | M7-02 S3, GCS and Azure sources |
-| DS3075–DS3079 | M2-34 JSON/NDJSON read diagnostics (none expected; DS3008 is reused) |
 
 **Retired codes**: DS0127 (D-059), DS2007 (D-020), DS2101 (D-050). List them here when a code is retired.
 
