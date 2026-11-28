@@ -45,6 +45,7 @@ to running a cell and seeing a grid.
 - [ ] API integration tests covering:
   - two-step streaming export reusing the run-time snapshot, `nowMicros` (`now()`/`ago()`),
     cell-relative `statementIndex`, cookie + one-shot ticket replay/expiry, and `Sec-Fetch-Site`;
+  - an export succeeding while a neighbouring query statement in the target cell has an error;
   - export failures: a check or missing-source error returned by `POST /api/export` with no
     ticket, and an error mid-stream aborting the connection (the client sees an incomplete body,
     not a clean end) plus an `exportFailed` WS event;
@@ -52,6 +53,7 @@ to running a cell and seeing a grid.
     carried-over writers land);
   - each v1 format (`csv`, `ndjson`) streaming a multi-batch result larger than
     `row_limit`, read back and compared row for row.
+- [ ] `exportFailed` added to the WebSocket wire contract doc that M4-10 writes.
 - [ ] Vitest tests for run-time export snapshot capture (including after editing a cell into Stale
       state), and a Playwright test of a streaming CSV export download with the menu showing exactly
       the server's `exportFormats` (Parquet appears only when the server reports it).

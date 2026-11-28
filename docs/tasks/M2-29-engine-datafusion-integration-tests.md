@@ -12,7 +12,7 @@ cross-format coverage of edge types. Add focused integration suites that run the
 a small set of golden `mode: run` cases for branches the lowering owns.
 
 The sandbox (`DS3007`) bugs and tests found by the same audit belong to
-[M4-01](M4-01-server-api.md), which owns the sandbox and `DS3007`'s promotion.
+[M4-12](M4-12-sandbox-hardening.md), which owns the sandbox and `DS3007`'s promotion.
 
 ## Scope
 
@@ -59,7 +59,7 @@ Add `tempfile` to `[dev-dependencies]` and build the suite on `tempfile::TempDir
       lowering's per-join qualifiers.
 
 ### Out of scope
-- Sandbox fixes and tests (M4-01).
+- Sandbox fixes and tests (M4-12).
 - Re-running every golden `run` case under `target_partitions > 1`.
 - Exhaustive aggregate and scalar edge-case matrices; M2-15 covered golden `run` gaps. Add a case
   only for a specific branch you suspect.

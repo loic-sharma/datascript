@@ -13,7 +13,8 @@ independent of `datascript-server`.
 ## Scope
 - **CLI (`datascript-cli`)**:
   - `ds check notebook.dsnb`: parses (M4-13) and stitches (M4-08) all DataScript cells top-to-bottom and
-    renders diagnostics pointing at exact `.dsnb` lines/columns.
+    renders diagnostics pointing at exact `.dsnb` lines/columns (via M4-13's source-position
+    mapping).
   - `ds run notebook.dsnb`: executes all DataScript cells' queries top-to-bottom under one shared
     `now()` clock (D-015), streaming tables / CSV / JSON / NDJSON / Arrow like `ds run script.ds`.
   - `ds explain notebook.dsnb`: prints the logical plan for each query cell.

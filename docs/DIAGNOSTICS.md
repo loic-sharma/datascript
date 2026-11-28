@@ -144,7 +144,7 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS2320–DS2329 | M2-20 conversions that can never succeed |
 | DS3060–DS3064 | M2-12 runtime read errors (none expected; DS3008 is reused) |
 | DS3065–DS3069 | M4-12 path sandbox hardening (DS3007 above) |
-| DS4060–DS4064 | M4-10 local web UI streaming & export (`DS4060` results truncated per D-064) |
+| DS4060–DS4064 | M4-10 local web UI streaming (`DS4060` results truncated per D-064) |
 | DS1085–DS1089 | M4-08 notebook `StitchedProgram` (`DS1085` upstream cell has errors, D-062) |
 | DS3070–DS3074 | M2-22 CSV sniffing |
 | DS0290–DS0294 | M2-23 `describe` operator |

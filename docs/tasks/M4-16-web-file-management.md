@@ -1,7 +1,7 @@
 # M4-16 — Web UI: safe file & folder management
 
 **Status:** todo
-**Depends on:** M4-02
+**Depends on:** M4-02, M4-10
 **Crates:** `datascript-server`, `web/`
 **Diagnostic codes:** none
 
@@ -17,6 +17,10 @@ Split out of M4-05.
   files only; a folder rename with no no-replace support is refused), OS
   clutter allow-list, and verify-then-delete folder rules in
   [WEB_UI.md §4.1](../WEB_UI.md#41-left-pane--working-directory-tree--attached-tables).
+- **Own changes are not external**: like M4-01's `PUT`, rename, delete, and new-folder requests
+  record their own changes so M4-10's watcher does not broadcast them as external, and the UI
+  moves an open notebook's view to its new path after a rename (or closes it after a delete)
+  instead of showing the "changed on disk" banner.
 
 ## Acceptance criteria
 - [ ] Server API tests for `POST /api/dir`, `PATCH`, and `DELETE`: data-file and in-root symlink
@@ -25,6 +29,7 @@ Split out of M4-05.
       deletion with nested subfolders, a folder containing only notebooks and `.DS_Store` deleting
       cleanly, a folder with one hidden data file refused before anything is deleted (the error
       names the file), and a concurrent new file reported as a partial delete.
-- [ ] Playwright test of rename and delete from the file tree.
+- [ ] Playwright test of rename and delete from the file tree, including renaming the open
+      notebook (the view follows the new path, no banner).
 
 ## Follow-ups

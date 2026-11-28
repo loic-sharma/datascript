@@ -44,6 +44,11 @@ builds `StitchedProgram`; the two can run in parallel.
       on incoming cells before matching, per
       [WEB_UI.md §2](../WEB_UI.md#serialization-grammar--canonical-layout).
 
+- **Source positions**: each parsed cell also carries its byte range in the file and a mapping
+  from positions in its normalized text back to file positions (line, column, and UTF-16 offset,
+  D-025), accounting for fence lines, stripped indentation, and CRLF. `ds check` and the LSP
+  (M4-06) use it to point diagnostics at exact `.dsnb` lines.
+
 ## Acceptance criteria
 - [ ] Fixture-driven round-trip tests in `datascript-compiler` covering: YAML frontmatter, CRLF and
       LF preservation on untouched cells, whitespace-only gaps and empty Markdown drop, top-level
@@ -70,6 +75,9 @@ builds `StitchedProgram`; the two can run in parallel.
       `~~~datascript` fence) keeps its bytes after both saves.
 - [ ] CRLF test: parse a CRLF file, convert every cell's text to LF as an editor would, edit one
       cell, and serialize with base: every other cell keeps its CRLF bytes and fence style.
+- [ ] Position-mapping tests: a diagnostic offset inside a cell maps to the right file line,
+      column, and UTF-16 offset for an indented fence, a `~~~` fence, CRLF line endings, and a
+      line with multi-byte characters.
 - [ ] `datascript-compiler` still passes `cargo check --target wasm32-unknown-unknown`, with no new
       crate dependencies.
 

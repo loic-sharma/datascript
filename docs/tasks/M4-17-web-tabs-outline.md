@@ -12,7 +12,8 @@ Split out of M4-05.
 
 ## Scope
 - **Multi-file tabs & pinning**: slim tab bar preserving open tabs' outputs, scroll position, and
-  undo history, with pinning (`Alt+W` closes a tab; the chord itself is wired in M4-05).
+  undo history, with pinning and close/pin buttons (M4-05, which depends on this task, adds
+  the `Alt+W` chord and palette commands).
 - **Outline & Scope inspector tabs** ([WEB_UI.md §4.3](../WEB_UI.md#43-right-pane--contextual-inspector-collapsed-by-default)).
 
 ## Acceptance criteria

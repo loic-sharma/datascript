@@ -12,7 +12,7 @@
 - [ ] A test that fails if any registered code lacks an explanation file.
 - [ ] Each explanation's "wrong" example produces that code (checked automatically). Exempt, with
       the reason in their pages: retired codes (DS2007, DS2101; the page says what replaced them),
-      planned codes not yet implemented (DS3007 until M4-01), and DS9001 (an internal error has
+      planned codes not yet implemented (DS3007 until M4-12), and DS9001 (an internal error has
       no wrong code to show).
 
 ## Carried over
