@@ -937,7 +937,8 @@ desktop shell) standardizes on:
   virtualized grids (`@tanstack/react-virtual`), drag-and-drop cell reordering, and accessible UI
   primitives.
 - **CodeMirror 6**: lightweight, multi-instance friendly for notebooks, and small enough for WASM.
-- **Apache ECharts** (tree-shaken Canvas modules): covers all 9 `RenderSpec` kinds (with a custom
+- **Apache ECharts** (tree-shaken modules; Canvas renderer on screen, `SVGRenderer` off-screen for
+  SVG download): covers all 9 `RenderSpec` kinds (with a custom
   KPI card component for `card`), handles large point counts and interactive zoom, exports
   PNG/SVG, and supports matching dark/light themes.
 - **Desktop readiness**: all UI state talks through a typed `Runtime` interface (`ServerRuntime`,

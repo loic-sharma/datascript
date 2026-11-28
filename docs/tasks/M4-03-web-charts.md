@@ -17,7 +17,7 @@ toggle and reusable exports in `web/src/components/results/` for VS Code's M3-06
   honoring `x`, `y`, multi-column `series`, `title`, `xtitle`, `ytitle`, `legend`, `ymin`, `ymax`,
   and `stacking`.
 - Default `| render` queries to Chart view with a Chart/Table toggle, fullscreen expand, zoom/hover
-  tooltips, PNG/SVG export, and matching dark/light themes; keep plain table queries in Table view
+  tooltips, PNG export (Canvas) and SVG export (off-screen `SVGRenderer` re-render), and matching dark/light themes; keep plain table queries in Table view
   with a quiet **Visualize (`| render`)** helper that appends a starter `| render ...` line (D-062).
 - Gracefully degrade unrenderable inputs (e.g. >500 distinct series, empty or all-null series) with
   a clear message and one-click switch to Table view.

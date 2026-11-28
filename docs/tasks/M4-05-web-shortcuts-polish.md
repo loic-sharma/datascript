@@ -16,7 +16,8 @@ inspector tabs, Cell Command Mode, Command Palette, and Quick Open.
   `KeyboardEvent.code`, outside text inputs).
 - **Safe file/folder management** (`datascript-server` + `web/`): add `POST /api/dir`,
   `PATCH /api/file`, and `DELETE /api/file` following the symlink, atomic no-clobber rename (via
-  `rustix` on Unix and `MoveFileExW` on Windows for files and folders, `hard_link` fallback), OS
+  `rustix` on Unix and `MoveFileExW` on Windows for files and folders, `hard_link` fallback for
+  files only; a folder rename with no no-replace support is refused), OS
   clutter allow-list, and verify-then-delete folder rules in
   [WEB_UI.md §4.1](../WEB_UI.md#41-left-pane--working-directory-tree--attached-tables).
 - **Outline & Scope inspector tabs** (`web/`, [WEB_UI.md §4.3](../WEB_UI.md#43-right-pane--contextual-inspector-collapsed-by-default)).

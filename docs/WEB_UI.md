@@ -104,21 +104,25 @@ A `.dsnb` file is a sequence of cells parsed from and serialized to UTF-8 Markdo
      with at least one `:literal` loses one. So a user's literal `<!-- ds:cell:literal -->` is
      written as `<!-- ds:cell:literal:literal -->` and loads back unchanged. (All forms stay
      invisible in Markdown renderers.)
-   - **The serializer never lets a Markdown cell change cell boundaries** (a new or modified
-     Markdown cell is checked with the same scanner before it is written):
+   - **The serializer never lets a cell change cell boundaries.** Every cell is checked with the
+     same scanner in its new position before it is written, including untouched cells whose bytes
+     are reused (item 4 below), because deleting, reordering, or appending cells changes their neighbours:
      - a **top-level fence tagged `ds` or `datascript`** inside a Markdown cell is written with
        the same stacking escape on its tag (`ds` → `ds:literal`, `ds:literal` →
        `ds:literal:literal`, likewise for `datascript`), and the parser removes one `:literal`
        from such a tag inside Markdown cells. A top-level fence tagged `ds:literal` is never a
        DataScript cell;
-     - a **fence left open at the end of a Markdown cell** (any language) gets a matching closing
-       fence line appended, so it cannot swallow the cells after it;
+     - a **fence left open at the end of a cell** (a Markdown cell's fence in any language, or an
+       unclosed DataScript fence that ran to EOF) gets a matching closing fence line appended when
+       any cell follows it, so it cannot swallow the cells after it;
      - when the file has **no frontmatter** and the first cell is Markdown starting with a `---`
        line, the serializer writes one blank separator line first, so the cell is not read back as
        frontmatter.
 
-     Property tests assert `parse(serialize(cells)) == cells` for every cell list, apart from the
-     appended closing fence.
+     Property tests assert `parse(serialize(cells)) == normalize(cells)` for every cell list, where
+     `normalize` drops empty/whitespace-only Markdown cells and trims leading and trailing blank
+     lines from Markdown cells (those belong to the separator); the appended closing fence is the
+     only other difference.
    - **No persisted cell metadata in v1** (nothing in M4-01–M4-05 needs it, keeping the delimiter
      unambiguous).
 4. **Canonical separators & deterministic lossless round-trip**:
@@ -129,9 +133,16 @@ A `.dsnb` file is a sequence of cells parsed from and serialized to UTF-8 Markdo
      `originId` back on `PUT /api/file` (new cells have `originId: null`). Under the per-path lock
      at `expectedVersion`, the server matches each incoming cell unambiguously by `originId`
      (including duplicate identical cells and reorders): any cell whose `originId` matches
-     and whose text is unchanged re-emits its exact original bytes and surrounding separator
-     verbatim (preserving line endings, fence style, and tag); modified or newly inserted cells are
-     serialized in canonical form.
+     and whose text is unchanged re-emits its exact original bytes (preserving line endings, fence
+     style, and tag); modified or newly inserted cells are serialized in canonical form. A cell's
+     bytes never include the separator or a `<!-- ds:cell -->` delimiter: **separators are
+     recomputed from each cell's new neighbours**. The original separator bytes are reused only when
+     both neighbours are the same untouched cells, in the same order, as on disk; otherwise the
+     canonical separator is written, with `<!-- ds:cell -->` whenever two Markdown cells end up
+     adjacent (e.g. after deleting the DataScript cell between them).
+   - **Repeated `originId`s**: duplicating, copying, or pasting a cell gives the copy
+     `originId: null`. A `PUT` that carries the same non-null `originId` twice is rejected with
+     `400`, never guessed.
    - Because `originId`s describe byte ranges in the file as it was on disk, every write makes the
      client's `originId`s stale. A successful `PUT /api/file` therefore returns the new `version`
      **and a fresh `originId` for every cell, in request order** (`WriteResult`); the client swaps
@@ -253,6 +264,23 @@ This section is the single definition of when an interactive single-cell run is 
     `` this statement could not be parsed ``);
   - help: ``fix the error in cell 2, then run this cell again``. The web UI renders the secondary
     label as a jump link to that cell.
+- **What the target cell contributes**: `Session::start` checks the whole stitched program and runs
+  nothing if it has any error, so the stitched text decides what can block a run:
+  - **Run cell** stitches every statement of cell $k$. An error in any statement of the cell
+    blocks the whole cell run (no partial results), reported on that statement.
+  - **Run statement at cursor** and **Export full result** stitch only the target query statement
+    plus the `let` statements it transitively references (from cell $k$ and from upstream cells,
+    in document order). Other query statements in cell $k$, and unreferenced `let`s in it, are left
+    out, so a half-typed neighbouring statement never blocks running or exporting a working one.
+    The target is then the only query in the program, so no `RunStream::select` is needed.
+
+### IDE requests see every upstream `let`
+
+Completion, hover, and signature help (`POST /api/complete`, `/api/hover`, `/api/signature-help`)
+do **not** use the transitive stitching above, because completion must offer upstream `let` names
+the cell does not reference yet. They use the whole-notebook stitching up to and including cell
+$k$ (every DataScript cell above it, plus cell $k$), so every upstream `let` is in scope, exactly
+as in live `check`.
 
 ### Explicit execution, staleness, `ds run` vs "Run all" & clocks
 
@@ -297,7 +325,8 @@ This section is the single definition of when an interactive single-cell run is 
   and `collect` calls the helper, so the CLI, `datascript-server`, M3-06, and M5 share a single
   implementation that cannot drift.
 - When `truncated` is true, the runtime emits the `DS4060` info diagnostic
-  (``result truncated to the first 10,000 rows``, primary span on the query statement, help:
+  (``result truncated to the first {N} rows``, where `{N}` is the run's `rowLimit`, e.g.
+  `10,000`; primary span on the query statement, help:
   ``export the full result, or add `| take` or `| summarize` to the query``) and the cell footer
   shows a truncation notice using the run's actual `rowLimit` (e.g.
   `Showing first {N} rows · truncated`) with an **Export full result** menu.
@@ -329,8 +358,8 @@ This section is the single definition of when an interactive single-cell run is 
 │      orders.parquet  │ │ Exploring top customers by region.      │ │  ─────────────────────── │
 │      customers.csv   │ └─────────────────────────────────────────┘ │  T   id          4.59K - │
 │  ▾ notebooks/        │ ┌─────────────────────────────────────────┐ │  #   downloads   null 88%│
-│    ● sales.dsnb      │ │ ▶  let orders = from '../data/orders…'; │ │  T   region        4 - │
-│      adhoc.ds        │ │    validated · 1 binding (4ms)          │ │  dt  month        12 - │
+│    ● sales.dsnb      │ │ ▶  let orders = from '../data/orders…'; │ │  T   region        4 -   │
+│      adhoc.ds        │ │    validated · 1 binding (4ms)          │ │  dt  month        12 -   │
 │                      │ └─────────────────────────────────────────┘ │                          │
 │  ATTACHED TABLES     │ ┌─────────────────────────────────────────┐ │  (Starts collapsed;      │
 │    live_events       │ │ ▶  from orders                          │ │   switches to Source     │
@@ -387,9 +416,11 @@ clicking a column header's stats trigger.
         leaves the notebook under two names, and it works on filesystems without hard links
         (FAT32/exFAT drives, many SMB/NFS shares).
       - Where the no-replace rename is not supported (`EINVAL`/`ENOTSUP`, e.g. some network
-        filesystems on Linux), fall back to `std::fs::hard_link(from, to)` + `remove_file(from)`.
-        If that fails too, refuse with a plain error that names the filesystem limitation; never
-        fall back to a rename that can overwrite.
+        filesystems on Linux), **files** fall back to `std::fs::hard_link(from, to)` +
+        `remove_file(from)` (not atomic: a crash between the two steps leaves both names, which
+        is safe). **Folders** cannot be hard-linked, so a folder rename has no fallback. If the
+        no-replace rename (or the file fallback) fails, refuse with a plain error that names the
+        filesystem limitation; never fall back to a rename that can overwrite.
     - **OS clutter files** (`.DS_Store`, `Thumbs.db`, `desktop.ini`, `._*` AppleDouble files) are
       allowed inside a folder being deleted or renamed. Finder creates `.DS_Store` in every folder
       it opens, and the tree hides these files, so refusing them would block almost every folder
@@ -563,7 +594,9 @@ ignores `AltGraph` events on Windows European layouts.
   completion extensions, small bundle for WASM)
 - **Data interchange**: Apache Arrow IPC (`apache-arrow`)
 - **Grid virtualization**: `@tanstack/react-virtual`
-- **Charts**: Apache ECharts (tree-shaken Canvas modules covering all 9 `RenderSpec` kinds)
+- **Charts**: Apache ECharts (tree-shaken modules covering all 9 `RenderSpec` kinds; the Canvas
+  renderer draws on screen, and SVG download re-renders the chart off-screen with the
+  `SVGRenderer`, since a Canvas chart can only export PNG)
 - **Markdown rendering**: `marked` or `markdown-it` + DOMPurify, reinforced by the server's strict
   CSP header
 - **Testing**: Vitest (unit/component tests) + Playwright (E2E & chart visual regression tests)
@@ -674,13 +707,13 @@ How each target plugs in:
 | `GET /api/file?path=` | M4-01 | Read a `.dsnb` (returned as canonical parsed cells with `originId` + frontmatter) or `.ds` text file + `version` (etag) |
 | `PUT /api/file` | M4-01 | Atomic save (per-path lock, required `expectedVersion` (`428` without it), `409` check, `originId` lossless `.dsnb` diff via `datascript-compiler`, temp file + `sync_all` + rename; refuses non-`.dsnb`/`.ds` paths and symlink components). Returns `WriteResult { version, originIds }` with a fresh `originId` per cell in request order |
 | `POST /api/file` | M4-01 | Create a new `.dsnb` or `.ds` file atomically (`O_CREAT\|O_EXCL`; refuses non-`.dsnb`/`.ds` paths, existing files, and symlink components) |
-| `POST /api/dir`, `PATCH /api/file`, `DELETE /api/file` | M4-05 | Create folders, rename (no-clobber: `rustix` no-replace rename / `MoveFileExW` for files and folders, `hard_link` fallback), or delete `.dsnb`/`.ds` files or safe folders (verify the whole tree first, then per-file unlink + bottom-up `rmdir`; refuses symlinks and any folder containing files other than `.dsnb`/`.ds` and OS clutter such as `.DS_Store`) |
+| `POST /api/dir`, `PATCH /api/file`, `DELETE /api/file` | M4-05 | Create folders, rename (no-clobber: `rustix` no-replace rename / `MoveFileExW` for files and folders, `hard_link` fallback for files only), or delete `.dsnb`/`.ds` files or safe folders (verify the whole tree first, then per-file unlink + bottom-up `rmdir`; refuses symlinks and any folder containing files other than `.dsnb`/`.ds` and OS clutter such as `.DS_Store`) |
 | `GET /api/schema?source=` | M4-01 | Inspect schema of a file or host table via `Session` |
 | `POST /api/check` | M4-01 | Check a `.ds` script or whole `.dsnb` notebook in one pass (`{ path, cells }` → diagnostics grouped by `cellIndex` (every cell, Markdown included) in UTF-16 offsets + per-cell in-scope `let` summaries) |
 | `WS /api/ws` | M4-10 | Multiplexed stream for: (1) query execution (`run` with optional shared `nowMicros` for Run all / `cancel` → `started` with `nowMicros` and `rowLimit`, then per result its `statementIndex` and `sourceCount`, streaming capped Arrow IPC batches + `RenderSpec` + diagnostics incl. `DS4060`/`DS1085` + timing, suppressing `DS0004` on `let`-only cells), and (2) workspace file-change notifications |
 | `POST /api/export` | M4-10 | Accepts the run-time cell snapshot `{ path, cells, targetCellIndex, statementIndex, nowMicros, format }` (`statementIndex` is 0-based among the target cell's own query statements), checks, plans and starts the query (returning diagnostics instead of a ticket on failure), and returns a short-lived single-use download URL `/api/export/<ticket>` |
 | `GET /api/export/<ticket>` | M4-10 | Requires the session cookie + one-shot ticket (checks `Sec-Fetch-Site` when present) and streams the full uncapped result as `Content-Disposition: attachment`, aborting the connection on a mid-stream error (plus a WS `exportFailed` event) via `datascript_engine::writers` (v1: `csv`, `ndjson`, `json`, `arrow`; `parquet` once M2-27 lands, `xlsx` once M2-28 lands) |
-| `POST /api/complete`, `/api/hover`, `/api/signature-help` | M4-04 | IDE helpers (`{ path, cells, targetCellIndex, offset }`) backed by `datascript_compiler::ide` over `StitchedProgram` |
+| `POST /api/complete`, `/api/hover`, `/api/signature-help` | M4-04 | IDE helpers (`{ path, cells, targetCellIndex, offset }`) backed by `datascript_compiler::ide` over the whole-notebook `StitchedProgram` up to the target cell (every upstream `let` in scope, §3) |
 
 ### Cross-cell combined program & `.dsnb` parser (`datascript-compiler`, M4-08)
 
@@ -692,9 +725,13 @@ segment-stitching / span-mapping primitive (`StitchedProgram`, extracted from `R
 all reuse them:
 - Whole-notebook check stitches every DataScript cell's statements in document order (mapping every
   diagnostic span back to `{ cellIndex, start, end, line, column }` in UTF-16, D-025).
-- Single-cell execution and IDE requests (`run`, `export`, `complete`, `hover`, `signature_help`)
-  compute the target cell's **transitive upstream `let` dependencies**, prepend only those `let`
-  statements in document order separated by `\n;\n` glue segments, and emit `DS1085` under the
-  rules in [§3](#transitive-upstream-let-prepending--ds1085).
+- Single-cell and single-statement execution (`run`, `export`) compute the target's **transitive
+  upstream `let` dependencies**, prepend only those `let` statements in document order separated
+  by `\n;\n` glue segments, and emit `DS1085` under the rules in
+  [§3](#transitive-upstream-let-prepending--ds1085) (a statement run or export also leaves out the
+  target cell's other query statements).
+- IDE requests (`complete`, `hover`, `signature_help`) use the whole-notebook stitching up to and
+  including the target cell, so completion offers every upstream `let`
+  ([§3](#ide-requests-see-every-upstream-let)).
 - Relative file paths inside the notebook resolve against the `.dsnb` file's parent directory (or
   the workspace root for unsaved Scratchpads), always enforced by the D-016 sandbox in `ds ui`.

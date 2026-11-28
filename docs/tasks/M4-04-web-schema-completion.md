@@ -15,7 +15,10 @@ Scope tabs follow in M4-05.)*
 ## Scope
 - **Server IDE endpoints** (`datascript-server`):
   - `POST /api/complete`, `POST /api/hover`, and `POST /api/signature-help` backed by
-    `datascript_compiler::ide` (M3-02, D-057) over `StitchedProgram` (M4-08), listing sandboxed
+    `datascript_compiler::ide` (M3-02, D-057) over M4-08's whole-notebook `StitchedProgram` up to
+    and including the target cell (not the transitive single-cell stitching, so completion offers
+    upstream `let`s the cell does not reference yet,
+    [WEB_UI.md §3](../WEB_UI.md#ide-requests-see-every-upstream-let)), listing sandboxed
     files for `Completions::files` (D-016) and passing registered `--table` host tables.
 - **Editor IDE extensions** (`web/`): CodeMirror 6 autocomplete, hover tooltips, and signature help
   through `Runtime`.
@@ -30,7 +33,8 @@ Scope tabs follow in M4-05.)*
 
 ## Acceptance criteria
 - [ ] Completion, hover, and signature-help results match the LSP for the same text and cursor
-      (shared test vectors), plus cross-cell `let` completion tests.
+      (shared test vectors), plus cross-cell `let` completion tests, including an upstream `let`
+      that the target cell does not reference yet being offered.
 - [ ] Vitest unit tests for the client-side Arrow column profiler (including dynamic truncation
       labelling with both default and non-default `rowLimit`) and subfolder-relative `Insert from`
       paths.

@@ -23,8 +23,10 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
 - **WebSocket streaming execution & file watcher** (`WS /api/ws`, requiring the `ds_session_<port>` cookie +
   `Origin` check):
   - Executes single cells (or a single cell-relative `statementIndex`) using M4-08's
-    `StitchedProgram` (transitive upstream `let` prepending + `DS1085`) and `Session::start` + the
-    streaming row-limit helper.
+    `StitchedProgram` (transitive upstream `let` prepending + `DS1085`; single-statement stitching
+    for a `statementIndex` run, so the cell's other query statements cannot block it, per
+    [WEB_UI.md §3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085)) and `Session::start` +
+    the streaming row-limit helper.
   - Emits `started` carrying `nowMicros` (accepting an optional shared `nowMicros` for Run all) and
     `rowLimit`, then for each result its `statementIndex` and `sourceCount` (distinct `SourceRef`s
     found by walking `PlanNode::Scan` nodes in that query's `QueryPlan::root`; per result, not a
@@ -65,7 +67,9 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
   - WS cookie + `Origin` auth, streaming batches, cancellation, `sourceCount`/`rowLimit`, `DS4060`
     truncation (default & custom `row_limit`), per-result `sourceCount` in a multi-statement
     cell, `DS1085` propagation (rules a and b; not on an unreferenced broken `let` or upstream
-    query error), `DS0004` suppression on `let`-only cells, workspace file-watch invalidation,
+    query error), a statement run and an export succeeding while another query statement in the
+    same cell has an error (and a whole-cell run of that cell blocked by it),
+    `DS0004` suppression on `let`-only cells, workspace file-watch invalidation,
     and **no** change notification after the server's own `PUT`;
   - two-step streaming export reusing the run-time snapshot, `nowMicros` (`now()`/`ago()`),
     cell-relative `statementIndex`, cookie + one-shot ticket replay/expiry, and `Sec-Fetch-Site`;

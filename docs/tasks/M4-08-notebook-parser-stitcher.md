@@ -29,13 +29,17 @@ REPL, and `datascript-wasm` (M5) all share one implementation
       cell metadata in v1;
     - `<!-- ds:cell -->` adjacent-Markdown delimiter with stacking `:literal` escaping (add one
       `:literal` on save, remove one on load), so every input round-trips;
-    - Markdown cells can never change cell boundaries: top-level `ds`/`datascript` fences inside a
-      Markdown cell get the same stacking `:literal` escape on their tag, a fence left open at the
-      end of a Markdown cell gets a closing fence appended, and a first Markdown cell starting with
-      `---` (no frontmatter) gets a leading blank line;
+    - no cell can change cell boundaries, checked for every cell in its new position (untouched
+      cells included): top-level `ds`/`datascript` fences inside a Markdown cell get the same
+      stacking `:literal` escape on their tag, a fence left open at the end of any cell followed by
+      another cell gets a closing fence appended, and a first Markdown cell starting with `---` (no
+      frontmatter) gets a leading blank line;
     - opaque per-cell `originId` (byte range + content hash) returned by the parser and matched on
-      serialize-with-base so untouched cells and separators retain exact original bytes and line
-      endings unambiguously even with duplicate identical cells or reorders. Serializing also
+      serialize-with-base so untouched cells retain exact original bytes and line endings
+      unambiguously even with duplicate identical cells or reorders. Separators are recomputed
+      from each cell's new neighbours (original separator bytes reused only between the same two
+      untouched cells in the same order; `<!-- ds:cell -->` whenever two Markdown cells become
+      adjacent), and a repeated non-null `originId` is a reported error. Serializing also
       returns the fresh `originId` of every cell in the written output (the server sends these back
       from `PUT`), and an `originId` not found in the base is a reported mismatch, never silently
       re-serialized.
@@ -48,7 +52,13 @@ REPL, and `datascript-wasm` (M5) all share one implementation
        by identifier text), prepends only those `let` statements in document order, and emits
        **`DS1085`** (register active in `codes.rs` & `DIAGNOSTICS.md`) exactly per rules (a) and
        (b) in [WEB_UI.md §3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085), with the
-       message, primary span, secondary label, and help given there.
+       message, primary span, secondary label, and help given there;
+    3. single-statement stitching (Run statement at cursor, export): the same as 2, but keeping
+       only the target query statement and the `let`s it transitively references from the target
+       cell, so the cell's other query statements cannot block it;
+    4. prefix stitching for IDE requests: every DataScript cell up to and including the target, so
+       completion sees every upstream `let`
+       ([WEB_UI.md §3](../WEB_UI.md#ide-requests-see-every-upstream-let)).
   - Map diagnostic spans back to `(cell_index, local_span)` and UTF-16 positions (D-025).
   - Have `datascript-cli`'s `ReplProgram` delegate to `datascript_compiler::StitchedProgram`.
 
@@ -63,9 +73,17 @@ REPL, and `datascript-wasm` (M5) all share one implementation
       a Markdown cell ending in an unclosed ```` ```json ```` fence followed by a DataScript cell, a
       first Markdown cell starting with `---`, and `originId`
       partial-edit diff preservation across duplicate identical cells and reorders.
-- [ ] Property test: `parse(serialize(cells)) == cells` for generated cell lists (random Markdown
-      and DataScript text including fences, `---`, and `ds:cell` lines), apart from appended
-      closing fences.
+- [ ] Serialize-with-base boundary tests where only neighbours change: deleting the DataScript
+      cell between two untouched Markdown cells (they stay two cells, joined by
+      `<!-- ds:cell -->`), appending a cell after an untouched last cell with an unclosed
+      DataScript or Markdown fence (not swallowed), moving an untouched Markdown cell starting with
+      `---` to the top of a file without frontmatter (not read as frontmatter), and a repeated
+      `originId` reported as an error.
+- [ ] Property test: `parse(serialize(cells)) == normalize(cells)` (empty Markdown cells dropped,
+      Markdown cells' leading/trailing blank lines trimmed) for generated cell lists (random
+      Markdown and DataScript text including fences, `---`, and `ds:cell` lines), apart from
+      appended closing fences; also for serialize-with-base after random deletes, reorders, and
+      inserts.
 - [ ] Repeated-save test: parse, edit cell A, serialize, re-parse to get fresh `originId`s, edit
       cell B, serialize again. Cell A (CRLF, `~~~datascript` fence) and every untouched cell keep
       their bytes after the second save, and a stale `originId` is reported as a mismatch rather
@@ -79,13 +97,16 @@ REPL, and `datascript-wasm` (M5) all share one implementation
       same cell, an upstream warning, or an undeclared name with no upstream syntax error (that is
       the ordinary unknown-name diagnostic), or a target that uses only existing columns and
       functions while an upstream `let` has a missing name; a column whose name matches an upstream `let`
-      prepends that `let` harmlessly.
+      prepends that `let` harmlessly. Single-statement stitching leaves out a broken neighbouring
+      query statement in the target cell, and prefix stitching includes an unreferenced upstream
+      `let`.
 - [ ] Rendered-output snapshot tests (error output is first-class behaviour, AGENTS.md): `.dsnb`
       fixtures under `crates/datascript-compiler/tests/notebooks/` whose expected output is the
       rendered diagnostic text (code, message, primary span, secondary label, help, `.dsnb` line
       and column) for `DS1085` under both rules and for cross-cell `DS1003`. `.dstest` is not used
       because its `---- query` section models one snippet, not a multi-cell file; M4-06 adds the
-      same cases end to end through `ds check`.
+      cross-cell `DS1003` case end to end through `ds check` (`ds check` checks the whole
+      notebook, so it never emits `DS1085`; M4-10 covers `DS1085` end to end over `WS /api/ws`).
 - [ ] `datascript-cli` REPL tests pass unchanged, and `datascript-compiler` still passes
       `cargo check --target wasm32-unknown-unknown`.
 
