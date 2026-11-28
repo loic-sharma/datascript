@@ -43,6 +43,6 @@ stream instead, so output starts at once and memory stays flat.
 
 ## Follow-ups
 - The REPL streams through the same `output::stream_results` (with `.max-rows`).
-- M4-01 reuses `Session::start` (handed over in its "Carried over").
+- M4-10 reuses `Session::start` (handed over in its "Carried over"; split out of M4-01).
 - M3-05 must print what `ds run` prints; the streaming printer lives in `datascript-cli` for now
   (handed over in M3-05's "Carried over").

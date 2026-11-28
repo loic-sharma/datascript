@@ -137,8 +137,8 @@ Two shared files are touched by many tasks:
 | [M4-08](M4-08-notebook-parser-stitcher.md) | `.dsnb` notebook parser/serializer, `StitchedProgram` & `DS4061` | M1-13, M2-13 | todo |
 | [M4-01](M4-01-server-api.md) | Local server (`ds ui`): cookie auth, CSP, files API, check & sandbox | M4-08 | todo |
 | [M4-10](M4-10-server-streaming-export.md) | Local server (`ds ui`): WS streaming runs, row-limit helper & export | M4-01 | todo |
-| [M4-02](M4-02-web-frontend.md) | Web UI: notebook shell, `Runtime`, editor & execution (v1) | M4-10, M2-13 | todo |
-| [M4-09](M4-09-web-results-grid.md) | Web UI: virtualized Arrow grid, multi-result tabs & export | M4-02 | todo |
+| [M4-02](M4-02-web-frontend.md) | Web UI: notebook shell, `Runtime`, editor & live checking (v1) | M4-01, M2-13 | todo |
+| [M4-09](M4-09-web-results-grid.md) | Web UI: cell execution, virtualized Arrow grid, multi-result tabs & export | M4-02, M4-10 | todo |
 | [M4-03](M4-03-web-charts.md) | Charts from `RenderSpec` (Apache ECharts) | M4-09, M1-10 | todo |
 | [M4-04](M4-04-web-schema-completion.md) | Result profiler, source schema inspector & IDE completion | M4-09, M3-02, M2-13 | todo |
 | [M4-05](M4-05-web-shortcuts-polish.md) | Power-user shortcuts, tabs, file management & inspector polish | M4-02, M4-09, M4-03, M4-04 | todo |

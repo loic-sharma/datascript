@@ -47,4 +47,4 @@ Informational (decisions in D-043):
 - The third-pass DS9001 in the resolution loop has no test: the real binder cannot produce it.
 - Two concurrent calls that miss the cache for the same source both fetch it; harmless.
 - Follow-ups handed to M1-10 (render test), M1-11 (use the writers), M1-12 and M3-01 (cache
-  invalidation), M4-01 (truncation wording, invalidation) and M5-01 (wasm32 panic hook).
+  invalidation), M4-10 (truncation wording, invalidation; split out of M4-01) and M5-01 (wasm32 panic hook).

@@ -933,12 +933,12 @@ KQL rejects trailing commas, so queries that use them cannot be pasted verbatim 
 WASM playground, M3-06's VS Code results panel via component reuse, and a potential future Tauri
 desktop shell) standardizes on:
 - **React + TypeScript + Vite + Tailwind CSS**: the React runtime (~45 KB gzipped) is negligible
-  next to CodeMirror, ECharts, and the ~5.8 MB WASM engine, and provides the strongest ecosystem for
+  next to CodeMirror, ECharts, and the WASM engine (size not yet measured; M5-01), and provides the strongest ecosystem for
   virtualized grids (`@tanstack/react-virtual`), drag-and-drop cell reordering, and accessible UI
   primitives.
 - **CodeMirror 6**: lightweight, multi-instance friendly for notebooks, and small enough for WASM.
 - **Apache ECharts** (tree-shaken Canvas modules): covers all 9 `RenderSpec` kinds (with a custom
-  KPI card component for `card`), handles large point counts and interactive zoom smoothly, exports
+  KPI card component for `card`), handles large point counts and interactive zoom, exports
   PNG/SVG, and supports matching dark/light themes.
 - **Desktop readiness**: all UI state talks through a typed `Runtime` interface (`ServerRuntime`,
   `WasmRuntime`, and later `TauriRuntime` wrapping Rust's `Session` natively with no Electron
@@ -960,13 +960,16 @@ box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
 - **Cross-cell `let` scope & `DS4061`**: top-to-bottom lexical order keeping `DS1003` no-shadowing
   (D-007) so `.dsnb` notebooks stay 1:1 with `.ds` scripts. Live `POST /api/check` checks the whole
   notebook in one pass; single-cell runs prepend only the cell's transitively referenced upstream
-  `let`s, and `StitchedProgram` emits `DS4061` only when an upstream `let` cell fails to parse or a
-  transitively referenced `let` has an error (warnings, upstream queries, and unreferenced broken
-  `let`s do not block, [WEB_UI.md §3](WEB_UI.md#transitive-upstream-let-prepending--ds4061)). Lazy
-  `let` re-scans are surfaced via distinct `SourceRef` counts (`PlanNode::Scan`) in the cell status
-  bar; `let`-only validation suppresses `DS0004`.
+  `let`s, and `StitchedProgram` emits `DS4061` when the run is blocked by a broken referenced `let`
+  or by an upstream syntax error that may define a referenced name. Warnings, upstream queries, and
+  unreferenced broken `let`s do not block. The exact rule, the deliberate over-approximation of
+  references, and the diagnostic's shape are defined once in [WEB_UI.md §3](WEB_UI.md#transitive-upstream-let-prepending--ds4061). Lazy
+  `let` re-scans are surfaced via distinct `SourceRef` counts (`PlanNode::Scan`) per result;
+  `let`-only validation suppresses `DS0004`.
 - **Auth, persistence, CSP & workspace safety**: `ds ui` exchanges the launch `?token=` for an
-  `HttpOnly; SameSite=Strict` cookie (so reloads stay signed in), sends a strict CSP header, stores
+  `HttpOnly; SameSite=Strict` cookie holding a separate random session id, named per port
+  (`ds_session_<port>`) because cookies are shared across ports on `127.0.0.1` (so reloads stay
+  signed in and two `ds ui` instances don't sign each other out), sends a strict CSP header, stores
   per-root preferences in the user's OS config dir (`dirs::config_dir()`) so `ds ui`'s random port
   never resets settings, saves files atomically (per-path lock + temp file + `sync_all` + rename),
   and inserts paths relative to the active notebook's parent directory. The workspace file API
@@ -995,8 +998,9 @@ line rather than an empty grid.
 **Accepted.** Closes Q-007. Interactive UI runtimes (`ds ui`, VS Code M3-06 results panel, and WASM
 M5) cap streamed results at `10_000` rows by default (configurable per workspace root in the user's
 OS config dir for `ds ui` or `localStorage` for WASM, plus per-run override), enforced on streaming
-runs via a shared row-limiting helper in `datascript-engine` that slices the final batch and drops
-the stream to cancel execution. When truncated, the runtime emits `DS4060`, client-side grid
+runs via a row-limiting helper in `datascript-engine` that slices the final batch and drops the
+stream to cancel execution. The helper is extracted from `ResultStream::collect`, which then calls
+it, so there is one truncation implementation (D-043). When truncated, the runtime emits `DS4060`, client-side grid
 sorting and Result Profiler stats label `"of first {N} rows"` using the run's actual `rowLimit`,
 column headers offer **Sort in query** (`| sort by <col> desc/asc`, inserted before any trailing
 `| render ...` or updating an existing `sort` in place), and the footer offers one-click **Export
@@ -1005,6 +1009,9 @@ full result**. Exports send the immutable run-time cell snapshot (re-executing t
 current disk files) over a two-step cookie+ticket download (`POST /api/export` → one-shot
 `GET /api/export/<ticket>`, [WEB_UI.md §6](WEB_UI.md#server-auth-csp--api-contract-datascript-server-m4-01-m4-10-m4-04--m4-05))
 so `datascript_engine::writers` streams straight to disk without buffering in browser memory.
+v1 export formats are CSV, NDJSON, JSON (a new streaming array writer) and Arrow IPC (a new
+streaming writer), all added or reused in M4-10; Parquet and `.xlsx` appear once M2-27 and M2-28
+land, and the menu lists only what the server can write.
 *(Web UI design session, 2026-11-27.)*
 
 ## Proposed (open questions)

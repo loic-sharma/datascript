@@ -1,17 +1,25 @@
-# M4-09 — Web UI: virtualized Arrow results grid, multi-result tabs & export
+# M4-09 — Web UI: cell execution, virtualized Arrow results grid, multi-result tabs & export
 
 **Status:** todo
-**Depends on:** M4-02
+**Depends on:** M4-02, M4-10
 **Crates:** `web/`
 **Diagnostic codes:** none
 
 ## Goal
-Build the decoupled `web/src/components/results/` package (reused directly by VS Code's M3-06
-results webview) implementing the virtualized Arrow grid, multi-statement sub-tabs (D-063),
+Wire cell execution over M4-10's WebSocket (`ServerRuntime.run`) and build the decoupled
+`web/src/components/results/` package (reused directly by VS Code's M3-06 results webview)
+implementing the virtualized Arrow grid, multi-statement sub-tabs (D-063),
 truncation-aware sorting + **Sort in query**, and two-step streaming export (D-064,
 [WEB_UI.md §3–§4.2](../WEB_UI.md#42-center-pane--notebook-canvas)).
 
 ## Scope
+- **Execution & staleness** (moved from M4-02 so M4-02 and M4-10 can run in parallel):
+  `ServerRuntime.run`/cancel over `WS /api/ws`; Run cell (`Cmd/Ctrl+Enter`), Run & advance
+  (`Shift+Enter`), Run statement at cursor (`Cmd/Ctrl+Alt+Enter` / gutter button), Run cell &
+  below / Run all (one shared `nowMicros`, stopping at the first failing cell), Cancel
+  (`Cmd/Ctrl+.` / Stop button), per-result status line (`rows · duration · N sources`),
+  transitive-`let` Stale badge, `let`-only validation line (`DS0004` suppressed), and `DS4061`
+  cards whose secondary label jumps to the upstream cell.
 - **Virtualized Arrow grid** (`apache-arrow` + `@tanstack/react-virtual`):
   - Row index gutter, compact monochrome column headers (type glyph + subtle null indicator whose
     click opens the right-hand profiler), italic `NULL` cell styling, column resizing, click-to-copy
@@ -29,14 +37,22 @@ truncation-aware sorting + **Sort in query**, and two-step streaming export (D-0
   - Capture the immutable cell snapshot (`cells`, `targetCellIndex`, `nowMicros`, cell-relative
     `statementIndex`) at run time and wire the **Export full result** menu to `POST /api/export` →
     `GET /api/export/<ticket>` (authenticated by session cookie + one-shot ticket; re-executes
-    against current disk files; CSV, JSON, NDJSON, Parquet, Arrow IPC).
+    against current disk files). The menu lists the formats the server reports (v1: CSV, NDJSON,
+    JSON, Arrow IPC; Parquet and `.xlsx` once M2-27 / M2-28 land).
 
 ## Acceptance criteria
-- [ ] Vitest unit tests for Arrow cell formatting, "Sort in query" rewrites (including a query
+- [ ] Vitest unit tests for transitive-`let` staleness fingerprinting, Run-statement-at-cursor
+      selection, Arrow cell formatting, "Sort in query" rewrites (including a query
       ending in `| render timechart`, updating an existing `sort`, and explicit `asc`/`desc`),
       dynamic truncation labels with a non-default `rowLimit`, and run-time export snapshot capture
       (including after editing a cell into Stale state).
-- [ ] Playwright test against `ds ui` verifying virtualized scrolling, multi-statement sub-tabs,
-      truncation banner + "Sort in query", and streaming CSV/Parquet export download.
+- [ ] Playwright test against `ds ui` verifying Run / Run all / Cancel, `let`-only cell showing no
+      `DS0004` warning, `DS4061` jump, virtualized scrolling, multi-statement sub-tabs (each with
+      its own source count), truncation banner + "Sort in query", and streaming CSV export
+      download (plus Parquet if M2-27 is done).
+
+## Carried over
+- [ ] (from M2-03) If M2-03 is done, `dynamic` values exist: show them in the grid as JSON text,
+      collapsed when long, with a Vitest test. (If M2-03 lands after this task, M2-03 does it.)
 
 ## Follow-ups
