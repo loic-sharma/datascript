@@ -18,7 +18,7 @@ truncation-aware sorting + **Sort in query**, and two-step streaming export (D-0
   (`Shift+Enter`), Run statement at cursor (`Cmd/Ctrl+Alt+Enter` / gutter button), Run cell &
   below / Run all (one shared `nowMicros`, stopping at the first failing cell), Cancel
   (`Cmd/Ctrl+.` / Stop button), per-result status line (`rows · duration · N sources`),
-  transitive-`let` Stale badge, `let`-only validation line (`DS0004` suppressed), and `DS1085`
+  upstream-`let` Stale badge (own source plus every upstream `let`, the same `let`s a run compiles), `let`-only validation line (`DS0004` suppressed), and `DS1085`
   cards whose secondary label jumps to the upstream cell.
 - **Live workspace sync** (needs M4-10's watcher): implement `Runtime.subscribeWorkspace` in
   `ServerRuntime` over `WS /api/ws` file-change events; refresh the file tree on additions,
@@ -48,7 +48,7 @@ truncation-aware sorting + **Sort in query**, and two-step streaming export (D-0
     never a hard-coded list.
 
 ## Acceptance criteria
-- [ ] Vitest unit tests for transitive-`let` staleness fingerprinting, Run-statement-at-cursor
+- [ ] Vitest unit tests for upstream-`let` staleness fingerprinting, Run-statement-at-cursor
       selection, Arrow cell formatting, "Sort in query" rewrites (including a query
       ending in `| render timechart`, updating an existing `sort`, and explicit `asc`/`desc`),
       dynamic truncation labels with a non-default `rowLimit`, and run-time export snapshot capture

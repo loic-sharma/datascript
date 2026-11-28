@@ -11,7 +11,7 @@ Build the single canonical, pure, `wasm32`-compatible `.dsnb` Markdown parser/se
 `datascript-server` (M4-01, M4-10, M4-04), `ds run`/`ds check`/`ds lsp` (M4-06), `datascript-cli`'s
 REPL, and `datascript-wasm` (M5) all share one implementation
 ([WEB_UI.md §2](../WEB_UI.md#2-notebook-file-format-dsnb),
-[§3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085),
+[§3](../WEB_UI.md#upstream-let-prepending--ds1085),
 [§6](../WEB_UI.md#cross-cell-combined-program--dsnb-parser-datascript-compiler-m4-08), D-062).
 
 ## Scope
@@ -49,31 +49,19 @@ REPL, and `datascript-wasm` (M5) all share one implementation
   - Extract the pure segment-stitching and offset-mapping primitive from `datascript-cli`'s
     `ReplProgram`, supporting:
     1. whole-notebook stitching (for `POST /api/check`, `ds check`, `ds run`);
-    2. single-cell stitching that syntactically computes the target cell's **transitive upstream
-       `let` dependencies** (parsing upstream cells with recovery, over-approximating references
-       by identifier text), and prepends only those **valid** `let` statements in document
-       order. It takes a caller-built `BrokenLets` set (the caller checks the upstream `let`s with
-       `Session::check`; `StitchedProgram` stays pure) and registers each entry with the binder as
-       a declared-but-broken scope entry;
-    3. single-statement stitching (Run statement at cursor, export): the same as 2, but keeping
-       only the target query statement and the `let`s it transitively references from the target
-       cell, so the cell's other query statements cannot block it; and bindings-only stitching
-       (validating a `let` or a `let`-only cell): the cell's `let`s and their transitive upstream
-       `let`s, no query statements;
-    4. prefix stitching for IDE requests: every DataScript cell up to and including the target, so
-       completion sees every upstream `let`
-       ([WEB_UI.md §3](../WEB_UI.md#ide-requests-see-every-upstream-let)).
-  - **`BrokenLets` builder**: a pure function from the upstream-`let` check's diagnostics and the
-    binder's resolved `let` references to the set: `let`s with their own errors, the later of two
-    declarations of a name (`DS1003`), and, transitively, `let`s that resolved a name to a broken
-    `let` (with the chain recorded). A name resolved to a column taints nothing.
-  - **Binder `LetEntry::Broken { cell, decl_span, chain }`**: every `let` lookup (expressions,
-    table positions, and `const_value_of` for `take n` / `top n` / render properties) emits
-    **`DS1085`** (register active in `codes.rs` & `DIAGNOSTICS.md`) on a broken entry, after the
-    usual column lookup, once per broken `let` per program, with the message, primary span,
-    secondary label, chain note, and help in
-    [WEB_UI.md §3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085). No unknown-name
-    error is rewritten after the fact.
+    2. cell stitching (runs, export, IDE requests): every upstream `let` statement in document
+       order (upstream queries left out), parsing upstream cells with recovery, followed by the
+       part of the target cell the request needs: all of it (`mode: "cell"`, IDE requests), its
+       `let`s plus one query statement (`mode: "statement"`, export), or only its `let`s
+       (`mode: "bindings"`);
+    3. **`DS1085`** (register active in `codes.rs` & `DIAGNOSTICS.md`): a pure step over the
+       diagnostics that checking the stitched program returns (`Session::start` already refuses
+       to run when any of them is an error). When an error-severity diagnostic falls in the
+       prepended upstream text, or an upstream cell cannot be split into statements, it reports one
+       `DS1085` (first broken upstream statement, with the message,
+       primary span, secondary label, and help in
+       [WEB_UI.md §3](../WEB_UI.md#upstream-let-prepending--ds1085)) instead of those upstream
+       diagnostics. No binder changes.
   - Map diagnostic spans back to `(cell_index, local_span)` and UTF-16 positions (D-025).
   - Have `datascript-cli`'s `ReplProgram` delegate to `datascript_compiler::StitchedProgram`.
 
@@ -103,27 +91,18 @@ REPL, and `datascript-wasm` (M5) all share one implementation
       `~~~datascript` fence) keeps its bytes after both saves.
 - [ ] CRLF test: parse a CRLF file, convert every cell's text to LF as an editor would, edit one
       cell, and serialize with base: every other cell keeps its CRLF bytes and fence style.
-- [ ] Unit tests for `StitchedProgram` whole-notebook and transitive single-cell stitching, span
-      mapping (multi-byte UTF-8/UTF-16), and `DS1085`: fires for a referenced `let` with a type
-      error, for a referenced name declared twice upstream (`DS1003`, naming the later
-      declaration), for an indirect chain (cell 3 uses `b`, `b` uses broken `a`: one `DS1085` on
-      cell 3's `b` with the chain note), for a broken scalar `let n` used in `take n` and in a
-      render `title` (not `DS2050`/`DS5005`), and only once when the target references the broken
-      name three times; does *not* fire on an unreferenced broken `let`, a broken query next to a
-      valid `let` in the same cell, an upstream warning, an upstream `let` whose name is missing
-      (the target gets the ordinary unknown-name error for a name it might have defined), a column
-      whose name matches a broken upstream `let`, or a column whose name matches a `let` broken only
-      through a chain (both runs succeed); a column whose name matches a valid upstream `let`
-      prepends that `let` harmlessly. `BrokenLets` builder unit tests cover own errors,
-      duplicates, transitive chains, and a `let` whose same-named reference resolved to a column
-      staying valid. Single-statement stitching leaves out a
-      broken neighbouring query statement in the target cell, bindings-only stitching leaves out a
-      half-typed query in the same cell, and prefix stitching includes an unreferenced upstream
-      `let`.
+- [ ] Unit tests for `StitchedProgram` whole-notebook and cell stitching (each `mode`), span
+      mapping (multi-byte UTF-8/UTF-16), and `DS1085`: fires once for an upstream `let` with a type
+      error, for a name declared twice upstream (`DS1003`), and for an upstream cell that cannot
+      be split into statements, naming the first broken statement; does *not* fire for an
+      upstream query error or an upstream warning; upstream errors are not repeated next to it.
+      `mode: "statement"` leaves out a broken neighbouring query in the target cell, `mode:
+      "bindings"` leaves out a half-typed query, and IDE stitching includes an upstream `let` the
+      target does not reference.
 - [ ] Rendered-output snapshot tests (error output is first-class behaviour, AGENTS.md): `.dsnb`
       fixtures under `crates/datascript-compiler/tests/notebooks/` whose expected output is the
       rendered diagnostic text (code, message, primary span, secondary label, help, `.dsnb` line
-      and column) for `DS1085` (direct and indirect) and for cross-cell `DS1003`. `.dstest` is not used
+      and column) for `DS1085` and for cross-cell `DS1003`. `.dstest` is not used
       because its `---- query` section models one snippet, not a multi-cell file; M4-06 adds the
       cross-cell `DS1003` case end to end through `ds check` (`ds check` checks the whole
       notebook, so it never emits `DS1085`; M4-10 covers `DS1085` end to end over `WS /api/ws`).

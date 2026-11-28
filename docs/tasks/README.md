@@ -144,6 +144,7 @@ Two shared files are touched by many tasks:
 | [M4-05](M4-05-web-shortcuts-polish.md) | Power-user shortcuts, tabs, file management & inspector polish | M4-02, M4-09, M4-03, M4-04 | todo |
 | [M4-06](M4-06-notebook-cli-lsp.md) | `.dsnb` notebooks in CLI (`ds run`/`ds check`) and LSP / VS Code | M4-08, M3-01, M3-02 | todo |
 | [M4-07](M4-07-web-output-cache.md) | Web UI: local output cache across reloads *(optional for M4 "done")* | M4-09, M4-03 | todo |
+| [M4-11](M4-11-precise-upstream-blocking.md) | Notebooks: block a cell run only on the upstream `let`s it uses | M4-08, M4-10 | todo |
 
 ## M5 — In-browser runtime (WASM)
 

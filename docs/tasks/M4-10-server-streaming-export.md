@@ -25,11 +25,11 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
   - Executes a `run` request `{ cells, targetCellIndex, mode, statementIndex?, nowMicros? }` with
     `mode` = `"cell"` (every statement), `"statement"` (one cell-relative query `statementIndex`;
     single-statement stitching, so the cell's other query statements cannot block it), or
-    `"bindings"` (validate the cell's `let`s; no queries, `DS0004` suppressed). Before stitching,
-    the server checks every upstream `let` statement with `Session::check` (schema cache makes
-    repeats cheap) and builds M4-08's `BrokenLets` set, then runs M4-08's `StitchedProgram`
-    ([WEB_UI.md §3](../WEB_UI.md#transitive-upstream-let-prepending--ds1085)) with
-    `Session::start` + the streaming row-limit helper. Export builds `BrokenLets` the same way.
+    `"bindings"` (validate the cell's `let`s; no queries, `DS0004` suppressed). It stitches with
+    M4-08's `StitchedProgram` (every upstream `let`, then the part of the target cell the mode
+    needs, [WEB_UI.md §3](../WEB_UI.md#upstream-let-prepending--ds1085)), runs it with
+    `Session::start` + the streaming row-limit helper, and passes the diagnostics through M4-08's
+    `DS1085` step. Export stitches the same way.
   - Emits `started` carrying `nowMicros` (accepting an optional shared `nowMicros` for Run all) and
     `rowLimit`, then for each result its `statementIndex` and `sourceCount` (distinct `SourceRef`s
     found by walking `PlanNode::Scan` nodes in that query's `QueryPlan::root`; per result, not a
@@ -68,8 +68,8 @@ Add streaming query execution (`WS /api/ws`), a reusable streaming row-limit hel
 - [ ] API/WS integration tests covering:
   - WS cookie + `Origin` auth, streaming batches, cancellation, `sourceCount`/`rowLimit`, `DS4060`
     truncation (default & custom `row_limit`), per-result `sourceCount` in a multi-statement
-    cell, `DS1085` propagation (direct, through a chain, once per broken `let`; not on an
-    unreferenced broken `let`, an upstream query error, or a column named like a broken `let`), a statement run and an export succeeding while another query statement in the
+    cell, `DS1085` propagation (one `DS1085` for a broken upstream `let` even when the target does not
+    use it; none for an upstream query error), a statement run and an export succeeding while another query statement in the
     same cell has an error (and a whole-cell run of that cell blocked by it),
     `mode: "bindings"` validating a `let` while a half-typed query in the same cell is ignored,
     `DS0004` suppression on `let`-only cells, workspace file-watch invalidation,

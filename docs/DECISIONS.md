@@ -961,14 +961,14 @@ box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
   Supersedes D-048's note that the web UI does not need a shared stitcher.
 - **Cross-cell `let` scope & `DS1085`**: top-to-bottom lexical order keeping `DS1003` no-shadowing
   (D-007) so `.dsnb` notebooks stay 1:1 with `.ds` scripts. Live `POST /api/check` checks the whole
-  notebook in one pass; single-cell runs prepend only the cell's transitively referenced upstream
-  `let`s, and `StitchedProgram` emits `DS1085` when the run is blocked by a broken referenced `let`
-  (the binder decides: the caller checks the upstream `let`s and passes a `BrokenLets` set, broken
-  ones are never prepended, and every binder `let` lookup that finds a broken entry emits `DS1085`
-  directly; columns are looked up first, so a same-named column never blocks; an upstream
-  statement whose name cannot be recovered declares nothing). Warnings, upstream queries, and
-  unreferenced broken `let`s do not block. The exact rule, the deliberate over-approximation of
-  references, and the diagnostic's shape are defined once in [WEB_UI.md §3](WEB_UI.md#transitive-upstream-let-prepending--ds1085). Lazy
+  notebook in one pass; single-cell runs, exports and IDE requests prepend **every** upstream `let`
+  (the same `let`s live check binds), and `StitchedProgram` emits one `DS1085` when any upstream
+  `let` has an error, instead of repeating upstream errors. Warnings and upstream queries do not
+  block. This is deliberately coarse: a broken `let` blocks every cell below it, even ones that
+  don't use it. An earlier draft blocked only on the `let`s a cell uses; four review rounds kept
+  finding binder-level edge cases (column vs `let` lookup order, duplicates, spans of text left out
+  of the program), so that refinement moved to M4-11, to be designed with the binder in hand. The
+  rule and the diagnostic's shape are defined once in [WEB_UI.md §3](WEB_UI.md#upstream-let-prepending--ds1085). Lazy
   `let` re-scans are surfaced via distinct `SourceRef` counts (`PlanNode::Scan`) per result;
   `let`-only validation suppresses `DS0004`.
 - **Auth, persistence, CSP & workspace safety**: `ds ui` exchanges the launch `?token=` for an

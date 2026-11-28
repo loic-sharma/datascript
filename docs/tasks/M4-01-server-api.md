@@ -35,7 +35,8 @@ WebSocket streaming runs, row-limit capping, and export land in M4-10.
     (per-path `tokio::sync::Mutex`, `expectedVersion` `409` check, lossless content diff against
     the on-disk file via M4-08, atomic temp-file + `sync_all` + rename preserving Unix
     permissions). `PUT` requires `expectedVersion` (`428 Precondition Required` without it),
-    returns `WriteResult { version }`, makes `GET /api/file` wait on the same per-path lock (so a
+    returns `WriteResult { version }`, answers `200` with the current `version` (not `409`) when the
+    version is stale but the normalized cells on disk already equal the request's cells, makes `GET /api/file` wait on the same per-path lock (so a
     read never sees the version from before a write in progress), and records the `version` it wrote per path so M4-10's
     watcher can ignore the server's own writes.
   - Refuse non-`.dsnb`/`.ds` paths and any path with a symlink component under the root
@@ -59,8 +60,9 @@ WebSocket streaming runs, row-limit capping, and export land in M4-10.
     rejection (`notes.ds -> data/orders.csv`), atomic `O_CREAT|O_EXCL` create refusal on existing
     files, atomic save + `409` conflicts, and lossless content-diff `PUT`s including **two
     consecutive saves** (edit cell A, save, use the returned `version`, edit cell B, save: cell A
-    and untouched cells stay byte-identical), a moved untouched cell keeping its bytes, and a
-    `PUT` without `expectedVersion` getting `428`;
+    and untouched cells stay byte-identical), a moved untouched cell keeping its bytes, the same `PUT`
+    sent twice (second one gets `200` with the current version, not `409`), and a `PUT` without
+    `expectedVersion` getting `428`;
   - whole-notebook `POST /api/check` with cross-cell `let`s and UTF-16 mapped spans.
 - [ ] Running `from '/etc/passwd' | take 1`, `from '../x.csv'` and a symlink pointing out of the
       root all fail with DS3007 (D-016, D-036).

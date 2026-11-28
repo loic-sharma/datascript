@@ -15,10 +15,9 @@ Scope tabs follow in M4-05.)*
 ## Scope
 - **Server IDE endpoints** (`datascript-server`):
   - `POST /api/complete`, `POST /api/hover`, and `POST /api/signature-help` backed by
-    `datascript_compiler::ide` (M3-02, D-057) over M4-08's whole-notebook `StitchedProgram` up to
-    and including the target cell (not the transitive single-cell stitching, so completion offers
-    upstream `let`s the cell does not reference yet,
-    [WEB_UI.md §3](../WEB_UI.md#ide-requests-see-every-upstream-let)), listing sandboxed
+    `datascript_compiler::ide` (M3-02, D-057) over M4-08's `StitchedProgram` (every upstream `let`
+    plus the whole target cell, so completion offers upstream `let`s the cell does not reference
+    yet, [WEB_UI.md §3](../WEB_UI.md#upstream-let-prepending--ds1085)), listing sandboxed
     files for `Completions::files` (D-016) and passing registered `--table` host tables.
 - **Editor IDE extensions** (`web/`): CodeMirror 6 autocomplete, hover tooltips, and signature help
   through `Runtime`.

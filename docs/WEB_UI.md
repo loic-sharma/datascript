@@ -163,6 +163,10 @@ A `.dsnb` file is a sequence of cells parsed from and serialized to UTF-8 Markdo
        `PUT` landed; adopt the returned `version`;
      - otherwise the file really changed on disk → show the "changed on disk" banner.
 
+     **`PUT` is idempotent**, which covers a slow original `PUT` landing after the retry: when
+     `expectedVersion` does not match but the normalized cells on disk already equal the request's
+     cells, the server answers `200` with the current `version` instead of `409`.
+
      Without this, a slow disk turns two quick auto-saves into a `409` and a
      false "changed on disk" banner.
    - **`expectedVersion` is required** on every `PUT` to an existing file: a `PUT` without it is
@@ -231,92 +235,57 @@ A notebook behaves identically to a single DataScript program split into cells
   union across the cell; in a multi-statement cell each result sub-tab shows its own count.
   Materialized/cached `let` results are flagged as higher priority in [ROADMAP.md](ROADMAP.md).
 
-### Transitive upstream `let` prepending & `DS1085`
+### Upstream `let` prepending & `DS1085`
 
-This section is the single definition of when an interactive single-cell run is blocked.
-[LANGUAGE.md §2.1](LANGUAGE.md#21-notebooks-dsnb) and D-062 link here rather than restating it.
+This section is the single definition of what an interactive run of one cell compiles and when it
+is blocked. [LANGUAGE.md §2.1](LANGUAGE.md#21-notebooks-dsnb) and D-062 link here rather than
+restating it.
 
 - During live **`check`**, errors in an upstream cell are reported on that upstream cell itself;
   downstream references to a broken `let` receive the binder's error type silently (D-038) so
   errors do not cascade.
-- When running cell $k$ interactively, `StitchedProgram` (in `datascript-compiler`, M4-08) parses
-  every upstream DataScript cell **with recovery**, splitting it into statements, and computes cell
-  $k$'s **transitive `let` dependencies** syntactically. It prepends **only** those upstream `let`
-  statements, in document order, so an unrelated typo'd `let` in cell 1 never blocks cells below
-  that don't reference it.
-- **The dependency scan over-approximates on purpose**: any identifier token in cell $k$ (or in a
-  prepended `let`) whose text equals an upstream `let` name counts as a reference, even when the
-  binder would resolve it to a column. Prepending an unused valid `let` is harmless; missing a used
-  one is not. Broken `let`s are never prepended (below), so over-approximation can never pull an
-  error into the run.
-- **Which upstream `let`s are broken** is decided by the binder, not by text. The caller (M4-10's
-  server, M5-02's WASM API) checks the program made of **every upstream `let` statement** (no
-  query statements, so query-only sources are not resolved) with `Session::check`, and builds a
-  `BrokenLets` set from it, which it passes to `StitchedProgram`. A `let` is in the set when:
-  - the check reports an error-severity diagnostic on the statement itself (lexical, syntax, or
-    semantic); or
-  - its name is declared more than once upstream (`DS1003`, D-007); the set names the later
-    declaration, the one carrying `DS1003`; or
-  - binding it **resolved** a name to a `let` already in the set (from the binder's resolved `let`
-    references, the same data `datascript_compiler::ide` uses for `let` references), applied
-    transitively. Such a `let` has no diagnostic of its own (D-038), so the set records the chain
-    (`` `b` (cell 2) uses `a` (cell 1) ``). A name the binder resolved to a column does not taint
-    it.
-
-  A broken `let` still counts as declaring its name whenever recovery finds the name. An upstream
-  statement so broken that its name cannot be recovered (e.g. `let = …`, or a stretch whose
-  statement boundaries are lost) declares nothing, so a name in cell $k$ that it might have
-  defined is the ordinary unknown-name error. Live check already shows the syntax error upstream.
-- **`StitchedProgram` prepends only the valid referenced `let`s** and hands the binder every
-  `BrokenLets` entry as a declared-but-broken scope entry (`LetEntry::Broken { cell, decl_span,
-  chain }`). Every place the binder looks a name up as a `let` (expressions, table positions such
-  as `from orders` or `orders | …`, and constant lookups such as `take n` or a render `title`)
-  emits **`DS1085`** (error) when it finds a broken entry, instead of resolving it. Columns are
-  still looked up first, exactly as for any `let`, so an identifier that resolves to a column never
-  blocks the run, even if a broken `let` has the same name. All `DS1085`s land in the target's own
-  text, never inside prepended text.
-
-  Nothing else blocks: errors in unreferenced upstream `let`s, upstream query statements
-  (including a broken query next to a valid `let` in the same cell), and warnings anywhere **do
-  not block** running cell $k$.
-- **`DS1085` shape** (DIAGNOSTICS.md style), **one per broken `let`** the target uses, however
-  many times it is referenced:
-  - message: ``cannot run this cell because `orders` (cell 2) has errors``, naming the broken
-    `let` and its cell (for a duplicate declaration, the later one);
-  - primary span: the first reference to that name in the target;
-  - secondary label: the broken upstream statement (`` `orders` is defined here ``), plus a note
-    naming the chain when the `let` is broken only through another one
-    (`` `b` (cell 2) uses `a` (cell 1), which has errors ``);
-  - help: ``fix the error in cell 2, then run this cell again`` (the cell holding the statement
-    with the error, `a`'s cell in a chain). The web UI renders the secondary label as a jump link.
-- **What the target cell contributes**: `Session::start` checks the whole stitched program and runs
-  nothing if it has any error, so the stitched text decides what can block a run:
-  - **Run cell** stitches every statement of cell $k$. An error in any statement of the cell
+- **One program for runs, export, and IDE requests**: running cell $k$ compiles **every `let`
+  statement from the DataScript cells above it**, in document order, followed by the part of cell
+  $k$ being run. Upstream query statements are left out. Because these are the same `let`s live
+  check binds, scoping, duplicates (`DS1003`), and lookup order behave exactly as in live check.
+- **`DS1085`** (error) blocks the run, and nothing else in it runs, when **any upstream `let`
+  statement has an error-severity diagnostic** (lexical, syntax, or semantic, including `DS1003`),
+  or an upstream cell has a syntax error that prevents splitting it into statements (it might hide
+  a `let`). The run reports one `DS1085`, naming the first broken upstream statement in document
+  order, instead of repeating upstream errors that live check already shows on their own cells.
+  Errors in upstream query statements and warnings anywhere never block. Errors in cell $k$
+  itself are reported normally.
+- **This is deliberately coarse**: a typo in any upstream `let` blocks every cell below it, even a
+  cell that doesn't use it, until the typo is fixed (live check underlines it immediately).
+  Blocking only on the `let`s a cell actually uses is follow-up work, tracked in
+  [M4-11](tasks/M4-11-precise-upstream-blocking.md).
+- **`DS1085` shape** (DIAGNOSTICS.md style):
+  - message: ``cannot run this cell because `orders` (cell 2) has errors`` (or ``because cell 2
+    has a syntax error`` when no `let` name is known);
+  - primary span: the first reference in cell $k$ to the broken `let`'s name, or else cell $k$'s
+    first statement;
+  - secondary label: the broken upstream statement (`` `orders` is defined here ``);
+  - help: ``fix the error in cell 2, then run this cell again``. The web UI renders the secondary
+    label as a jump link to that cell.
+- **What the target cell contributes**: `Session::start` checks the whole program and runs nothing
+  if it has any error, so the part of cell $k$ included decides what in the cell can block a run:
+  - **Run cell** (`mode: "cell"`) includes every statement of cell $k$. An error in any of them
     blocks the whole cell run (no partial results), reported on that statement.
-  - **Run statement at cursor** and **Export full result** stitch only the target query statement
-    plus the `let` statements it transitively references (from cell $k$ and from upstream cells,
-    in document order). Other query statements in cell $k$, and unreferenced `let`s in it, are left
-    out, so a half-typed neighbouring statement never blocks running or exporting a working one.
-    The target is then the only query in the program, so no `RunStream::select` is needed.
-  - **Validating bindings** (Run statement at cursor on a `let`, or running a `let`-only cell)
-    stitches every `let` statement of cell $k$ plus the upstream `let`s they transitively
-    reference, and no query statement, with `DS0004` suppressed. A half-typed query in the same
-    cell never blocks validation.
-
-### IDE requests see every upstream `let`
-
-Completion, hover, and signature help (`POST /api/complete`, `/api/hover`, `/api/signature-help`)
-do **not** use the transitive stitching above, because completion must offer upstream `let` names
-the cell does not reference yet. They use the whole-notebook stitching up to and including cell
-$k$ (every DataScript cell above it, plus cell $k$), so every upstream `let` is in scope, exactly
-as in live `check`.
+  - **Run statement at cursor** (`mode: "statement"`) and **Export full result** include cell
+    $k$'s `let` statements and only the target query statement, so a half-typed neighbouring query
+    never blocks running or exporting a working one. The target is then the only query in the
+    program, so no `RunStream::select` is needed.
+  - **Validating bindings** (`mode: "bindings"`: Run statement at cursor on a `let`, or running a
+    `let`-only cell) includes only cell $k$'s `let` statements, with `DS0004` suppressed.
+  - **IDE requests** (completion, hover, signature help) include all of cell $k$, so completion
+    offers every upstream `let` and every `let` in the cell.
 
 ### Explicit execution, staleness, `ds run` vs "Run all" & clocks
 
 - Queries **never auto-run** on edit or reorder.
-- Each cell tracks a fingerprint of its own source plus the transitively referenced upstream `let`
-  definitions. When either changes after a cell has produced output, the output header shows a
-  subtle **Stale** badge.
+- Each cell tracks a fingerprint of its own source plus every upstream `let` statement (the same
+  `let`s a run compiles). When either changes after a cell has produced output, the output header
+  shows a subtle **Stale** badge.
 - Execution actions:
   - **Run cell** (`Cmd/Ctrl+Enter`) — runs all query statements in the focused cell.
   - **Run cell & advance** (`Shift+Enter`) — runs the focused cell and moves focus to the next cell
@@ -747,7 +716,7 @@ How each target plugs in:
 | `WS /api/ws` | M4-10 | Multiplexed stream for: (1) query execution (`run` with `mode` = `cell` / `statement` (+ `statementIndex`) / `bindings` and optional shared `nowMicros` for Run all / `cancel` → `started` with `nowMicros` and `rowLimit`, then per result its `statementIndex` and `sourceCount`, streaming capped Arrow IPC batches + `RenderSpec` + diagnostics incl. `DS4060`/`DS1085` + timing, suppressing `DS0004` for `bindings` runs and `let`-only cells), and (2) workspace file-change notifications |
 | `POST /api/export` | M4-10 | Accepts the run-time cell snapshot `{ path, cells, targetCellIndex, statementIndex, nowMicros, format }` (`statementIndex` is 0-based among the target cell's own query statements), checks, plans and starts the query (returning diagnostics instead of a ticket on failure), and returns a short-lived single-use download URL `/api/export/<ticket>` |
 | `GET /api/export/<ticket>` | M4-10 | Requires the session cookie + one-shot ticket (checks `Sec-Fetch-Site` when present) and streams the full uncapped result as `Content-Disposition: attachment`, aborting the connection on a mid-stream error (plus a WS `exportFailed` event) via `datascript_engine::writers` (v1: `csv`, `ndjson`; `json` once M2-26 lands, `parquet` once M2-27 lands, `xlsx` once M2-28 lands) |
-| `POST /api/complete`, `/api/hover`, `/api/signature-help` | M4-04 | IDE helpers (`{ path, cells, targetCellIndex, offset }`) backed by `datascript_compiler::ide` over the whole-notebook `StitchedProgram` up to the target cell (every upstream `let` in scope, §3) |
+| `POST /api/complete`, `/api/hover`, `/api/signature-help` | M4-04 | IDE helpers (`{ path, cells, targetCellIndex, offset }`) backed by `datascript_compiler::ide` over the same `StitchedProgram` as runs (every upstream `let` in scope, §3) |
 
 ### Cross-cell combined program & `.dsnb` parser (`datascript-compiler`, M4-08)
 
@@ -759,13 +728,9 @@ segment-stitching / span-mapping primitive (`StitchedProgram`, extracted from `R
 all reuse them:
 - Whole-notebook check stitches every DataScript cell's statements in document order (mapping every
   diagnostic span back to `{ cellIndex, start, end, line, column }` in UTF-16, D-025).
-- Single-cell and single-statement execution (`run`, `export`) compute the target's **transitive
-  upstream `let` dependencies**, prepend only those `let` statements in document order separated
-  by `\n;\n` glue segments, and emit `DS1085` under the rules in
-  [§3](#transitive-upstream-let-prepending--ds1085) (a statement run or export also leaves out the
-  target cell's other query statements).
-- IDE requests (`complete`, `hover`, `signature_help`) use the whole-notebook stitching up to and
-  including the target cell, so completion offers every upstream `let`
-  ([§3](#ide-requests-see-every-upstream-let)).
+- Runs, exports, and IDE requests (`run`, `export`, `complete`, `hover`, `signature_help`) compile
+  every upstream `let` statement in document order, separated by `\n;\n` glue segments, followed
+  by the part of the target cell the request needs, and emit `DS1085` under the rule in
+  [§3](#upstream-let-prepending--ds1085).
 - Relative file paths inside the notebook resolve against the `.dsnb` file's parent directory (or
   the workspace root for unsaved Scratchpads), always enforced by the D-016 sandbox in `ds ui`.

@@ -160,11 +160,10 @@ rules as a single `.ds` program split into cells:
 - **Top-to-bottom `let` scope**: every DataScript cell sees all scalar and tabular `let`
   declarations from DataScript cells above it in document order. Re-declaring an existing `let`
   name in a lower cell is `DS1003`, matching `.ds` programs (D-007).
-- **Interactive single-cell execution**: when running one cell interactively, only the upstream
-  `let` statements that the cell references (directly or transitively) are prepended ahead of the
-  target cell. Errors in unreferenced upstream `let`s, upstream query statements, and warnings do
-  not block running that cell. When a run *is* blocked it reports `DS1085`; the exact rule is
-  defined once in [WEB_UI.md §3](WEB_UI.md#transitive-upstream-let-prepending--ds1085).
+- **Interactive single-cell execution**: when running one cell interactively, every upstream
+  `let` statement is prepended ahead of the target cell (upstream queries are not). An error in any
+  upstream `let` blocks the run with `DS1085`; errors in upstream query statements and warnings do
+  not. The exact rule is defined once in [WEB_UI.md §3](WEB_UI.md#upstream-let-prepending--ds1085).
 - **Relative paths**: file paths in any cell resolve against the `.dsnb` file's parent directory
   (or the workspace root for unsaved Scratchpads in `ds ui`).
 - **`ds run` vs interactive "Run all"**: `ds run notebook.dsnb` checks the entire notebook as one
