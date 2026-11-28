@@ -133,7 +133,9 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS0004, DS9001 | M0-02 diagnostics core |
 | DS0200–DS0219, DS1050–DS1059, DS2200–DS2219 | M2-01 remaining tabular operators |
 | DS0220–DS0229, DS2220–DS2229, DS4050–DS4054 | M2-02 `parse` operator |
-| DS0230–DS0239, DS2230–DS2249 | M2-03 `dynamic` type, JSON, `mv-expand` (also rewords the registered DS2012) |
+| DS0230–DS0236, DS2230–DS2239 | M2-03 `dynamic` type (also rewords the registered DS2012) |
+| DS2240–DS2244, DS4070–DS4074 | M2-35 `dynamic` functions |
+| DS0237–DS0239, DS2245–DS2249 | M2-36 `mv-expand` |
 | DS0240–DS0249, DS2250–DS2259, DS5050–DS5054 | M2-04 `make-series` |
 | DS0250–DS0269, DS1060–DS1079, DS2260–DS2279 | M2-05 user-defined functions |
 | DS0270–DS0279, DS2280–DS2299, DS4055–DS4059 | M2-06 function library |

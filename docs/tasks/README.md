@@ -80,8 +80,8 @@ Two shared files are touched by many tasks:
 |---|---|---|---|
 | [M2-01](M2-01-tabular-operators.md) | Remaining tabular operators | M1-13, M2-13 | todo |
 | [M2-02](M2-02-parse-operator.md) | `parse` operator | M1-13, M2-13 | todo |
-| [M2-03](M2-03-dynamic-type.md) | `dynamic` type, JSON, `mv-expand` | M1-13, M2-13 | todo |
-| [M2-04](M2-04-make-series.md) | `make-series` | M2-03, M2-13 | todo |
+| [M2-03](M2-03-dynamic-type.md) | `dynamic` type: representation, literals, access, sources | M1-13, M2-13 | todo |
+| [M2-04](M2-04-make-series.md) | `make-series` | M2-03, M2-35, M2-13 | todo |
 | [M2-05](M2-05-user-defined-functions.md) | User-defined functions | M1-13, M2-13 | todo |
 | [M2-06](M2-06-function-library.md) | Complete the function library | M1-13, M2-13 | todo |
 | [M2-07](M2-07-formatter.md) | Formatter (`ds fmt`) | M1-13 | todo |
@@ -112,6 +112,8 @@ Two shared files are touched by many tasks:
 | [M2-32](M2-32-compiler-ide-bug-fixes.md) | Compiler, IDE and diagnostics bug fixes from the test audit | — | done |
 | [M2-33](M2-33-json-reader-arrow-json.md) | Custom JSON/NDJSON reader with `arrow.json` columns | M1-13, M2-13 | done |
 | [M2-34](M2-34-json-read-diagnostics.md) | Accurate `DS3008` diagnostics for JSON/NDJSON errors | M2-33 | todo |
+| [M2-35](M2-35-dynamic-functions.md) | `dynamic` functions (`parse_json`, `split`, `make_list`, …) | M2-03 | todo |
+| [M2-36](M2-36-mv-expand.md) | `mv-expand` operator | M2-03 | todo |
 
 ## M3 — Editor experience
 
@@ -181,11 +183,16 @@ M2-33 leaves it a carried-over item) also change, so run M2-12 and M2-09 one at 
 `is_json_array` item. M2-34 waits for M2-33, and M2-33, M2-34 and M2-12 all edit
 `crates/datascript-datafusion/src/errors.rs`, so run them one at a time. M2-23
 (`describe`), M2-25 (`output`) and M2-26 (writer option syntax) edit `datascript-syntax`, so none
-of them should run in parallel with M2-01, M2-03, M2-04, M2-05 or each other. M7-03 and M7-04 both
+of them should run in parallel with M2-01, M2-03, M2-04, M2-05, M2-36 or each other. M7-03 and M7-04 both
 need M7-05 (in-memory host tables) first; once M7-04 is unblocked, the two can run in parallel.
 
 Within M2, M2-19 edits `list()` in `datascript-syntax` (`grammar.rs`) and should not run in parallel
 with M2-01, M2-03, M2-04 or M2-05 (prefer landing M2-19 first).
+
+M2-03 was split into M2-03 (the type), M2-35 (functions) and M2-36 (`mv-expand`). M2-35 and
+M2-36 both wait for M2-03 and can run in parallel with each other: M2-35 touches the catalog and
+DataFusion UDFs, M2-36 the parser, binder operators, plan and lowering. M2-03 also edits
+`sources.rs` (`Merged`), so run it one at a time with the reader tasks listed above.
 
 M2-29, M2-31, M2-32 and M3-10 can run in parallel: they touch `datascript-datafusion`/
 `datascript-engine` tests; `datascript-cli`; `datascript-compiler`/`datascript-diagnostics` (and

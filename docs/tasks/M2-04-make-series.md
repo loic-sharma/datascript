@@ -1,7 +1,7 @@
 # M2-04 — `make-series`
 
 **Status:** todo
-**Depends on:** M2-03, M2-13
+**Depends on:** M2-03, M2-35, M2-13
 **Crates:** `datascript-syntax`, `datascript-compiler`, `datascript-datafusion`
 **Diagnostic codes:** DS0240–DS0249 (syntax), DS2250–DS2259 (types), DS5050–DS5054 (render) (D-018)
 
