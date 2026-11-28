@@ -1,0 +1,92 @@
+# A null key matches nothing, not even another null (LANGUAGE.md §3.2, `join`). `edge/nulls.csv` has a
+# null `name` in rows 2 and 5; `b` holds rows 2–5, so both sides have null keys. Inner and semi
+# joins drop the null-key rows, outer joins keep them unmatched (in `fullouter`, `b`'s two null
+# rows come out on their own), and anti joins keep them. The last query checks the same for a
+# `$left.k == $right.k` condition, which keeps both key columns (the right one renamed, DS1007).
+mode: run
+---- query
+let a = from '../../../data/edge/nulls.csv' | project id, k = name;
+let b = from '../../../data/edge/nulls.csv' | where id != 1 | project k = name, bid = id;
+from a | join b on k | sort by id asc;
+from a | join kind = leftouter b on k | sort by id asc;
+from a | join kind = rightouter b on k | sort by bid asc;
+from a | join kind = fullouter b on k | sort by id asc, bid asc;
+from a | join kind = leftsemi b on k | sort by id asc;
+from a | join kind = leftanti b on k | sort by id asc;
+from a | join kind = rightsemi b on k | sort by bid asc;
+from a | join kind = rightanti b on k | sort by bid asc;
+from a | join b on $left.k == $right.k | sort by id asc
+---- expected
+info[DS1007]: `join` renamed column `k` of the right table to `k1`
+   --> query:11:15
+   |
+11 | from a | join b on $left.k == $right.k | sort by id asc
+   |               ^ this table also has a column `k`
+   |
+   = help: to choose the names yourself, rename them on the right: `join (from b | project-rename right_k = k)`
+   = note: a column named in `on` is not renamed: the two sides make one column (only `$left.a == $right.b` keeps both)
+
+id   | k      | bid
+long | string | long
+-----+--------+-----
+   3 | gamma  |    3
+   4 | delta  |    4
+
+id   | k      | bid
+long | string | long
+-----+--------+-----
+   1 | alpha  | null
+   2 | null   | null
+   3 | gamma  |    3
+   4 | delta  |    4
+   5 | null   | null
+
+id   | k      | bid
+long | string | long
+-----+--------+-----
+null | null   |    2
+   3 | gamma  |    3
+   4 | delta  |    4
+null | null   |    5
+
+id   | k      | bid
+long | string | long
+-----+--------+-----
+null | null   |    2
+null | null   |    5
+   1 | alpha  | null
+   2 | null   | null
+   3 | gamma  |    3
+   4 | delta  |    4
+   5 | null   | null
+
+id   | k
+long | string
+-----+-------
+   3 | gamma
+   4 | delta
+
+id   | k
+long | string
+-----+-------
+   1 | alpha
+   2 | null
+   5 | null
+
+k      | bid
+string | long
+-------+-----
+gamma  |    3
+delta  |    4
+
+k      | bid
+string | long
+-------+-----
+null   |    2
+null   |    5
+
+id   | k      | k1     | bid
+long | string | string | long
+-----+--------+--------+-----
+   3 | gamma  | gamma  |    3
+   4 | delta  | delta  |    4

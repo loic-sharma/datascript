@@ -145,6 +145,7 @@ errors.
 | `compressed/orders.csv.gz` | `orders.csv` in a gzip file (one stored block, so the bytes never depend on the compression library; no file name, zero mtime) | Compression from the suffix |
 | `compressed/orders.tsv.zst` | `orders.csv` with tabs for commas, zstd level 3 | TSV and zstd |
 | `compressed/orders.dat` | Same bytes as `orders.csv.gz` | `read_csv(..., compression = 'gzip')` on a name with no known extension |
+| `compressed/events.ndjson.gz` | 2 lines of NDJSON `{id, name}` (`1, ant` and `2, bee`) in a gzip file built like `orders.csv.gz` | Compressed JSON (the `datascript-datafusion` integration tests) |
 | `json/array.json` | A JSON array of 3 objects `{id, name, score}`; `score` is null in the second | `.json` holding an array (detected) |
 | `json/lines.json` | 2 lines of NDJSON `{id, name}` in a `.json` file | `.json` holding NDJSON (detected) |
 | `options/semicolon.txt` | 3 rows, no header, `;` as delimiter, `'` as quote, `NA` for null: `1;'a;b';1.5`, `2;NA;2.5`, `3;plain;NA` | `read_csv` options |

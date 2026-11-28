@@ -429,7 +429,7 @@ impl Lowering {
 }
 
 /// How a source is named in `DS3008`: its path or table name as written.
-fn source_name(source: &SourceRef) -> String {
+pub(crate) fn source_name(source: &SourceRef) -> String {
     match source {
         SourceRef::Table(name) => name.clone(),
         other => other

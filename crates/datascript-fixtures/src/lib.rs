@@ -390,6 +390,10 @@ fn source_files(orders_csv: &str) -> Vec<Fixture> {
         ),
         fixture("compressed/orders.dat", gzip(orders_csv.as_bytes())),
         fixture(
+            "compressed/events.ndjson.gz",
+            gzip(b"{\"id\": 1, \"name\": \"ant\"}\n{\"id\": 2, \"name\": \"bee\"}\n"),
+        ),
+        fixture(
             "json/array.json",
             "[\n  {\"id\": 1, \"name\": \"ant\", \"score\": 1.5},\n  \
              {\"id\": 2, \"name\": \"bee\", \"score\": null},\n  \

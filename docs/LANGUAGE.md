@@ -261,7 +261,7 @@ M1 operators are marked ●, M2 operators ○.
 | ● `take` / `limit` | `take 100` | No ordering guarantee unless it follows `sort`. The count is a whole number of 0 or more, written as a literal or a scalar `let` bound to one; anything else is `DS2050` (D-049) |
 | ● `count` | `count` | One row, column `Count` |
 | ● `distinct` | `distinct a, b` or `distinct *` | Column names only (`DS1032`) |
-| ● `join` | `join kind = inner (right) on key` or `on $left.a == $right.b` | Kinds: `inner` (default), `leftouter`, `rightouter`, `fullouter`, `leftsemi`, `leftanti`, `rightsemi`, `rightanti`. ≠ KQL: no `innerunique` (`DS0124`), and the default is `inner`. Unknown kinds are `DS0123`. Decision D-004 |
+| ● `join` | `join kind = inner (right) on key` or `on $left.a == $right.b` | Kinds: `inner` (default), `leftouter`, `rightouter`, `fullouter`, `leftsemi`, `leftanti`, `rightsemi`, `rightanti`. ≠ KQL: no `innerunique` (`DS0124`), and the default is `inner`. Unknown kinds are `DS0123`. A null key matches nothing, not even another null (SQL equality, §4): inner and semi joins drop rows with a null key, outer joins keep them unmatched, and anti joins keep them. Decision D-004 |
 | ● `union` | `union t2, t3` | By column name, columns in order of first appearance. Missing columns become null. Type conflicts widen per §4.2 or give `DS2003` |
 | ● `render` | `render timechart [with (title = "...")]` | Must be last (`DS0120`), and only in a query statement (`DS5008`). Passes its input columns through. See §6 |
 | ● `getschema` | `getschema` | Returns the table `ColumnName: string, ColumnOrdinal: long, DataType: string`. Ordinals start at 0; a column with no DataScript type shows its Arrow type (D-042) |

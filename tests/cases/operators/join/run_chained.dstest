@@ -1,0 +1,36 @@
+# Two joins in one query. The lowering qualifies each join's sides on their own, so the second
+# join sees the first one's output (including its right side's columns and the shared `on` key)
+# as one left input. Query 2 joins on a column the first join brought in (`country`); the third
+# side's columns all collide with the first join's output, so they are renamed (DS1007), and the
+# order with a null `country` matches nothing.
+mode: run
+---- query
+let o = from '../../../data/orders.csv' | where orderId in ('o-0003', 'o-0007', 'o-0015', 'o-0018');
+let c = from '../../../data/customers.csv' | project customerId, name, country;
+let n = from '../../../data/orders.csv' | summarize orders = count() by customerId;
+from o | join kind = leftouter c on customerId | join n on customerId | project orderId, customerId, name, country, orders | sort by orderId asc;
+from o | join c on customerId | join kind = leftouter (from c | where customerId != 'c-128') on $left.country == $right.country | project orderId, name, country, name1, customerId1 | sort by orderId asc, customerId1 asc
+---- expected
+info[DS1007]: `join` renamed 3 columns of the right table: `customerId` to `customerId1`, `name` to `name1`, `country` to `country1`
+  --> query:5:55
+  |
+5 | ...c on customerId | join kind = leftouter (from c | where customerId != 'c-128') on $left.country == $right.country | pr...
+  |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ this table has columns with the same names as the left side
+  |
+  = help: to choose the names yourself, rename them on the right: `join (from c | where customerId != 'c-128' | project-rename right_customerId = customerId, right_name = name, right_country = country)`
+  = note: a column named in `on` is not renamed: the two sides make one column (only `$left.a == $right.b` keeps both)
+
+orderId | customerId | name         | country | orders
+string  | string     | string       | string  | long
+--------+------------+--------------+---------+-------
+o-0003  | c-077      | Jo Martin    | null    |      3
+o-0007  | c-999      | null         | null    |      2
+o-0015  | c-001      | Ana Silva    | BR      |      4
+o-0018  | c-128      | Lena Fischer | DE      |      3
+
+orderId | name         | country | name1       | customerId1
+string  | string       | string  | string      | string
+--------+--------------+---------+-------------+------------
+o-0003  | Jo Martin    | null    | null        | null
+o-0015  | Ana Silva    | BR      | Ana Silva   | c-001
+o-0018  | Lena Fischer | DE      | Kai Mueller | c-113
