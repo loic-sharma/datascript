@@ -110,6 +110,8 @@ Two shared files are touched by many tasks:
 | [M2-30](M2-30-compiler-harness-ci-test-gaps.md) | Golden harness, CI and testing-docs gaps | M2-32 | done |
 | [M2-31](M2-31-cli-repl-test-improvements.md) | CLI and REPL bug fixes and test hygiene | M2-16, M3-07 | done |
 | [M2-32](M2-32-compiler-ide-bug-fixes.md) | Compiler, IDE and diagnostics bug fixes from the test audit | — | done |
+| [M2-33](M2-33-json-reader-arrow-json.md) | Custom JSON/NDJSON reader with `arrow.json` columns | M1-13, M2-13 | todo |
+| [M2-34](M2-34-json-read-diagnostics.md) | Accurate `DS3008` diagnostics for JSON/NDJSON errors | M2-33 | todo |
 
 ## M3 — Editor experience
 
@@ -170,12 +172,17 @@ After M1, milestones M2–M7 are largely independent tracks (language, editor, w
 proceed in parallel. Keep wasm32 compatibility (checked in CI) intact on every track so M5 doesn't
 turn into a big-bang port.
 
-M2-22, M2-24…M2-28, M7-01 and M7-02 all touch source resolution or the reader and writer catalogs
-(`source::READERS`, `is_glob`, `SourceRef::for_path` and the DataFusion source code); run them one
-at a time, or keep each to its own modules. M2-23 (`describe`), M2-25 (`output`) and M2-26 (writer
-option syntax) edit `datascript-syntax`, so none of them should run in parallel with M2-01, M2-03,
-M2-04, M2-05 or each other. M7-03 and M7-04 both need M7-05 (in-memory host tables) first; once
-M7-04 is unblocked, the two can run in parallel.
+M2-22, M2-24…M2-28, M2-33, M7-01 and M7-02 all touch source resolution or the reader and writer
+catalogs (`source::READERS`, `is_glob`, `SourceRef::for_path` and the DataFusion source code); run
+them one at a time, or keep each to its own modules. M2-33 also changes how JSON sources are
+resolved and read (`sources.rs` gives each JSON source one schema, so `lower.rs::scan` reads it
+with one table), which M2-12 (per-file error attribution) and M2-09 (reader schema overrides;
+M2-33 leaves it a carried-over item) also change, so run M2-12 and M2-09 one at a time with M2-33. M2-33 also edits M5-01's carried-over
+`is_json_array` item. M2-34 waits for M2-33, and M2-33, M2-34 and M2-12 all edit
+`crates/datascript-datafusion/src/errors.rs`, so run them one at a time. M2-23
+(`describe`), M2-25 (`output`) and M2-26 (writer option syntax) edit `datascript-syntax`, so none
+of them should run in parallel with M2-01, M2-03, M2-04, M2-05 or each other. M7-03 and M7-04 both
+need M7-05 (in-memory host tables) first; once M7-04 is unblocked, the two can run in parallel.
 
 Within M2, M2-19 edits `list()` in `datascript-syntax` (`grammar.rs`) and should not run in parallel
 with M2-01, M2-03, M2-04 or M2-05 (prefer landing M2-19 first).
