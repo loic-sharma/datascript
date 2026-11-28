@@ -235,6 +235,7 @@ pub const READERS: &[ReaderDef] = &[
         name: "read_json",
         options: &[
             option("format", OptionKind::OneOf(&["ndjson", "array"])),
+            option("infer_rows", OptionKind::PositiveLong),
             option("compression", OptionKind::OneOf(COMPRESSIONS)),
         ],
     },

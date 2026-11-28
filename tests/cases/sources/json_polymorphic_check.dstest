@@ -1,0 +1,69 @@
+# Custom JSON/NDJSON schema inference (M2-33): polymorphic nested/top-level fields, mixed scalars,
+# out-of-i64 integers, JSON arrays, heterogeneous globs, mixed layouts, and BOM-prefixed files.
+mode: check
+show: schema
+---- query
+from '../../data/json/poly.ndjson' | take 1;
+from '../../data/json/poly.ndjson' | where scripts == 'x';
+from '../../data/json/minified_array.json' | take 1;
+from '../../data/json/pretty_array.json' | take 1;
+from '../../data/json/glob_types/*.ndjson' | take 1;
+from '../../data/json/glob_layout/*.json' | take 1;
+from '../../data/json/bom_ndjson.json' | take 1;
+from '../../data/json/bom_array.json' | take 1
+---- expected
+error[DS2008]: column `scripts` has a type DataScript cannot use yet
+  --> query:2:44
+  |
+2 | from '../../data/json/poly.ndjson' | where scripts == 'x';
+  |                                            ^^^^^^^ this column is `Utf8` (extension type `arrow.json`) in Arrow
+  |
+  = help: it can only be projected as it is: `project scripts`, `project-away scripts`
+  = note: column `scripts` was read from ../../data/json/poly.ndjson
+  = note: nested, JSON and GUID columns become `dynamic` and `guid` values in M2
+
+query 1 columns:
+  id: long
+  pkg: (error)
+  scripts: (error)
+  tags: (error)
+  score: real
+  code: (error)
+  big_id: (error)
+
+query 2 columns:
+  id: long
+  pkg: (error)
+  scripts: (error)
+  tags: (error)
+  score: real
+  code: (error)
+  big_id: (error)
+
+query 3 columns:
+  id: long
+  meta: (error)
+
+query 4 columns:
+  id: long
+  meta: (error)
+
+query 5 columns:
+  id: long
+  null_then_obj: (error)
+  str_or_obj: (error)
+  num_or_str: (error)
+  widen: real
+  always_null: (error)
+
+query 6 columns:
+  id: long
+  src: string
+
+query 7 columns:
+  id: long
+  name: string
+
+query 8 columns:
+  id: long
+  name: string

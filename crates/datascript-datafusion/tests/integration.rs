@@ -512,6 +512,7 @@ fn an_ndjson_value_past_the_inferred_rows_is_ds3008_at_runtime() {
     let d = &output.diagnostics[0];
     assert_eq!(d.message, "cannot read `late.ndjson`");
     assert!(d.primary.is_some(), "{d:#?}");
+    assert!(said(d).contains("read_json(..., infer_rows = n)"), "{d:#?}");
 }
 
 #[cfg(feature = "compression")]

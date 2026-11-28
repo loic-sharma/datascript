@@ -1,0 +1,13 @@
+# A type mismatch past `infer_rows` in any column is still DS3008 for `count`.
+mode: run
+---- query
+from read_json('../../../data/json/late_type.ndjson', infer_rows = 2) | count
+---- expected
+error[DS3008]: cannot read `../../../data/json/late_type.ndjson`
+  --> query:1:6
+  |
+1 | from read_json('../../../data/json/late_type.ndjson', infer_rows = 2) | count
+  |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ a value in this source does not match its column's type
+  |
+  = help: column types are inferred from the first rows of each file; `read_json(..., infer_rows = n)` reads more rows to infer them
+  = note: DataFusion said: External error: column `n` at line 3 expected Int64, found string

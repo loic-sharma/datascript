@@ -1,0 +1,32 @@
+# JSON globs with differently sampled files (no DS3005), mixed NDJSON + JSON-array `*.json` globs,
+# and UTF-8 BOM-prefixed NDJSON and JSON-array files.
+mode: run
+---- query
+from '../../data/json/glob_types/*.ndjson' | sort by id asc;
+from '../../data/json/glob_layout/*.json' | sort by id asc;
+from '../../data/json/bom_ndjson.json';
+from '../../data/json/bom_array.json'
+---- expected
+id   | null_then_obj | str_or_obj | num_or_str | widen | always_null
+long | dynamic       | dynamic    | dynamic    | real  | dynamic
+-----+---------------+------------+------------+-------+------------
+   1 | null          | "hello"    | 10         |   1.0 | null
+   2 | {"k":1}       | {"k":2}    | "ten"      |   2.5 | null
+
+id   | src
+long | string
+-----+-------
+   1 | ndjson
+   2 | ndjson
+   3 | array
+   4 | array
+
+id   | name
+long | string
+-----+-----------
+   1 | bom-ndjson
+
+id   | name
+long | string
+-----+----------
+   1 | bom-array

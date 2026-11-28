@@ -110,7 +110,7 @@ Two shared files are touched by many tasks:
 | [M2-30](M2-30-compiler-harness-ci-test-gaps.md) | Golden harness, CI and testing-docs gaps | M2-32 | done |
 | [M2-31](M2-31-cli-repl-test-improvements.md) | CLI and REPL bug fixes and test hygiene | M2-16, M3-07 | done |
 | [M2-32](M2-32-compiler-ide-bug-fixes.md) | Compiler, IDE and diagnostics bug fixes from the test audit | — | done |
-| [M2-33](M2-33-json-reader-arrow-json.md) | Custom JSON/NDJSON reader with `arrow.json` columns | M1-13, M2-13 | todo |
+| [M2-33](M2-33-json-reader-arrow-json.md) | Custom JSON/NDJSON reader with `arrow.json` columns | M1-13, M2-13 | done |
 | [M2-34](M2-34-json-read-diagnostics.md) | Accurate `DS3008` diagnostics for JSON/NDJSON errors | M2-33 | todo |
 
 ## M3 — Editor experience

@@ -21,7 +21,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
-use arrow_schema::{Field, Schema, SchemaRef};
+use arrow_schema::{Schema, SchemaRef};
 use datascript_diagnostics::codes::{
     DS0003, DS1001, DS1002, DS1003, DS1004, DS1006, DS1031, DS2001, DS2004, DS2005, DS2008, DS2010,
     DS2011, DS2012, DS2050, DS4001, DS4004,
@@ -705,11 +705,18 @@ impl<'a> Binder<'a> {
             && let Some(column) = columns.iter().find(|c| c.name == name)
         {
             if let Some(arrow) = &column.arrow_only {
+                let label = match &arrow.extension {
+                    Some(ext) => format!(
+                        "this column is `{}` (extension type `{ext}`) in Arrow",
+                        arrow.data_type
+                    ),
+                    None => format!("this column is `{}` in Arrow", arrow.data_type),
+                };
                 let mut d = Diagnostic::error(
                     DS2008,
                     format!("column `{name}` has a type DataScript cannot use yet"),
                 )
-                .primary(span, format!("this column is `{arrow}` in Arrow"))
+                .primary(span, label)
                 .help(format!(
                     "it can only be projected as it is: `project {name}`, `project-away {name}`"
                 ));
@@ -1496,7 +1503,7 @@ fn schema_of(columns: &[Column]) -> SchemaRef {
         columns
             .iter()
             .map(|c| match &c.arrow_only {
-                Some(arrow) => Field::new(&c.name, arrow.clone(), true),
+                Some(arrow) => arrow.to_field(&c.name),
                 None => to_arrow(&c.name, c.ty),
             })
             .collect::<Vec<_>>(),

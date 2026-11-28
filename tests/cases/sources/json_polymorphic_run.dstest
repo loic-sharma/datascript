@@ -1,0 +1,28 @@
+# Polymorphic NDJSON and JSON arrays (minified and pretty-printed) with `arrow.json` columns:
+# strings in `arrow.json` columns are stored quoted as raw JSON text, numbers unquoted with exact
+# digits (including integers outside `i64`), and nested objects/arrays have insignificant whitespace
+# removed while preserving spaces inside strings.
+mode: run
+---- query
+from '../../data/json/poly.ndjson' | sort by id asc;
+from '../../data/json/minified_array.json' | sort by id asc;
+from '../../data/json/pretty_array.json' | sort by id asc
+---- expected
+id   | pkg                                 | scripts                 | tags      | score  | code    | big_id
+long | dynamic                             | dynamic                 | dynamic   | real   | dynamic | dynamic
+-----+-------------------------------------+-------------------------+-----------+--------+---------+---------------------
+   1 | {"scripts":"scripts.yaml"}          | "scripts.yaml"          | "core"    |    1.0 | 42      | 18446744073709551615
+   2 | {"scripts":{"build":"cargo build"}} | {"build":"cargo build"} | ["a","b"] |    2.5 | "ok"    | 9223372036854775808
+   3 | null                                | null                    | null      | null   | null    | null
+
+id   | meta
+long | dynamic
+-----+------------------
+   1 | {"a":1,"b":"x y"}
+   2 | "plain"
+
+id   | meta
+long | dynamic
+-----+--------------------------------------
+   1 | {"a":[1,"hello world"],"b":{"k":"v"}}
+   2 | "two words"

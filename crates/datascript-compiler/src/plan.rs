@@ -19,7 +19,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use arrow_schema::{Field, Schema, SchemaRef};
+use arrow_schema::{Schema, SchemaRef};
 use datascript_diagnostics::codes::DS9001;
 use datascript_diagnostics::{Diagnostic, Span};
 
@@ -768,7 +768,7 @@ fn schema_of(columns: &[Column]) -> SchemaRef {
         columns
             .iter()
             .map(|c| match &c.arrow_only {
-                Some(arrow) => Field::new(&c.name, arrow.clone(), true),
+                Some(arrow) => arrow.to_field(&c.name),
                 None => to_arrow(&c.name, c.ty),
             })
             .collect::<Vec<_>>(),

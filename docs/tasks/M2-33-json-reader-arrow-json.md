@@ -1,6 +1,6 @@
 # M2-33 — Custom JSON/NDJSON reader with `arrow.json` columns
 
-**Status:** todo
+**Status:** done — Replaced DataFusion's `JsonFormat` with a custom streaming JSON/NDJSON `FileFormat`/`FileSource` (`crates/datascript-datafusion/src/json.rs`) producing `Utf8` + `arrow.json` for nested/mixed/out-of-range/all-null columns, added `read_json(..., infer_rows = n)`, unified JSON glob schema joining without `DS3005`, preserved `arrow.json` extension metadata through `hir::Column::arrow_only`, and added unit, fixture, and golden tests.
 **Depends on:** M1-13, M2-13
 **Crates:** `datascript-compiler` (only the `read_json` entry in `READERS`; `arrow::from_arrow_source` stays unchanged, mapping `arrow.json` to `dynamic` is [M2-03](M2-03-dynamic-type.md)'s), `datascript-datafusion`, `datascript-tests`
 **Diagnostic codes:** none new (reuses `DS2041`, `DS3003`, `DS3008`; JSON globs no longer report `DS3005`; richer JSON read diagnostics are in [M2-34](M2-34-json-read-diagnostics.md); D-018)
@@ -233,7 +233,7 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
     match a declared type`.
 
 ## Acceptance criteria
-- [ ] Golden `check` and `run` cases covering:
+- [x] Golden `check` and `run` cases covering:
       - NDJSON with a polymorphic nested field (string in one row, object in another),
       - NDJSON with polymorphic top-level fields (string vs. object—projecting the column to
         verify strings are stored quoted as raw JSON text—scalar vs. array, int vs. float, and
@@ -259,7 +259,7 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       - compressed `.ndjson.gz` (gated by `#[cfg(feature = "compression")]`) and the existing
         JSON tests listed above,
       - `read_json(..., infer_rows = n)` happy path and invalid option values (`DS2041`).
-- [ ] Unit tests for the custom JSON schema inference and streaming decoder (empty files, blank
+- [x] Unit tests for the custom JSON schema inference and streaming decoder (empty files, blank
       lines, a leading BOM, integers outside `i64` and `1e400` → `arrow.json`,
       `1.0`/`1e3` → `Float64`, an integer beyond 2^53 alone staying exact in `Int64` and
       rounded in an `Int64` + `Float64` column, top-level
@@ -272,7 +272,7 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       larger than
       `repartition_file_min_size` (or with that threshold lowered) read as one range, with
       correct line numbers in errors past the first range's size).
-- [ ] `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
+- [x] `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
       `cargo test --workspace`,
       `cargo check -p datascript-syntax -p datascript-compiler --target wasm32-unknown-unknown`,
       and `cargo check -p datascript-datafusion --no-default-features --features wasm --target wasm32-unknown-unknown`

@@ -199,10 +199,10 @@ A string that is not constant there (`from strcat(dir, '/x.csv') | take 1`) is `
 everywhere in a table position, the parser accepts any expression after `from` and the binder
 rejects the ones that are not tables (D-029).
 
-**Formats by extension**: `.csv`, `.tsv`, `.parquet`, `.json` (array or NDJSON, detected),
-`.ndjson`/`.jsonl`. CSV, TSV and JSON files may also be compressed, with the compression taken from
-a second suffix: `.gz`, `.bz2`, `.xz`, `.zst` (e.g. `'logs/*.csv.gz'`). Anything else is `DS3002`,
-with help pointing at the reader functions.
+**Formats by extension**: `.csv`, `.tsv`, `.parquet`, `.json` (array or NDJSON, detected per file
+after skipping any leading UTF-8 BOM), `.ndjson`/`.jsonl`. CSV, TSV and JSON files may also be
+compressed, with the compression taken from a second suffix: `.gz`, `.bz2`, `.xz`, `.zst` (e.g.
+`'logs/*.csv.gz'`). Anything else is `DS3002`, with help pointing at the reader functions.
 
 **Path resolution** depends on the host:
 
@@ -221,19 +221,24 @@ string. URLs are not sources in M1; in WASM, URL contents are fetched by `regist
 **Glob schema merging**: columns are matched by name, using each file's own schema. For CSV and
 TSV that means each file's own header row: columns are never matched by position, so files whose
 headers list the same columns in a different order read correctly. A column missing from some
-files is null there. The same column with different types is widened by the rules in §4.2 (e.g. `long` and
-`real` → `real`); if no widening exists, `DS3005` names the two files and the column. A glob that matches nothing
-is `DS3004`; one that is not a valid pattern (an unclosed `[`) is `DS3009`.
+files is null there. For CSV, TSV and Parquet, the same column with different types is widened by
+the rules in §4.2 (e.g. `long` and `real` → `real`); if no widening exists, `DS3005` names the two
+files and the column. For JSON and NDJSON globs, every file's sample is joined into one schema
+(D-061), widening incompatible types to `Utf8` with extension type `arrow.json`, so JSON globs
+never report `DS3005`. A glob that matches nothing is `DS3004`; one that is not a valid pattern
+(an unclosed `[`) is `DS3009`.
 
-Reader options (M1 set):
+Reader options (M1 set, plus `read_json(..., infer_rows)`):
 
 | Function | Options |
 |---|---|
 | `read_csv` | `delimiter`, `header` (bool), `quote`, `escape`, `null_value`, `schema` (M2), `infer_rows` (default 1000), `compression` |
 | `read_parquet` | none in M1 |
-| `read_json` | `format = "ndjson" \| "array"`, `compression` |
+| `read_json` | `format = "ndjson" \| "array"`, `infer_rows` (default 1000), `compression` |
 
-`delimiter`, `quote` and `escape` are one ASCII character; `infer_rows` is at least 1; `compression` is
+`delimiter`, `quote` and `escape` are one ASCII character; `infer_rows` is at least 1 (in
+JSON/NDJSON, up to `infer_rows` records are sampled per file, and keys first seen past `infer_rows`
+are dropped silently); `compression` is
 `"gzip"`, `"bzip2"`, `"xz"` or `"zstd"`. Empty CSV fields are null; `null_value` names one more
 text that reads as null. Reader options must be constant expressions (literals or
 scalar `let`s bound to literals), because schemas are fetched before the program can be fully
@@ -450,9 +455,9 @@ Source columns are widened to a DataScript type at the scan (D-012):
 | Timestamp(any unit, any or no timezone) | `datetime` | Converted to UTC. No timezone means UTC. Nanoseconds are truncated to µs |
 | Date32, Date64 | `datetime` | Midnight UTC |
 | Duration(any unit) | `timespan` | Nanoseconds truncated to µs |
-| Null (a column with no values, such as a CSV column that is empty in every row) | `string` | In a glob it takes the type the other files have (D-044) |
+| Null (a column with no values, such as a CSV column that is empty in every row) | `string` (CSV/Parquet); `Utf8` with `arrow.json` for JSON/NDJSON | In a glob it takes the type the other files have (D-044, D-061) |
 | FixedSizeBinary(16) with extension type `arrow.uuid` | none in M1; `guid` from M2 (M2-10) | Without the extension type: none |
-| Utf8 with extension type `arrow.json` | none in M1; `dynamic` from M2 (M2-03) | |
+| Utf8 with extension type `arrow.json` | none in M1; `dynamic` from M2 (M2-03) | Used by the JSON/NDJSON reader for nested objects/arrays, mixed-type columns, out-of-`i64` integers, `f64`-overflowing numbers, and all-`null` columns (D-061) |
 | Struct, List, LargeList, Map | none in M1; `dynamic` from M2 (M2-03) | |
 | Anything else (Binary, Time32/64, Interval, …) | none | |
 

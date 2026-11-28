@@ -1,0 +1,18 @@
+[
+  {
+    "id": 1,
+    "meta": {
+      "a": [
+        1,
+        "hello world"
+      ],
+      "b": {
+        "k": "v"
+      }
+    }
+  },
+  {
+    "id": 2,
+    "meta": "two words"
+  }
+]

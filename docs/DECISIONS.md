@@ -478,15 +478,18 @@ adds a panic hook. **Writers**: CSV and JSON print values exactly as the table d
 otherwise (`NaN`, `inf`, datetimes, timespans). *(M1-07, 2026-11-21.)*
 
 ### D-044 — How the DataFusion engine reads sources (M1-08)
-**Globs are read file by file.** The engine infers each file's schema on its own and merges them
-by name. When every file has the same schema, one `ListingTable` reads them all; otherwise each
-file is its own table, projected to the merged columns (typed nulls where a file lacks one) and
-combined with `UNION ALL` in path order, because DataFusion applies a table schema to CSV files by
-position. **The engine remembers what `schema_of` found** (files and per-file schemas, keyed like
-the session cache: base directory, sandbox, `SourceRef`), and the scan uses it instead of
-inferring again; every `schema_of` call reads afresh and replaces the entry, so a session that
-invalidates also refreshes the engine. **Columns with only nulls** (an all-empty CSV column, Arrow
-`Null`) read as `string`, and in a glob take the other files' type; LANGUAGE.md §5.1 has the row.
+**Globs are read file by file** *(amended by D-061: for CSV, TSV and Parquet; JSON globs infer one
+joined schema and are read by one `ListingTable`)*. The engine infers each file's schema on its own
+and merges them by name. When every file has the same schema, one `ListingTable` reads them all;
+otherwise each file is its own table, projected to the merged columns (typed nulls where a file
+lacks one) and combined with `UNION ALL` in path order, because DataFusion applies a table schema
+to CSV files by position. **The engine remembers what `schema_of` found** (files and per-file
+schemas, keyed like the session cache: base directory, sandbox, `SourceRef`), and the scan uses it
+instead of inferring again; every `schema_of` call reads afresh and replaces the entry, so a
+session that invalidates also refreshes the engine. **Columns with only nulls** (an all-empty CSV
+column, Arrow `Null`) read as `string` *(for JSON/NDJSON sources, D-061 makes all-null columns
+`Utf8` + `arrow.json` instead)*, and in a glob take the other files' type; LANGUAGE.md §5.1 has
+the row.
 **Host tables** are registered on the engine (`DataFusionEngine::with_table(name, SourceRef)`), not
 in `ExecContext`, so the session cache key does not change; their relative paths resolve against
 the run's base directory, so hosts pass absolute paths for `--table` (M1-11). A host table whose
@@ -973,6 +976,61 @@ KQL rejects trailing commas, so queries that use them cannot be pasted verbatim 
   diagnostic-suppressing guard to populate `stage_schemas`, then returns `Op::Error` /
   `Source::Error` so lints never fire inside syntactically broken nodes.
 *(M3-03, 2026-11-27.)*
+
+### D-061 — Custom JSON/NDJSON reader with `arrow.json` columns (M2-33)
+**Accepted.** DataFusion's built-in `JsonFormat` delegates to `arrow-json`'s strict recursive
+schema inference and `ReaderBuilder`, which fails on heterogeneous nested fields and creates a
+static Arrow `Struct` child for every key in map-like objects. `datascript-datafusion` replaces it
+with its own streaming JSON/NDJSON `FileFormat` and `FileSource` (`json.rs`):
+
+- **Top-level inference lattice.** Up to `infer_rows` records (default 1,000, configurable via
+  `read_json(..., infer_rows = n)`) are sampled from **each file**. Each column's type is the
+  lattice join of its sampled values: `Null` is bottom; `Int64` + `Float64` → `Float64`;
+  consistent scalars infer `Boolean`, `Int64`, `Float64`, or `Utf8`; objects, arrays, and any
+  other mix (including mixed scalars such as `Int64` + `Utf8` or `Boolean` + `Utf8`) infer
+  `Utf8` with canonical extension type `arrow.json` (preserving JSON types losslessly for M2
+  `dynamic`). Keys first seen past `infer_rows` are dropped silently.
+- **Number edge cases.** A JSON number infers `Int64` only if it is an integer in `i64::MIN..=i64::MAX`
+  with no fraction or exponent; `1.0` and `1e3` infer `Float64`. Unlike `arrow-json`, integers
+  outside `i64` (such as `u64` IDs) and numbers whose magnitude overflows `f64` (such as `1e400`)
+  infer `Utf8` + `arrow.json`, keeping their exact digits instead of rounding or storing infinity.
+  **Accepted rounding:** in-range `i64` integers beyond ±2^53 lose precision when placed in a
+  `Float64` column (`Int64` + `Float64` in a sample or an in-range integer past `infer_rows` in a
+  `Float64` column); integer-only columns stay `Int64` and exact.
+- **All-null columns.** `Null` is bottom during the join so another file's type wins. A column
+  that is all `null` in every file's sample becomes `Utf8` + `arrow.json` (not `string` as for
+  CSV, amending D-044), so objects or scalars past `infer_rows` are stored losslessly.
+- **One schema per JSON source (never `DS3005`).** A JSON glob's schema is the same lattice join
+  taken over every file's sample (columns in order of first appearance, files in path order).
+  JSON sources skip `sources.rs::merge` entirely, never report `DS3005`, and read the whole glob
+  through one `ListingTable` without post-read casts (amending D-044). Every file is decoded
+  directly into the joined target schema by key name.
+- **Layout detection and UTF-8 BOM.** A leading UTF-8 BOM (`EF BB BF`) is skipped before layout
+  detection and decoding. Auto-detected `.json` sources (and `*.json` globs) detect JSON array vs.
+  NDJSON **per file** through `ObjectStore` (no `std::fs` call in layout detection), so a `*.json`
+  glob mixing NDJSON and array files reads each file in its own layout. Explicit `format = "ndjson"`
+  / `"array"` and `.ndjson`/`.jsonl` apply to every file.
+- **Duplicate keys and `arrow.json` encoding.** Duplicate keys within one top-level object follow
+  **last wins** (matching `serde_json` and `JSON.parse`). Inside `arrow.json` columns, every
+  non-null value is stored as raw JSON text: strings with quotes, numbers/booleans as written, and
+  objects/arrays with insignificant JSON whitespace removed outside string literals. Escapes,
+  number spelling, key order, and nested duplicate keys are kept as written; M2-03 `dynamic`
+  equality, grouping, and duplicate-key resolution must therefore operate on parsed or
+  canonicalized values rather than raw text (since `"\u00e9"` and `"é"` are stored differently).
+- **Strict type-check table, independent of projection.** The decoder never coerces silently:
+  `Boolean` accepts only `true`/`false`; `Int64` only in-range integers without fraction/exponent;
+  `Float64` only in-range integers and finite floats (rejecting out-of-`i64` integers and
+  `f64`-overflowing numbers to stay consistent with inference); plain `Utf8` only strings;
+  `Utf8` + `arrow.json` anything; `null` is accepted everywhere. `FileSource::try_pushdown_projection`
+  skips building Arrow arrays and stripping whitespace for unprojected columns, but every column
+  in the target schema is still type-checked on every record (including for `count`). Unlike DuckDB,
+  whether a file reads never depends on which columns the query projects; `read_json(...,
+  infer_rows = n)` is the escape hatch.
+- **Files read whole.** `DataScriptJsonSource::supports_repartitioning` returns `false` so
+  DataFusion never splits large uncompressed files into byte ranges: JSON arrays cannot start
+  mid-file, and NDJSON needs 1-based line numbers from byte 0 for structured `JsonReadError`
+  diagnostics (M2-34, M2-12). Parallelism across the files of a glob is unaffected.
+*(M2-33, 2026-11-28.)*
 
 ## Proposed (open questions)
 

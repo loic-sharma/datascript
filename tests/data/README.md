@@ -148,6 +148,14 @@ errors.
 | `compressed/events.ndjson.gz` | 2 lines of NDJSON `{id, name}` (`1, ant` and `2, bee`) in a gzip file built like `orders.csv.gz` | Compressed JSON (the `datascript-datafusion` integration tests) |
 | `json/array.json` | A JSON array of 3 objects `{id, name, score}`; `score` is null in the second | `.json` holding an array (detected) |
 | `json/lines.json` | 2 lines of NDJSON `{id, name}` in a `.json` file | `.json` holding NDJSON (detected) |
+| `json/poly.ndjson` | 3 lines of NDJSON with polymorphic nested/top-level fields (string vs. object, scalar vs. array, int vs. float, int vs. string) and integers outside `i64` (`big_id`) | `arrow.json` inference and raw JSON encoding (M2-33) |
+| `json/minified_array.json` | Single-line minified JSON array of 2 heterogeneous objects | Streaming JSON array reader (M2-33) |
+| `json/pretty_array.json` | Pretty-printed multi-line JSON array with nested objects/arrays | Whitespace stripping outside strings in `arrow.json` (M2-33) |
+| `json/glob_types/a.ndjson`, `json/glob_types/b.ndjson` | Two NDJSON files whose columns sample differently (all-`null` + object, `string` + object, `long` + `string`, `long` + `real`, all-`null` everywhere) | JSON glob schema joining without `DS3005` (M2-33) |
+| `json/glob_layout/a.json`, `json/glob_layout/b.json` | `.json` glob mixing an NDJSON file and a JSON-array file | Per-file layout auto-detection in `*.json` globs (M2-33) |
+| `json/bom_ndjson.json`, `json/bom_array.json` | UTF-8 BOM-prefixed NDJSON and JSON-array `.json` files | Leading BOM skipping before detection and decoding (M2-33) |
+| `json/late_type.ndjson` | 3 lines where `n` is `long` in lines 1–2 and `"oops"` on line 3 | `read_json(..., infer_rows = n)` and runtime `DS3008` (including unprojected columns and `count`) |
+| `json/late_null_obj.ndjson` | 2 lines where `extra` is `null` on line 1 and `{"k": 1}` on line 2 | All-`null` sample inferred as `arrow.json` accepts objects past `infer_rows` |
 | `options/semicolon.txt` | 3 rows, no header, `;` as delimiter, `'` as quote, `NA` for null: `1;'a;b';1.5`, `2;NA;2.5`, `3;plain;NA` | `read_csv` options |
 | `bad/broken.json` | One good line, then a truncated object | `DS3008`: malformed JSON |
 | `bad/not_parquet.parquet` | Plain text | `DS3008`: not a Parquet file |

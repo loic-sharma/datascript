@@ -18,7 +18,6 @@ use arrow_schema::{DataType, Field, Schema, SchemaRef};
 use datafusion::datasource::file_format::FileFormat;
 use datafusion::datasource::file_format::csv::CsvFormat;
 use datafusion::datasource::file_format::file_compression_type::FileCompressionType;
-use datafusion::datasource::file_format::json::JsonFormat;
 use datafusion::datasource::file_format::parquet::ParquetFormat;
 use datafusion::datasource::listing::{ListingOptions, ListingTableUrl};
 use datafusion::error::DataFusionError;
@@ -29,7 +28,9 @@ use datascript_compiler::source::{COMPRESSION_SUFFIXES, format_of_path};
 use datascript_compiler::{FileType, OptionValue, ReadProblem, SourceError, SourceRef, Type};
 use datascript_engine::ExecContext;
 
-/// The default of `read_csv`'s `infer_rows` (LANGUAGE.md §3.1).
+use crate::json::{DataScriptJsonFormat, JsonLayout, JsonReadError, SampledSchema, sample_object};
+
+/// The default of `infer_rows` for `read_csv` and `read_json` (LANGUAGE.md §3.1).
 const DEFAULT_INFER_ROWS: usize = 1000;
 
 /// A source with its files and schemas.
@@ -65,11 +66,15 @@ pub(crate) struct SourceFile {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Reader {
     Csv(CsvReader),
-    Json {
-        newline_delimited: bool,
-        compression: FileCompressionType,
-    },
+    Json(JsonReader),
     Parquet,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct JsonReader {
+    layout: JsonLayout,
+    infer_rows: usize,
+    compression: FileCompressionType,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -108,15 +113,11 @@ impl Reader {
                     .with_newlines_in_values(true)
                     .with_file_compression_type(csv.compression),
             ),
-            Reader::Json {
-                newline_delimited,
-                compression,
-            } => Arc::new(
-                JsonFormat::default()
-                    .with_newline_delimited(*newline_delimited)
-                    .with_schema_infer_max_rec(DEFAULT_INFER_ROWS)
-                    .with_file_compression_type(*compression),
-            ),
+            Reader::Json(json) => Arc::new(DataScriptJsonFormat::new(
+                json.layout,
+                json.infer_rows,
+                json.compression,
+            )),
             // Without view types, columns keep the types the file has (`Binary`, not
             // `BinaryView`), which is what DS2008 shows the user.
             Reader::Parquet => Arc::new(ParquetFormat::default().with_force_view_types(false)),
@@ -213,6 +214,10 @@ async fn read(
         vec![single_file(request.path, ctx)?]
     };
     let compression = compression(request)?;
+    let infer_rows = match option(request, "infer_rows") {
+        Some(OptionValue::Long(n)) => usize::try_from(*n).unwrap_or(usize::MAX),
+        _ => DEFAULT_INFER_ROWS,
+    };
     let csv = |delimiter: u8| -> Result<Reader, SourceError> {
         let char_option = |name: &str| match option(request, name) {
             Some(OptionValue::String(s)) => s.bytes().next(),
@@ -227,10 +232,7 @@ async fn read(
                 Some(OptionValue::String(s)) => Some(s.clone()),
                 _ => None,
             },
-            infer_rows: match option(request, "infer_rows") {
-                Some(OptionValue::Long(n)) => usize::try_from(*n).unwrap_or(usize::MAX),
-                _ => DEFAULT_INFER_ROWS,
-            },
+            infer_rows,
             compression,
         }))
     };
@@ -238,24 +240,82 @@ async fn read(
         SourceFormat::Csv => csv(b',')?,
         SourceFormat::Tsv => csv(b'\t')?,
         SourceFormat::Parquet => Reader::Parquet,
-        SourceFormat::Ndjson => Reader::Json {
-            newline_delimited: true,
+        SourceFormat::Ndjson => Reader::Json(JsonReader {
+            layout: JsonLayout::Ndjson,
+            infer_rows,
             compression,
-        },
+        }),
         SourceFormat::Json => {
-            let newline_delimited = match option(request, "format") {
-                Some(OptionValue::String(f)) => f != "array",
-                _ => !is_json_array(&paths[0].0, compression)?,
+            let layout = match option(request, "format") {
+                Some(OptionValue::String(f)) if f == "array" => JsonLayout::Array,
+                Some(OptionValue::String(f)) if f == "ndjson" => JsonLayout::Ndjson,
+                _ => JsonLayout::Auto,
             };
-            Reader::Json {
-                newline_delimited,
+            Reader::Json(JsonReader {
+                layout,
+                infer_rows,
                 compression,
-            }
+            })
         }
     };
 
-    let options = reader.listing_options();
     let state = session.state();
+    // JSON sources infer one joined schema over every file's sample, skip `merge`, and never
+    // report `DS3005`. Every file shares that schema, so `Resolved::uniform` is always true and
+    // one `ListingTable` reads the whole glob without post-read casts.
+    if let Reader::Json(ref json) = reader {
+        let mut parsed = Vec::with_capacity(paths.len());
+        let mut combined = SampledSchema::default();
+        for (path, shown) in paths {
+            let url =
+                ListingTableUrl::parse(strip_verbatim(&path).to_string_lossy()).map_err(|e| {
+                    SourceError::Unreadable {
+                        file: shown.clone(),
+                        problem: ReadProblem::Io(e.strip_backtrace()),
+                    }
+                })?;
+            let store =
+                state
+                    .runtime_env()
+                    .object_store(&url)
+                    .map_err(|e| SourceError::Unreadable {
+                        file: shown.clone(),
+                        problem: read_problem(&e),
+                    })?;
+            let sample = sample_object(
+                &store,
+                url.prefix(),
+                &shown,
+                json.layout,
+                json.compression,
+                json.infer_rows,
+            )
+            .await
+            .map_err(|e| SourceError::Unreadable {
+                file: shown.clone(),
+                problem: read_problem(&e),
+            })?;
+            combined.merge(sample);
+            parsed.push((url, path, shown));
+        }
+        let schema = combined.into_schema();
+        let files = parsed
+            .into_iter()
+            .map(|(url, path, shown)| SourceFile {
+                url,
+                path,
+                shown,
+                raw: schema.clone(),
+            })
+            .collect();
+        return Ok(Resolved {
+            reader,
+            files,
+            widened: schema,
+        });
+    }
+
+    let options = reader.listing_options();
     let mut files = Vec::with_capacity(paths.len());
     for (path, shown) in paths {
         // ASCII-only characters with a meaning in URLs are escaped by `ListingTableUrl` itself;
@@ -328,30 +388,11 @@ fn compression(request: &Request<'_>) -> Result<FileCompressionType, SourceError
     }
 }
 
-/// Whether a `.json` file holds one array (rather than one object per line): its first
-/// character that is not white space is `[`.
-fn is_json_array(path: &Path, compression: FileCompressionType) -> Result<bool, SourceError> {
-    use std::io::Read;
-    let io = |e: &dyn std::fmt::Display| SourceError::Unreadable {
-        file: path.display().to_string(),
-        problem: ReadProblem::Io(e.to_string()),
-    };
-    let file = std::fs::File::open(path).map_err(|e| io(&e))?;
-    let mut reader = compression.convert_read(file).map_err(|e| io(&e))?;
-    let mut buf = [0u8; 256];
-    loop {
-        let n = reader.read(&mut buf).map_err(|e| io(&e))?;
-        if n == 0 {
-            return Ok(false);
-        }
-        if let Some(&c) = buf[..n].iter().find(|c| !c.is_ascii_whitespace()) {
-            return Ok(c == b'[');
-        }
-    }
-}
-
 /// Classifies an error from schema inference.
 fn read_problem(error: &DataFusionError) -> ReadProblem {
+    if let Some(json_err) = crate::errors::find_cause::<JsonReadError>(error) {
+        return ReadProblem::Malformed(json_err.to_string());
+    }
     if let DataFusionError::IoError(io) = error.find_root() {
         return io_problem(io);
     }

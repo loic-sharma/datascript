@@ -5,6 +5,9 @@ schema: 'x.csv'(a: long); 'x.json'(a: long); 'x.parquet'(a: long)
 from read_csv('x.csv', delimeter = ';') | take 1;
 from read_csv('x.csv', header = 'yes', delimiter = ';;', infer_rows = 0) | take 1;
 from read_json('x.json', format = 'ndjsn') | take 1;
+from read_json('x.json', infer_rows = 0) | take 1;
+from read_json('x.json', infer_rows = -5) | take 1;
+from read_json('x.json', infer_rows = 'ten') | take 1;
 from read_csv('x.csv', header = true, header = false) | take 1;
 from read_csv('x.csv', schema = 'a: long') | take 1;
 from read_parquet('x.parquet', compression = 'gzip') | take 1;
@@ -45,10 +48,28 @@ error[DS2041]: `format` must be `'ndjson'` or `'array'`
   |
   = help: did you mean `'ndjson'`?
 
-error[DS2043]: option `header` is given twice
+error[DS2041]: `infer_rows` must be a whole number of at least 1
   --> query:4:39
   |
-4 | from read_csv('x.csv', header = true, header = false) | take 1;
+4 | from read_json('x.json', infer_rows = 0) | take 1;
+  |                                       ^ this is 0
+
+error[DS2041]: `infer_rows` must be a whole number of at least 1
+  --> query:5:39
+  |
+5 | from read_json('x.json', infer_rows = -5) | take 1;
+  |                                       ^^ this is -5
+
+error[DS2041]: `infer_rows` must be a whole number of at least 1
+  --> query:6:39
+  |
+6 | from read_json('x.json', infer_rows = 'ten') | take 1;
+  |                                       ^^^^^ this is `string`
+
+error[DS2043]: option `header` is given twice
+  --> query:7:39
+  |
+7 | from read_csv('x.csv', header = true, header = false) | take 1;
   |                        ------         ^^^^^^ given again here
   |                        |
   |                        first given here
@@ -56,29 +77,29 @@ error[DS2043]: option `header` is given twice
   = help: remove one of them
 
 error[DS3003]: reader option `schema` is not available yet
-  --> query:5:24
+  --> query:8:24
   |
-5 | from read_csv('x.csv', schema = 'a: long') | take 1;
+8 | from read_csv('x.csv', schema = 'a: long') | take 1;
   |                        ^^^^^^ planned for M2
   |
   = note: it is part of `read_csv`, but this version does not have it
 
 error[DS3003]: `read_parquet` has no option `compression`
-  --> query:6:32
+  --> query:9:32
   |
-6 | from read_parquet('x.parquet', compression = 'gzip') | take 1;
+9 | from read_parquet('x.parquet', compression = 'gzip') | take 1;
   |                                ^^^^^^^^^^^ unknown option
   |
   = note: `read_parquet` takes no options
 
 error[DS2041]: `delimiter` must be a single character
-  --> query:7:36
-  |
-7 | from read_csv('x.csv', delimiter = '§', quote = '') | take 1
-  |                                    ^^^ `§` is not ASCII, and the CSV reader splits on single bytes
+   --> query:10:36
+   |
+10 | from read_csv('x.csv', delimiter = '§', quote = '') | take 1
+   |                                    ^^^ `§` is not ASCII, and the CSV reader splits on single bytes
 
 error[DS2041]: `quote` must be a single character
-  --> query:7:49
-  |
-7 | from read_csv('x.csv', delimiter = '§', quote = '') | take 1
-  |                                                 ^^ this has 0 characters
+   --> query:10:49
+   |
+10 | from read_csv('x.csv', delimiter = '§', quote = '') | take 1
+   |                                                 ^^ this has 0 characters

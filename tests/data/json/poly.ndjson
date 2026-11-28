@@ -1,0 +1,3 @@
+{"id": 1, "pkg": {"scripts": "scripts.yaml"}, "scripts": "scripts.yaml", "tags": "core", "score": 1, "code": 42, "big_id": 18446744073709551615}
+{"id": 2, "pkg": {"scripts": {"build": "cargo build"}}, "scripts": {"build": "cargo build"}, "tags": ["a", "b"], "score": 2.5, "code": "ok", "big_id": 9223372036854775808}
+{"id": 3, "pkg": null, "scripts": null, "tags": null, "score": null, "code": null, "big_id": null}

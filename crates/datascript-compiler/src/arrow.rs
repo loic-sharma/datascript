@@ -43,6 +43,21 @@ impl fmt::Display for UnsupportedArrowType {
     }
 }
 
+impl UnsupportedArrowType {
+    /// A nullable Arrow field carrying this type and extension metadata, if any.
+    pub fn to_field(&self, name: &str) -> Field {
+        let field = Field::new(name, self.data_type.clone(), true);
+        match &self.extension {
+            Some(ext) => field.with_metadata(
+                [(EXTENSION_TYPE_NAME_KEY.to_string(), ext.clone())]
+                    .into_iter()
+                    .collect(),
+            ),
+            None => field,
+        }
+    }
+}
+
 impl std::error::Error for UnsupportedArrowType {}
 
 /// The canonical Arrow storage type of `ty` (LANGUAGE.md §5).
