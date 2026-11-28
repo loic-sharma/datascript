@@ -134,10 +134,11 @@ Two shared files are touched by many tasks:
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
-| [M4-01](M4-01-server-api.md) | Local server (`ds ui`) | M1-13, M2-13 | todo |
-| [M4-02](M4-02-web-frontend.md) | Web UI front end | M4-01, M2-13 | todo |
-| [M4-03](M4-03-web-charts.md) | Charts from RenderSpec | M4-02, M1-10 | todo |
-| [M4-04](M4-04-web-schema-completion.md) | Schema browser and completion | M4-02, M3-02, M2-13 | todo |
+| [M4-01](M4-01-server-api.md) | Local server (`ds ui`), workspace file CRUD & cell stitcher | M1-13, M2-13 | todo |
+| [M4-02](M4-02-web-frontend.md) | Web UI: notebook shell, `.dsnb` engine, editor & results grid | M4-01, M2-13 | todo |
+| [M4-03](M4-03-web-charts.md) | Charts from `RenderSpec` (Apache ECharts) | M4-02, M1-10 | todo |
+| [M4-04](M4-04-web-schema-completion.md) | Contextual inspector, result profiler & IDE completion | M4-02, M3-02, M2-13 | todo |
+| [M4-05](M4-05-web-shortcuts-polish.md) | Keyboard shortcuts, Command Palette, Quick Open & M4 polish | M4-02, M4-03, M4-04 | todo |
 
 ## M5 — In-browser runtime (WASM)
 

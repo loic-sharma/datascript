@@ -1,23 +1,61 @@
-# M4-02 — Web UI front end
+# M4-02 — Web UI: notebook shell, `.dsnb` engine, editor & results grid
 
 **Status:** todo
 **Depends on:** M4-01, M2-13
 **Crates:** `web/`
 
 ## Goal
-The SPA shared by `ds ui` and the WASM playground. Decide Q-002 (stack) and Q-004 (multiple
-results) first and record them in DECISIONS.md.
+Build the shared React + Vite + Tailwind + CodeMirror 6 notebook SPA specified in
+[WEB_UI.md](../WEB_UI.md) (D-060–D-063), ready for `ds ui`, the M5 WASM playground, VS Code's M3-06
+results webview, and a future Tauri desktop shell.
 
 ## Scope
-- A `Runtime` TS interface with a `ServerRuntime` implementation (`WasmRuntime` comes in M5-03).
-- Editor with DataScript highlighting, inline diagnostics (same text as the CLI, rendered from
-  JSON), Run (Ctrl/Cmd+Enter runs the statement at the cursor), and a virtualized results grid.
-- File sidebar listing data files in the root. Clicking a file inserts it as a source: `from 'path'`
-  at a statement start (D-036), or just the path string where a table is expected (after `from`,
-  `join`, `union`).
+- **Architecture & runtime layer**:
+  - Scaffold `web/` with React, TypeScript, Vite, Tailwind CSS, CodeMirror 6, `apache-arrow`, and
+    `@tanstack/react-virtual`.
+  - Define the `Runtime` TypeScript interface ([WEB_UI.md §6](../WEB_UI.md#the-runtime-abstraction-web-wasm-desktop-vs-code))
+    and implement `ServerRuntime` (HTTP + WebSocket client against M4-01).
+  - Keep result rendering primitives (`web/src/components/results/`: virtualized Arrow grid and
+    diagnostic cards) decoupled from the notebook shell so M3-06 can import them directly.
+- **`.dsnb` notebook parser & lossless serializer** (D-061):
+  - Parse source-only plain-text Markdown `.dsnb` files (YAML frontmatter preserved, ` ```ds `
+    fences → DataScript cells, prose → Markdown cells, `<!-- ds:cell -->` adjacent Markdown
+    delimiter) with round-trip unit tests.
+  - Open plain `.ds` scripts as single-editor tabs, and open an unsaved **Scratchpad** notebook tab
+    on launch when no notebook is open.
+  - Debounced auto-save (~500 ms) + `Cmd/Ctrl+S` flush for saved files, plus `409 Conflict`
+    external-edit banner (`Reload from disk` / `Overwrite disk`).
+- **Three-pane layout & dark/light theming**:
+  - Calm, dark-first Claude-Code-inspired monochrome theme + crisp light theme with semantic CSS
+    variables and collapsible/resizable left and right sidebars.
+  - **Left pane**: full working-directory tree (hiding `.git`, `node_modules`, `target`, dotfiles by
+    default, with filter box & toggle), create/rename/delete for `.dsnb`, `.ds`, and folders,
+    read-only data files (double-click / action inserts `from '<relpath>'` or `'<relpath>'` in table
+    position, D-036, or creates a preview cell), and optional Attached Tables section.
+  - **Center pane**: slim tab bar + path breadcrumb keeping open tabs' outputs, scroll position,
+    and undo history alive; cell list with pointer drag-and-drop handles, keyboard reordering
+    (`Alt+Up/Down`), and hover `+ DataScript` / `+ Markdown` insert dividers.
+  - **Right pane shell**: collapsible inspector frame (populated in M4-04).
+- **Cells, diagnostics & virtualized results grid**:
+  - **Markdown cells**: rendered cleanly (GFM, sanitized HTML); click/double-click edits in
+    CodeMirror; `Shift+Enter` or `Esc` renders back.
+  - **DataScript cells**: CodeMirror 6 editor with DataScript syntax highlighting (matching D-026),
+    inline diagnostic squiggles, and rustc/Claude-Code-style diagnostic cards with one-click
+    **Apply fix** buttons for machine-applicable `Suggestion`s.
+  - **Execution & staleness**: Run cell (`Cmd/Ctrl+Enter`), Run & advance (`Shift+Enter`), Run
+    statement at cursor (`Cmd/Ctrl+Alt+Enter`), Run cell & below, Run all, Stop/cancel; cross-cell
+    dependency fingerprinting with subtle **Stale** badge; `let`-only validation status line;
+    compact output sub-tabs for multi-statement cells (D-062).
+  - **Virtualized Arrow results grid**: row numbers, column type badges, `NULL` styling, column
+    resizing, client-side sort, click-to-copy cell/row, fullscreen expand (`[ ]`), `DS4060`
+    truncation banner (10k default, D-063), and streaming **Export full result** menu.
 
 ## Acceptance criteria
-- [ ] Vitest unit tests and a Playwright smoke test against a real `ds ui`.
-- [ ] Dark/light themes. Keyboard accessible.
+- [ ] Vitest unit tests for `.dsnb` lossless round-trip parsing/serialization, cross-cell staleness
+      fingerprinting, `ServerRuntime`, and virtualized grid formatting.
+- [ ] Playwright smoke test against a real `ds ui`: opens Scratchpad, inspects/inserts a fixture
+      CSV from the left tree, runs a multi-cell notebook with shared `let`, reorders cells, saves
+      as `.dsnb`, and exports results.
+- [ ] Dark and light themes work cleanly with no contrast regressions. Keyboard accessible.
 
 ## Follow-ups
