@@ -6,7 +6,7 @@ end (`web/`) also powers the in-browser WASM playground (M5), shares its result 
 components with the VS Code results panel (M3-06), and is structured to wrap cleanly in a native
 desktop shell (Tauri) later without rewriting the UI.
 
-Related documents: [ARCHITECTURE.md](ARCHITECTURE.md), [DECISIONS.md](DECISIONS.md) (D-060–D-063),
+Related documents: [ARCHITECTURE.md](ARCHITECTURE.md), [DECISIONS.md](DECISIONS.md) (D-061–D-064),
 [LANGUAGE.md](LANGUAGE.md), [DIAGNOSTICS.md](DIAGNOSTICS.md), and
 [tasks/README.md](tasks/README.md).
 
@@ -47,7 +47,7 @@ best ergonomics of five tools:
 ## 2. Notebook File Format (`.dsnb`)
 
 Notebooks are stored on disk as **strictly source-only, plain-text Markdown files** with the
-`.dsnb` extension (D-061).
+`.dsnb` extension (D-062).
 
 ### Why `.dsnb` Markdown?
 
@@ -107,7 +107,7 @@ A `.dsnb` file is a sequence of cells parsed from and serialized to UTF-8 Markdo
 
 ## 3. Execution Model & Cross-Cell State
 
-### Top-to-bottom lexical `let` scope (D-061)
+### Top-to-bottom lexical `let` scope (D-062)
 
 DataScript `let` bindings are immutable and lexically scoped. A notebook behaves exactly like a
 single DataScript program split into cells:
@@ -116,8 +116,9 @@ single DataScript program split into cells:
   DataScript cells **above it** in document order.
 - A cell does **not** need its upstream `let` cells to be executed first for checking, completion,
   hover, or execution—running Cell *k* compiles and executes Cell *k* with all upstream `let`
-  statements prepended (using a combined-program span mapper modeled after `ReplProgram` in
-  `datascript-cli`).
+  statements prepended via a shared `StitchedProgram` helper in `datascript-compiler` (extracted
+  from `ReplProgram`'s segment-mapping logic so `datascript-cli`, `datascript-server`, and
+  `datascript-wasm` all share it; supersedes D-048's note that the web UI does not need one).
 - **Live cross-cell IDE intelligence**: Editing a `let` in Cell 1 immediately updates inferred
   schemas, diagnostics, column completion, and hover info in Cells 2, 3, … on the next debounced
   check.
@@ -127,10 +128,12 @@ single DataScript program split into cells:
   DataScript's standard `DS1003` diagnostic with a secondary label pointing back to the earlier
   cell where the name was defined.
 
-> **Upstream error handling:** If an upstream `let` cell has a syntax or semantic error, that error
-> is shown on the upstream cell (not duplicated as noise on every downstream cell), while downstream
-> cells that reference the broken binding indicate the upstream error clearly and link directly to
-> that cell.
+> **Upstream error handling (`DS4061`):** During live `check`, errors in an upstream `let` cell are
+> reported on the upstream cell itself (not duplicated as noise on every downstream cell; downstream
+> uses inherit `LetEntry::Error` silently per D-038). When the user tries to **run** a downstream
+> cell while an upstream cell has errors, the runtime emits diagnostic `DS4061` ("cannot run cell
+> because an upstream cell has errors") with a secondary label pointing directly at the broken
+> upstream cell so the UI can jump straight to it.
 
 ### Explicit execution with staleness tracking
 
@@ -147,10 +150,10 @@ single DataScript program split into cells:
     cells and `.ds` scripts.
   - **Run cell & below** / **Run all** — executes cells sequentially top-to-bottom, stopping on the
     first error cell (or continuing on request).
-  - **Cancel / Stop** (`Esc` while running, or the inline Stop button) — cancels the active
-    `RunStream` immediately (D-055).
+  - **Cancel / Stop** (`Cmd/Ctrl+.`, or the inline Stop button) — cancels the active `RunStream`
+    immediately (D-055).
 
-### `let`-only cells & multi-statement cells (D-062, closes Q-004)
+### `let`-only cells & multi-statement cells (D-063, closes Q-004)
 
 - **`let`-only cell**: Running a cell that defines only `let` statements checks/validates its
   bindings and displays a compact status line (`2 bindings defined · validated in 3ms`) with no
@@ -159,16 +162,22 @@ single DataScript program split into cells:
   sub-tabs (`Result 1`, `Result 2`, … — labelled with the `render` title if present) inside the
   cell's output frame.
 
-### Result size limits & streaming export (D-063, closes Q-007)
+### Result size limits & streaming export (D-064, closes Q-007)
 
-- UI executions pass `row_limit = 10_000` by default (configurable per-workspace or per-run in UI
-  settings).
-- When `QueryResult::truncated` is true, the runtime emits the Q-007 info diagnostic (`DS4060`) and
-  the cell footer renders a subtle truncation notice (e.g. `Showing first 10,000 rows · truncated`)
-  with a one-click **Export full result** menu.
-- **Export full result** re-executes and streams the complete, uncapped query directly through
-  `datascript_engine::writers` (CSV, JSON, NDJSON, Parquet, Arrow IPC, and Excel once M2-28 lands)
-  as a streamed download—never buffering the full dataset in browser memory.
+- UI executions cap streamed output at `row_limit = 10_000` by default (configurable per-workspace
+  or per-run in UI settings). Because `Session::start`'s raw `QueryStream` does not cap rows on its
+  own, `datascript-engine` provides a streaming-limit helper (counting rows per batch, slicing the
+  final batch at the limit, dropping the stream to cancel execution on the next row, and returning
+  `truncated: true`) shared across `datascript-server`, M3-06, and M5.
+- When `truncated` is true, the runtime emits the `DS4060` info diagnostic and the cell footer
+  renders a subtle truncation notice (e.g. `Showing first 10,000 rows · truncated`) with a
+  one-click **Export full result** menu.
+- **Export full result** re-executes the exact statement with **the original run's `nowMicros`
+  clock** (preserving `now()` / `ago()` windows per D-015), **the target `statementIndex`**, and
+  **the same upstream-`let` cell context**. To stream directly to disk without buffering the full
+  file in browser memory, export uses a two-step ticketed download (`POST /api/export` → one-shot
+  `GET /api/export/<ticket>`, §6) streaming uncapped rows through `datascript_engine::writers`
+  (CSV, JSON, NDJSON, Parquet, Arrow IPC, and Excel once M2-28 lands).
 
 ---
 
@@ -212,7 +221,12 @@ shortcuts (`Cmd/Ctrl+B` left, `Cmd/Ctrl+Alt+B` right) or top-bar icons.
 - **Safe file CRUD** (confined strictly to the workspace root, D-016):
   - Users can **create, rename, and delete** `.dsnb` notebooks, `.ds` scripts, and folders from the
     sidebar (toolbar `+` button, context menu, or Command Palette).
-  - **Data files are strictly read-only** in the UI—never deleted or modified from the tree.
+  - **Data files are strictly read-only** in the UI—never deleted, renamed, or overwritten:
+    - Deleting or renaming a folder is **refused** if the folder recursively contains any file
+      other than `.dsnb` or `.ds` (or any symlink).
+    - Creating (`POST`) or renaming (`PATCH`) a file is **refused** if the target path does not end
+      in `.dsnb`/`.ds` or if the target already exists (preventing `rename(2)` from overwriting data
+      files or other notebooks).
 - **Data file interactions**:
   - **Single-click** selects the file and opens its **Source Schema** in the right-hand inspector
     (columns, DataScript/Arrow types, file size).
@@ -228,17 +242,19 @@ shortcuts (`Cmd/Ctrl+B` left, `Cmd/Ctrl+Alt+B` right) or top-bar icons.
 
 - **Slim tab bar + breadcrumb**: Multiple `.dsnb` notebooks, `.ds` scripts, and Scratchpads can stay
   open simultaneously. Switching tabs preserves each tab's rendered outputs, scroll position, active
-  cell selection, and undo history. Supports tab pinning, close (`Cmd/Ctrl+W`), and Quick Open
-  (`Cmd/Ctrl+P`).
+  cell selection, and undo history. Supports tab pinning, close (`Alt+W` in browser / `Cmd/Ctrl+W`
+  in a future desktop shell), and Quick Open (`Cmd/Ctrl+P`).
 - **Cell list & reordering**:
   - Every cell has a quiet left gutter drag handle (for pointer drag-and-drop reordering) and supports
-    keyboard reordering (`Alt+Up` / `Alt+Down`).
+    keyboard reordering in Command Mode (`Shift+Up` / `Shift+Down` and `Shift+K` / `Shift+J`) plus
+    the Command Palette—leaving `Alt+Up` / `Alt+Down` free for CodeMirror line movement.
   - Subtle `+ DataScript  + Markdown` insert dividers appear between cells on hover or at the end
     of the notebook.
 - **Markdown cells**:
   - Rendered cleanly by default (GFM: headings, tables, task lists, inline code, links, code blocks).
-  - Click/double-click or press `Enter` (in Command Mode) to edit raw Markdown in CodeMirror; press
-    `Shift+Enter` or `Esc` to render back.
+  - Click/double-click or press `Enter` (in Command Mode) to edit raw Markdown in CodeMirror.
+  - `Cmd/Ctrl+Enter` renders in place; `Shift+Enter` renders and advances to the next cell; `Esc`
+    renders and exits to Command Mode on that cell (matching DataScript cells' mode transitions).
 - **DataScript cells**:
   - **Editor**: CodeMirror 6 with DataScript syntax highlighting (matching the TextMate/lexer rules
     in D-026), inline diagnostic squiggles, hover documentation, signature help, and context-aware
@@ -297,25 +313,28 @@ allowing manual override:
 
 ## 5. Keyboard Shortcuts & Command Mode
 
-The UI uses a **hybrid modeless + cell Command Mode** model (D-061). Every action is also searchable
-from the Command Palette.
+The UI uses a **hybrid modeless + cell Command Mode** model (D-062) designed for zero conflicts
+with CodeMirror 6 editing bindings (`Alt+Up/Down` move line, `Cmd/Ctrl+Shift+Up/Down` selection)
+and browser-reserved chords (`Ctrl+W`, `Ctrl+Shift+N`). Every action is also searchable from the
+Command Palette.
 
 ### Global & Modeless Shortcuts (work anywhere)
 
 | Action | macOS | Windows / Linux |
 |---|---|---|
-| Run current cell | `Cmd+Enter` | `Ctrl+Enter` |
-| Run cell & advance (or insert below) | `Shift+Enter` | `Shift+Enter` |
+| Run DataScript cell / render Markdown cell in place | `Cmd+Enter` | `Ctrl+Enter` |
+| Run / render cell & advance (or insert below) | `Shift+Enter` | `Shift+Enter` |
 | Run statement at cursor (ADX style) | `Cmd+Alt+Enter` | `Ctrl+Alt+Enter` |
 | Run all cells | `Cmd+Shift+Enter` | `Ctrl+Shift+Enter` |
-| Reorder cell up / down | `Alt+Up` / `Alt+Down` | `Alt+Up` / `Alt+Down` |
+| Cancel running query | `Cmd+.` | `Ctrl+.` |
+| Leave Edit Mode (renders Markdown) → Command Mode | `Esc` | `Esc` |
 | Command Palette | `Cmd+Shift+P` or `Cmd+K` | `Ctrl+Shift+P` or `Ctrl+K` |
 | Quick Open file / notebook | `Cmd+P` | `Ctrl+P` |
 | Toggle left sidebar (Files) | `Cmd+B` | `Ctrl+B` |
 | Toggle right sidebar (Inspector) | `Cmd+Alt+B` | `Ctrl+Alt+B` |
 | Save immediately / Save Scratchpad | `Cmd+S` | `Ctrl+S` |
-| Close active tab | `Cmd+W` | `Ctrl+W` |
-| New Scratchpad notebook | `Cmd+Shift+N` | `Ctrl+Shift+N` |
+| Close active tab *(browser-safe; `Cmd/Ctrl+W` in desktop shell)* | `Alt+W` | `Alt+W` |
+| New Scratchpad notebook *(browser-safe; `Cmd/Ctrl+Shift+N` in desktop shell)* | `Alt+N` | `Alt+N` |
 | Toggle line comment (in cell editor) | `Cmd+/` | `Ctrl+/` |
 
 ### Cell Command Mode (`Esc` from editor → cell frame focused; `Enter` re-enters editor)
@@ -323,6 +342,7 @@ from the Command Palette.
 | Key | Action |
 |---|---|
 | `j` / `Down`, `k` / `Up` | Move selection to next / previous cell |
+| `Shift+Up` / `Shift+Down` (or `Shift+K` / `Shift+J`) | Reorder selected cell up / down |
 | `Enter` | Enter Edit Mode on selected cell |
 | `a` / `b` | Insert new DataScript cell above / below |
 | `m` / `y` | Convert selected cell to Markdown / DataScript |
@@ -330,14 +350,13 @@ from the Command Palette.
 | `z` | Undo last cell structure change (delete/move/convert) |
 | `x` / `c` / `v` | Cut / copy / paste cell |
 | `o` | Toggle output collapsed / expanded |
-| `Shift+Up` / `Shift+Down` | Reorder cell up / down |
 | `?` | Open keyboard shortcuts cheat sheet |
 
 ---
 
 ## 6. Architecture, Stack & Multi-Target Reuse
 
-### Frontend stack (D-060, closes Q-002)
+### Frontend stack (D-061, closes Q-002)
 
 - **UI Framework**: React + TypeScript + Vite
 - **Styling**: Tailwind CSS with semantic CSS custom properties (`--surface-*`, `--border-*`,
@@ -365,11 +384,12 @@ export interface Runtime {
 
   // Language & execution (cell-aware: accepts optional upstream `let` prefix cells)
   check(req: CheckRequest): Promise<CheckResponse>;
-  run(req: RunRequest, onEvent: (ev: RunEvent) => void): RunHandle; // handle.cancel()
+  run(req: RunRequest, onEvent: (ev: RunEvent) => void): RunHandle; // RunEvent includes nowMicros
   complete(req: IdeRequest): Promise<CompletionResponse>;
   hover(req: IdeRequest): Promise<HoverResponse | null>;
   signatureHelp(req: IdeRequest): Promise<SignatureHelpResponse | null>;
   schemaOf(source: string): Promise<SchemaResponse>;
+  // ExportRequest carries { path, cells, targetCellIndex, statementIndex, nowMicros, format }
   exportResult(req: ExportRequest): Promise<void>;
 
   // Workspace files (when capabilities.workspaceFiles is true)
@@ -394,27 +414,34 @@ How each target plugs in:
 
 ### Server API contract (`datascript-server`, M4-01 & M4-04)
 
-All endpoints require the per-launch session token (`Authorization: Bearer <token>` or `?token=`
-for WebSocket/downloads) and verify the `Origin` header matches the local server origin.
+All JSON API and WebSocket endpoints require the per-launch session token (`Authorization: Bearer
+<token>`, or `?token=` on the WebSocket handshake) and verify the `Origin` header matches the local
+server origin. Streaming file downloads use a short-lived, single-use ticket (`GET
+/api/export/<ticket>`) minted by `POST /api/export` so the browser streams straight to disk without
+buffering in JS memory; that `GET` endpoint skips `Origin` (browsers omit `Origin` on GET
+navigations), verifies `Sec-Fetch-Site: same-origin` when present, and consumes the ticket
+atomically.
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /api/info` | Root folder name, capabilities, default `row_limit`, registered host tables |
 | `GET /api/files?dir=&includeHidden=` | Directory tree under root (sandboxed, D-016) |
 | `GET /api/file?path=` | Read a `.dsnb` or `.ds` text file + `version` (etag) |
-| `PUT /api/file` | Save a `.dsnb` or `.ds` file with optional `expectedVersion` (409 on conflict; refuses non-`.dsnb`/`.ds` paths) |
-| `POST /api/file` / `PATCH /api/file` / `DELETE /api/file` | Create, rename, or delete `.dsnb`, `.ds`, or folders (refuses mutating/deleting data files) |
+| `PUT /api/file` | Save a `.dsnb` or `.ds` file with optional `expectedVersion` (`409` on conflict; refuses non-`.dsnb`/`.ds` paths) |
+| `POST /api/file` / `PATCH /api/file` / `DELETE /api/file` | Create, rename, or delete `.dsnb`, `.ds`, or folders (refuses non-`.dsnb`/`.ds` file targets, existing targets on create/rename, and deleting/renaming any folder recursively containing non-`.dsnb`/`.ds` files or symlinks) |
 | `GET /api/schema?source=` | Inspect schema of a file or host table via `Session` |
 | `POST /api/check` | Check a single script or notebook cell (accepts `{ path, cells, targetCellIndex }` so upstream `let`s are in scope with spans mapped back to each cell's UTF-16 offsets) |
-| `WS /api/ws` | Multiplexed stream for: (1) query execution (`run` / `cancel` → streaming Arrow IPC batches + `RenderSpec` + diagnostics + timing), and (2) workspace file-change notifications |
-| `POST /api/export` | Stream full uncapped query result via `datascript_engine::writers` (`csv`, `json`, `ndjson`, `parquet`, `arrow`) |
+| `WS /api/ws` | Multiplexed stream for: (1) query execution (`run` / `cancel` → `started` with `nowMicros`, streaming capped Arrow IPC batches + `RenderSpec` + diagnostics incl. `DS4060`/`DS4061` + timing), and (2) workspace file-change notifications |
+| `POST /api/export` | Accepts `{ path, cells, targetCellIndex, statementIndex, nowMicros, format }`, validates the request, and returns a short-lived single-use download URL `/api/export/<ticket>` |
+| `GET /api/export/<ticket>` | Consumes the one-shot ticket (checks `Sec-Fetch-Site` when present, no `Origin` header required) and streams the full uncapped result as `Content-Disposition: attachment` via `datascript_engine::writers` (`csv`, `json`, `ndjson`, `parquet`, `arrow`) |
 | `POST /api/complete`, `/api/hover`, `/api/signature-help` | IDE helpers backed by `datascript_compiler::ide` over the same cell-aware combined program (M4-04) |
 
-### Cross-cell combined program (Rust)
+### Cross-cell combined program (`datascript-compiler`)
 
-To avoid duplicating `ReplProgram`'s offset-mapping logic, `datascript-server` (or a small shared
-notebook/program-stitching helper) builds a virtual program from the notebook's DataScript cells up
-to `targetCellIndex`:
+Segment-stitching and offset mapping live in a pure, `wasm32`-compatible `StitchedProgram` helper
+in **`datascript-compiler`** (extracted from `ReplProgram` in `datascript-cli`, which delegates to
+it). `datascript-server` (M4-01 & M4-04) and `datascript-wasm` (M5) both use it to build a virtual
+program from a notebook's DataScript cells up to `targetCellIndex`:
 - Only `let` statements from upstream cells (`0 .. targetCellIndex`) are prepended ahead of the
   target cell's full text, separated by `\n;\n` glue segments.
 - Every `Diagnostic` span and IDE offset (`complete`, `hover`, `signature_help`) is mapped back from

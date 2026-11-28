@@ -11,9 +11,9 @@ Show Run results in a webview panel: a virtualized grid and, for `render`, the c
 ## Scope
 - `datascript/run` gains a way to ask for data instead of text, e.g. `format: "arrow"`, returning
   each result as Arrow IPC with its `RenderSpec`. Follow the 10,000-row UI display limit decided in
-  D-063 (closed Q-007).
+  D-064 (closed Q-007).
 - A setting chooses where results go: the terminal (M3-05) or the panel.
-- The panel shows several results as compact sub-tabs as the web UI does (D-062, closed Q-004), and
+- The panel shows several results as compact sub-tabs as the web UI does (D-063, closed Q-004), and
   runtime errors as the web UI does.
 
 ## Acceptance criteria

@@ -11,12 +11,18 @@ deliver M4 acceptance polish across the full end-to-end workflow.
 
 ## Scope
 - **Cell Command Mode (`Esc` / `Enter`)**:
-  - `Esc` from a cell editor focuses the cell frame (distinct subtle focus ring); `Enter` re-enters
-    edit mode.
-  - Full single-key command bindings: `j`/`k` (and `Down`/`Up`) cell navigation, `a`/`b` insert
-    above/below, `m`/`y` convert Markdown/DataScript, `dd` delete cell, `z` undo cell structure
-    changes, `x`/`c`/`v` cut/copy/paste cell, `o` collapse/expand output, `Shift+Up/Down` reorder,
+  - `Esc` from a cell editor (rendering Markdown if editing a Markdown cell) focuses the cell frame
+    with a distinct subtle focus ring; `Enter` re-enters edit mode. (`Cmd/Ctrl+.` cancels a running
+    query so `Esc` never conflicts with query cancellation.)
+  - Full single-key command bindings: `j`/`k` (and `Down`/`Up`) cell navigation, `Shift+Up`/`Shift+Down`
+    (and `Shift+K`/`Shift+J`) cell reordering (leaving `Alt+Up`/`Alt+Down` free for CodeMirror line
+    movement), `a`/`b` insert above/below, `m`/`y` convert Markdown/DataScript, `dd` delete cell,
+    `z` undo cell structure changes, `x`/`c`/`v` cut/copy/paste cell, `o` collapse/expand output,
     `?` shortcuts cheat sheet.
+- **Browser-safe global chords**:
+  - `Alt+W` (close tab) and `Alt+N` (new Scratchpad) in web browsers, avoiding browser-reserved
+    `Ctrl+W` / `Ctrl+Shift+N` (structured so a future Tauri desktop shell can bind native
+    `Cmd/Ctrl+W` and `Cmd/Ctrl+Shift+N`).
 - **Command Palette (`Cmd/Ctrl+Shift+P`, `Cmd/Ctrl+K`)**:
   - Fuzzy-searchable palette exposing every workspace, notebook, cell, view, theme, and export
     action alongside its live platform-specific keybinding (`⌘` vs `Ctrl`).

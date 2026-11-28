@@ -198,7 +198,7 @@ pub struct ResultStream { pub schema: SchemaRef, pub batches: BatchStream }  // 
   `Send` futures, while DataFusion on wasm32 is single-threaded. On native, `Session` is
   `Send + Sync` and can be shared behind an `Arc`.
 - `ExecContext` carries the clock value for this run (D-015), the base directory for relative
-  paths, an optional path sandbox (D-016), and an optional row limit for UI runtimes (D-063).
+  paths, an optional path sandbox (D-016), and an optional row limit for UI runtimes (D-064).
 - Results are **Arrow** `RecordBatch` streams using the canonical Arrow types (LANGUAGE.md §5).
   Every frontend (terminal table, web grid, JSON/CSV output, WASM → JS through Arrow IPC) consumes
   Arrow. Dropping the stream cancels the query; that is how Ctrl-C, LSP `$/cancelRequest` and the

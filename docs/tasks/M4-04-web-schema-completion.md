@@ -13,9 +13,9 @@ completion, hover, and signature help to the same `datascript_compiler::ide` API
 ## Scope
 - **Server IDE endpoints** (`datascript-server`):
   - `POST /api/complete`, `POST /api/hover`, and `POST /api/signature-help`, backed by
-    `datascript_compiler::ide::complete`, `hover`, and `signature_help` (M3-02, D-057) over the
-    same cross-cell combined program built in M4-01 so upstream notebook `let`s and inferred stage
-    schemas complete accurately inside any cell.
+    `datascript_compiler::ide::complete`, `hover`, and `signature_help` (M3-02, D-057) over
+    `datascript_compiler::StitchedProgram` (from M4-01) so upstream notebook `let`s and inferred
+    stage schemas complete accurately inside any cell.
   - The server lists sandboxed files for `Completions::files` (D-016) as the LSP does, and passes
     registered `--table` host table names into `ide::complete`.
 - **Editor IDE extensions** (`web/`):

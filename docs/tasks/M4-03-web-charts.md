@@ -6,7 +6,7 @@
 
 ## Goal
 Draw every render kind from [LANGUAGE.md §6](../LANGUAGE.md#6-render) from a `RenderSpec` using
-tree-shaken **Apache ECharts** (D-060) plus a custom KPI component for `card`, with a Chart/Table
+tree-shaken **Apache ECharts** (D-061) plus a custom KPI component for `card`, with a Chart/Table
 toggle and reusable component exports for VS Code's M3-06 results panel.
 
 ## Scope
@@ -21,7 +21,7 @@ toggle and reusable component exports for VS Code's M3-06 results panel.
     fullscreen expand (`[ ]`), interactive zoom/hover tooltips, and PNG/SVG export.
   - Plain table queries stay in Table view; offer a quiet **Visualize (`| render`)** helper button
     that appends a starter `| render ...` line to the query so DataScript code stays the source of
-    truth (D-063).
+    truth (D-064).
   - Match the dark and light themes seamlessly (palette, grid lines, axis labels, tooltips).
 - **Graceful degradation**: detect unrenderable or pathological inputs (e.g. >500 distinct series,
   empty dataset, all-null numeric series) and show a clear message with one-click switch to Table

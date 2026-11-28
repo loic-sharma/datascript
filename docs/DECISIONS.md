@@ -466,7 +466,7 @@ and `ds ui` invalidate when files may have changed (M1-12, M3-01, M4-01). The ca
 base directory, the sandbox and the `SourceRef`, because the sandbox can refuse a path that is
 fine without it. **The row limit is enforced by the session**, not the backend: `ResultStream::
 collect` stops after `row_limit` rows, drops the stream (cancelling the query) once one more row
-arrives, and sets `QueryResult::truncated`. How frontends word that is Q-007's (M4-01).
+arrives, and sets `QueryResult::truncated`. How frontends word that is D-064's (M4-01).
 **`QueryResult`** is `{ schema, batches, render, diagnostics, truncated }`: `render` is copied from
 the plan; `diagnostics` holds per-query warnings (none yet), while errors stop the run and go to
 `RunOutput::diagnostics` together with every non-error diagnostic from checking. **Panics**: every
@@ -926,10 +926,10 @@ KQL rejects trailing commas, so queries that use them cannot be pasted verbatim 
   no constant, `severity: None`), never to be reused.
 *(M2-19, 2026-11-22.)*
 
-### D-060 — Web front-end stack: React, Vite, Tailwind CSS, CodeMirror 6, Apache ECharts
-**Accepted.** Closes Q-002. The shared `web/` SPA (used by `ds ui`, the M5 WASM playground,
-M3-06's VS Code results panel via component reuse, and a potential future Tauri desktop shell)
-standardizes on:
+### D-061 — Web front-end stack: React, Vite, Tailwind CSS, CodeMirror 6, Apache ECharts
+**Accepted.** Closes Q-002. *(D-060 is M3-03.)* The shared `web/` SPA (used by `ds ui`, the M5
+WASM playground, M3-06's VS Code results panel via component reuse, and a potential future Tauri
+desktop shell) standardizes on:
 - **React + TypeScript + Vite + Tailwind CSS**: the React runtime (~45 KB gzipped) is negligible
   next to CodeMirror, ECharts, and the ~5.8 MB WASM engine, and provides the strongest ecosystem for
   virtualized grids (`@tanstack/react-virtual`), drag-and-drop cell reordering, and accessible UI
@@ -943,7 +943,7 @@ standardizes on:
   overhead). See [WEB_UI.md §6](WEB_UI.md#6-architecture-stack--multi-target-reuse).
 *(Web UI design session, 2026-11-27.)*
 
-### D-061 — Notebook-first local web UI with `.dsnb` source-only Markdown format
+### D-062 — Notebook-first local web UI with `.dsnb` source-only Markdown format
 **Accepted.** `ds ui` is a three-pane, notebook-first local data workbench rather than a single
 scratch query box (see [WEB_UI.md](WEB_UI.md)). Key rules:
 - **Format (`.dsnb`)**: strictly source-only plain-text Markdown (fenced ` ```ds ` blocks are
@@ -952,26 +952,35 @@ scratch query box (see [WEB_UI.md](WEB_UI.md)). Key rules:
   avoids colliding with repo docs (`README.md`) and supports clean OS file associations in a future
   desktop app. Plain `.ds` scripts also open as single-editor tabs, and launching `ds ui` in a
   folder opens an unsaved Scratchpad immediately.
-- **Cross-cell `let` scope**: top-to-bottom document lexical order. Every DataScript cell sees all
-  `let` bindings from cells above it (compiled via a combined-program span mapper modeled after
-  `ReplProgram`), so live diagnostics, completion, hover, and schemas work across cells without
-  running upstream cells first and reordering cells updates scope predictably.
+- **Cross-cell `let` scope & shared stitcher**: top-to-bottom document lexical order. Every
+  DataScript cell sees all `let` bindings from cells above it, compiled via a shared pure
+  `StitchedProgram` helper in `datascript-compiler` (extracted from `ReplProgram` in
+  `datascript-cli` so the REPL, `datascript-server`, and `datascript-wasm` share one span-mapping
+  stitcher; supersedes D-048's note that the web UI works only on whole documents and does not need
+  one). Live diagnostics, completion, hover, and schemas work across cells without running upstream
+  cells first, and reordering cells updates scope predictably. Trying to run a downstream cell while
+  an upstream cell has errors emits `DS4061` with a secondary label pointing at the broken upstream
+  cell.
 - **Execution & staleness**: queries never auto-run on edit; cells whose code or upstream `let`
   dependencies changed since their last run show a subtle Stale badge, with Run cell, Run & advance,
-  Run statement at cursor, Run cell & below, and Run all actions.
+  Run statement at cursor, Run cell & below, Run all, and Cancel (`Cmd/Ctrl+.`) actions.
 - **Workspace & saving**: left pane shows the full working directory (skipping hidden/build clutter
-  by default) with CRUD for `.dsnb`, `.ds`, and folders, while keeping data files read-only; center
-  pane uses a slim tab bar + breadcrumb with debounced auto-save (~500 ms) and external-edit
-  conflict detection; right pane is a collapsible contextual inspector defaulting to a client-side
-  DuckDB-style Result Profiler (or Source Schema when a data file is selected) plus Outline and
-  In-Scope `let`s tabs.
+  by default) with CRUD for `.dsnb`, `.ds`, and folders, while keeping data files strictly
+  read-only (refusing folder delete/rename when a folder recursively contains non-`.dsnb`/`.ds`
+  files or symlinks, and refusing create/rename targets that have non-`.dsnb`/`.ds` extensions or
+  already exist); center pane uses a slim tab bar + breadcrumb with debounced auto-save (~500 ms)
+  and external-edit conflict detection; right pane is a collapsible contextual inspector defaulting
+  to a client-side DuckDB-style Result Profiler (or Source Schema when a data file is selected) plus
+  Outline and In-Scope `let`s tabs.
 - **Shortcuts & aesthetic**: hybrid modeless chords (`Cmd/Ctrl+Enter`, `Shift+Enter`,
-  `Alt+Up/Down`, `Cmd/Ctrl+Shift+P` Command Palette, `Cmd/Ctrl+P` Quick Open) plus `Esc` Cell
-  Command Mode (`j/k`, `a/b`, `m/y`, `dd`, `z`, `?`); calm, dark-first Claude-Code-inspired
-  monochrome aesthetic with light theme support.
+  `Cmd/Ctrl+Alt+Enter`, `Cmd/Ctrl+.`, `Cmd/Ctrl+Shift+P` Command Palette, `Cmd/Ctrl+P` Quick Open,
+  browser-safe `Alt+W`/`Alt+N` with native `Cmd/Ctrl+W`/`Cmd/Ctrl+Shift+N` in a future desktop
+  shell) plus `Esc` Cell Command Mode (`j/k`, `Shift+Up/Down` & `Shift+K/J` reorder, `a/b`, `m/y`,
+  `dd`, `z`, `?`), avoiding CodeMirror and browser shortcut collisions; calm, dark-first
+  Claude-Code-inspired monochrome aesthetic with light theme support.
 *(Web UI design session, 2026-11-27.)*
 
-### D-062 — Multi-statement cells use compact result sub-tabs
+### D-063 — Multi-statement cells use compact result sub-tabs
 **Accepted.** Closes Q-004. Running a DataScript cell (or `.ds` script / VS Code M3-06 run) executes
 all query statements in that cell and displays compact result sub-tabs (`Result 1`, `Result 2`, …,
 using each query's `render` title when present) whenever a run produces more than one output. A
@@ -979,14 +988,18 @@ secondary shortcut (`Cmd/Ctrl+Alt+Enter`) runs only the statement at the cursor.
 display a compact validation line rather than an empty grid.
 *(Web UI design session, 2026-11-27.)*
 
-### D-063 — UI result display cap of 10,000 rows with full streaming export
+### D-064 — UI result display cap of 10,000 rows with full streaming export
 **Accepted.** Closes Q-007. Interactive UI runtimes (`ds ui`, VS Code M3-06 results panel, and WASM
-M5) default `ExecContext::row_limit` to `10_000` (configurable). When `QueryResult::truncated` is
-set, the runtime emits a `DS4060` info diagnostic and the UI shows a subtle truncation banner with a
-one-click **Export full result** action that streams the uncapped query through
-`datascript_engine::writers` (CSV, JSON, NDJSON, Parquet, Arrow IPC, and Excel once M2-28 lands).
-Plain table queries stay in Table view by default (with an optional helper to append `| render ...`
-so the query code remains the single source of truth).
+M5) cap streamed results at `10_000` rows by default (configurable), enforced on streaming runs via
+a shared row-limiting helper in `datascript-engine` that slices the final batch and drops the stream
+to cancel execution. When truncated, the runtime emits a `DS4060` info diagnostic and the UI shows a
+subtle truncation banner with a one-click **Export full result** action. Exports re-execute the
+chosen `statementIndex` with the original run's `now_micros` clock (preserving `now()`/`ago()` per
+D-015) and upstream-`let` cell context, using a two-step ticketed download (`POST /api/export` →
+one-shot `GET /api/export/<ticket>`) so `datascript_engine::writers` streams straight to disk
+without buffering in browser memory (CSV, JSON, NDJSON, Parquet, Arrow IPC, and Excel once M2-28
+lands). Plain table queries stay in Table view by default (with an optional helper to append
+`| render ...` so the query code remains the single source of truth).
 *(Web UI design session, 2026-11-27.)*
 
 ## Proposed (open questions)

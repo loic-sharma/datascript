@@ -143,7 +143,7 @@ a new block in this table in a separate small commit to `main` before using it.
 | DS2310–DS2319 | M2-10 `decimal` and `guid` |
 | DS2320–DS2329 | M2-20 conversions that can never succeed |
 | DS3060–DS3064 | M2-12 runtime read errors (none expected; DS3008 is reused) |
-| DS3065–DS3069, DS4060–DS4064 | M4-01 local web UI server (Q-007's "results truncated" info diagnostic; DS3007 above) |
+| DS3065–DS3069, DS4060–DS4064 | M4-01 local web UI server (`DS4060` results truncated per D-064, `DS4061` upstream cell error per D-062; DS3007 above) |
 | DS3070–DS3074 | M2-22 CSV sniffing |
 | DS0290–DS0294 | M2-23 `describe` operator |
 | DS3080–DS3084 | M2-24 Excel reader |

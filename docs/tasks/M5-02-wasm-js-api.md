@@ -16,8 +16,8 @@ are UTF-16 (D-025).
 The sketch above (and the one in ARCHITECTURE.md § WASM constraints) is the minimum. The API must
 also cover what `web/` (M4-02's `Runtime` interface, M5-03) and the parity tests (M5-04) need:
 - programs with several statements: `run` yields one result per query, with its statement index,
-  and can run one statement by index (Ctrl/Cmd+Enter in the web UI);
-- the 10,000-row UI display limit decided in D-063 (closed Q-007), and the `truncated` flag;
+  and can run one statement by index (`Cmd/Ctrl+Alt+Enter` in the web UI, D-063);
+- the 10,000-row UI display limit decided in D-064 (closed Q-007), and the `truncated` flag;
 - `schema(source)`, `hover(text, offset)`, `signatureHelp(text, offset)`, `explain(text)`;
 - `registerTable` for host tables, and listing and removing registered files;
 - an injected `now` (core crates read no clock, ARCHITECTURE.md) so `now()`/`ago()` work and
