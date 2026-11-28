@@ -28,7 +28,8 @@ truncation-aware sorting + **Sort in query**, and two-step streaming export (D-0
 - **Two-step streaming export** (D-064):
   - Capture the immutable cell snapshot (`cells`, `targetCellIndex`, `nowMicros`, cell-relative
     `statementIndex`) at run time and wire the **Export full result** menu to `POST /api/export` →
-    `GET /api/export/<ticket>` (CSV, JSON, NDJSON, Parquet, Arrow IPC).
+    `GET /api/export/<ticket>` (authenticated by session cookie + one-shot ticket; re-executes
+    against current disk files; CSV, JSON, NDJSON, Parquet, Arrow IPC).
 
 ## Acceptance criteria
 - [ ] Vitest unit tests for Arrow cell formatting, "Sort in query" rewrites (including a query

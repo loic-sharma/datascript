@@ -462,11 +462,11 @@ derives serde `Serialize` and `Deserialize`. *(M1-06, 2026-11-21.)*
 **Failed schema lookups are cached like successful ones**, until `Session::invalidate_schemas` or
 `invalidate_source` is called; a source is fetched at most once per call even if a concurrent
 invalidation lands between passes. A one-shot CLI run never needs invalidation; the REPL, the LSP
-and `ds ui` invalidate when files may have changed (M1-12, M3-01, M4-01). The cache key is the
+and `ds ui` invalidate when files may have changed (M1-12, M3-01, M4-10). The cache key is the
 base directory, the sandbox and the `SourceRef`, because the sandbox can refuse a path that is
 fine without it. **The row limit is enforced by the session**, not the backend: `ResultStream::
 collect` stops after `row_limit` rows, drops the stream (cancelling the query) once one more row
-arrives, and sets `QueryResult::truncated`. How frontends word that is D-064's (M4-01).
+arrives, and sets `QueryResult::truncated`. How frontends word that is D-064's (M4-10).
 **`QueryResult`** is `{ schema, batches, render, diagnostics, truncated }`: `render` is copied from
 the plan; `diagnostics` holds per-query warnings (none yet), while errors stop the run and go to
 `RunOutput::diagnostics` together with every non-error diagnostic from checking. **Panics**: every
@@ -585,10 +585,11 @@ Settled before implementation so the task stays inside `datascript-cli`. **Lets 
 text**: each submission is checked and run as one program, the saved let statements followed by
 the new input, and every diagnostic span is mapped back to the input it came from. Each input is its
 own snippet (`<repl:N>`, lines from 1), so an error renders against what the user just typed, and
-an error in a saved let (its file was deleted) against that let's own snippet. The alternative, a compiler API taking earlier inputs as a prelude, is cleaner but changes
-`datascript-compiler` for one frontend; the LSP and web UI work on whole documents and don't need
-it. *(Partly superseded by D-062: the web UI, CLI, and LSP now share `StitchedProgram` in
-`datascript-compiler` for `.dsnb` notebooks.)* **Saving**: an input's
+an error in a saved let (its file was deleted) against that let's own snippet. The alternative, a
+compiler API taking earlier inputs as a prelude, is cleaner but changes `datascript-compiler` for
+one frontend; the LSP and web UI work on whole documents and don't need it. *(Partly superseded by
+D-062: the web UI, CLI, and LSP now share `StitchedProgram` in `datascript-compiler` for `.dsnb`
+notebooks.)* **Saving**: an input's
 lets are saved once it checks without errors, before its queries run; a check error saves nothing,
 a runtime error or Ctrl-C undoes nothing. **Redefinition is allowed in the REPL** (≠ `DS1003` in
 programs, LANGUAGE.md §2): a new `let x` removes the old one and every saved let that uses it,
@@ -773,7 +774,7 @@ incremental sync. It does not pick an engine; `ds lsp` passes a `Session` over D
   `DS0004`, or the errors that stop it), the selected `QueryPlan`s (`select(index)` replaces
   `run_statement`), and `next_query()`, which starts one query and hands back a `QueryStream`
   (schema, `render` spec, spans and a `BatchStream`). It owns its engine handle and context, so
-  it is `Send` on native targets and can move into a spawned task (the REPL, and M4-01's
+  it is `Send` on native targets and can move into a spawned task (the REPL, and M4-10's
   WebSocket). `Session::run` is now `start` plus `QueryStream::collect`, so golden tests are
   unchanged. **Panic boundary**: checking and `Engine::execute` run under `catch_panic_async`,
   and each batch stream is wrapped so a panic while producing a batch becomes a `DS9001` item
@@ -949,31 +950,36 @@ desktop shell) standardizes on:
 box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
 [LANGUAGE.md §2.1](LANGUAGE.md#21-notebooks-dsnb)). Key choices:
 - **Single canonical `.dsnb` format & parser**: strictly source-only plain-text Markdown (no
-  persisted cell metadata in v1, no cached outputs on disk; optional local `IndexedDB` caching is
-  deferred to M4-07). A small, dependency-free CommonMark fence scanner/serializer and
-  `StitchedProgram` live in `datascript-compiler` (M4-08, `wasm32`-compatible), reused across
-  `datascript-server`, `ds run`/`ds check`/`ds lsp` (M4-06), `datascript-cli` (`ReplProgram`), and
-  `datascript-wasm` (M5) — `web/` consumes structured cells via `Runtime` and never duplicates the
-  parser. Supersedes D-048's note that the web UI does not need a shared stitcher.
+  persisted cell metadata in v1, no cached outputs on disk; optional local caching under the user's
+  OS cache dir / WASM `IndexedDB` is deferred to M4-07). A small, dependency-free CommonMark
+  top-level fence scanner/serializer and `StitchedProgram` live in `datascript-compiler` (M4-08,
+  `wasm32`-compatible), reused across `datascript-server`, `ds run`/`ds check`/`ds lsp` (M4-06),
+  `datascript-cli` (`ReplProgram`), and `datascript-wasm` (M5) — `web/` consumes structured cells
+  with opaque `originId`s via `Runtime` for lossless diff saves and never duplicates the parser.
+  Supersedes D-048's note that the web UI does not need a shared stitcher.
 - **Cross-cell `let` scope & `DS4061`**: top-to-bottom lexical order keeping `DS1003` no-shadowing
   (D-007) so `.dsnb` notebooks stay 1:1 with `.ds` scripts. Live `POST /api/check` checks the whole
-  notebook in one pass; running a cell fails with `DS4061` only when an upstream cell has a
-  lexical/syntax error or a prepended upstream `let` has an error (warnings and upstream query
-  errors do not block, [WEB_UI.md §3](WEB_UI.md#upstream-error-handling-ds4061)). Lazy `let`
-  re-scans are surfaced via distinct `SourceRef` counts in the cell status bar.
-- **Staged delivery & workspace safety**: M4 v1 (`M4-08`, `M4-01`–`M4-04`, `M4-09`) ships a single-
-  notebook view, read-only tree + atomic `.dsnb` creation, Scratchpad quick previews, grid +
-  ECharts (plain table queries stay in Table view by default with a **Visualize** helper that
-  appends `| render ...` so code stays the source of truth), auto-save with `409` conflicts, and
-  a right-hand inspector starting collapsed by default. Power-user/workspace features (multi-file
-  tabs & pinning, atomic no-clobber rename & race-free per-file+`rmdir` folder delete, Outline/
-  Scope tabs, Cell Command Mode, Command Palette, Quick Open) follow in `M4-05`. The workspace file
-  API never writes or deletes data files and rejects in-root symlink components
-  ([WEB_UI.md §4.1](WEB_UI.md#41-left-pane--working-directory-tree--attached-tables)).
-- **Shortcuts & aesthetic**: hybrid modeless chords (`Cmd/Ctrl+K` primary Command Palette) plus
-  `Esc` Cell Command Mode (`M4-05`), dark-first monochrome Claude-Code-inspired palette with light
-  theme ([WEB_UI.md §1](WEB_UI.md#1-product-vision--aesthetic-direction),
-  [§5](WEB_UI.md#5-keyboard-shortcuts--command-mode)).
+  notebook in one pass; single-cell runs prepend only the cell's transitively referenced upstream
+  `let`s, and `StitchedProgram` emits `DS4061` only when an upstream `let` cell fails to parse or a
+  transitively referenced `let` has an error (warnings, upstream queries, and unreferenced broken
+  `let`s do not block, [WEB_UI.md §3](WEB_UI.md#transitive-upstream-let-prepending--ds4061)). Lazy
+  `let` re-scans are surfaced via distinct `SourceRef` counts (`PlanNode::Scan`) in the cell status
+  bar; `let`-only validation suppresses `DS0004`.
+- **Auth, persistence, CSP & workspace safety**: `ds ui` exchanges the launch `?token=` for an
+  `HttpOnly; SameSite=Strict` cookie (so reloads stay signed in), sends a strict CSP header, stores
+  per-root preferences in the user's OS config dir (`dirs::config_dir()`) so `ds ui`'s random port
+  never resets settings, saves files atomically (per-path lock + temp file + `sync_all` + rename),
+  and inserts paths relative to the active notebook's parent directory. The workspace file API
+  never writes or deletes data files and rejects in-root symlink components
+  ([WEB_UI.md §4.1](WEB_UI.md#41-left-pane--working-directory-tree--attached-tables),
+  [§6](WEB_UI.md#server-auth-csp--api-contract-datascript-server-m4-01-m4-10-m4-04--m4-05)).
+- **Staged delivery & shortcuts**: M4 v1 (`M4-08`, `M4-01`, `M4-10`, `M4-02`, `M4-09`, `M4-03`,
+  `M4-04`) ships a single-notebook view, read-only tree + atomic `.dsnb` creation, Scratchpad quick
+  previews, grid + ECharts (plain table queries stay in Table view by default with a **Visualize**
+  helper appending `| render ...`), auto-save with `409` conflicts, and a right-hand inspector
+  starting collapsed by default. Multi-file tabs & pinning, atomic no-clobber rename (`rustix`) &
+  per-file+`rmdir` folder delete, Outline/Scope tabs, Cell Command Mode, Command Palette
+  (`Cmd/Ctrl+K` primary), and Quick Open follow in `M4-05` ([WEB_UI.md §5](WEB_UI.md#5-keyboard-shortcuts--command-mode)).
 *(Web UI design session, 2026-11-27.)*
 
 ### D-063 — Multi-statement cells use compact result sub-tabs
@@ -981,23 +987,24 @@ box (full specification in [WEB_UI.md](WEB_UI.md); language rules in
 all query statements in that cell and displays compact result sub-tabs (`Result 1`, `Result 2`, …,
 using each query's `render` title when present) whenever a run produces more than one output. A
 secondary shortcut (`Cmd/Ctrl+Alt+Enter`, plus cell gutter action) runs only the statement at the
-cursor. `let`-only cells display a compact validation line rather than an empty grid.
+cursor. `let`-only cells validate bindings (suppressing `DS0004`) and display a compact confirmation
+line rather than an empty grid.
 *(Web UI design session, 2026-11-27.)*
 
 ### D-064 — UI result display cap of 10,000 rows with full streaming export
 **Accepted.** Closes Q-007. Interactive UI runtimes (`ds ui`, VS Code M3-06 results panel, and WASM
-M5) cap streamed results at `10_000` rows by default (configurable in `localStorage` per workspace
-root or per run), enforced on streaming runs via a shared row-limiting helper in
-`datascript-engine` that slices the final batch and drops the stream to cancel execution. When
-truncated, the runtime emits `DS4060`, client-side grid sorting and Result Profiler stats label
-`"of first {N} rows"` using the run's actual `rowLimit`, column headers offer **Sort in query**
-(`| sort by <col> desc/asc`, inserted before any trailing `| render ...` or updating an existing
-`sort` in place), and the footer offers one-click **Export full result**. Exports send the
-immutable run-time cell snapshot (re-executing the cell-relative `statementIndex` with the original
-`now_micros` clock per D-015 and upstream `let` context) over a two-step ticketed download
-(`POST /api/export` → one-shot `GET /api/export/<ticket>`,
-[WEB_UI.md §6](WEB_UI.md#server-api-contract-datascript-server-m4-01-m4-04--m4-05)) so
-`datascript_engine::writers` streams straight to disk without buffering in browser memory.
+M5) cap streamed results at `10_000` rows by default (configurable per workspace root in the user's
+OS config dir for `ds ui` or `localStorage` for WASM, plus per-run override), enforced on streaming
+runs via a shared row-limiting helper in `datascript-engine` that slices the final batch and drops
+the stream to cancel execution. When truncated, the runtime emits `DS4060`, client-side grid
+sorting and Result Profiler stats label `"of first {N} rows"` using the run's actual `rowLimit`,
+column headers offer **Sort in query** (`| sort by <col> desc/asc`, inserted before any trailing
+`| render ...` or updating an existing `sort` in place), and the footer offers one-click **Export
+full result**. Exports send the immutable run-time cell snapshot (re-executing the cell-relative
+`statementIndex` with the original `now_micros` clock per D-015 and upstream `let` context against
+current disk files) over a two-step cookie+ticket download (`POST /api/export` → one-shot
+`GET /api/export/<ticket>`, [WEB_UI.md §6](WEB_UI.md#server-auth-csp--api-contract-datascript-server-m4-01-m4-10-m4-04--m4-05))
+so `datascript_engine::writers` streams straight to disk without buffering in browser memory.
 *(Web UI design session, 2026-11-27.)*
 
 ## Proposed (open questions)

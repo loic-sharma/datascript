@@ -23,7 +23,7 @@ also cover what `web/` (M4-02's `Runtime` interface, M5-03) and the parity tests
 - an injected `now` (core crates read no clock, ARCHITECTURE.md) so `now()`/`ago()` work and
   parity tests are stable;
 - an `AbortSignal` on `run`.
-Write the final API into ARCHITECTURE.md § WASM constraints and the API contract doc M4-01 writes.
+Write the final API into ARCHITECTURE.md § WASM constraints and [WEB_UI.md §6](../WEB_UI.md#the-runtime-abstraction-web-wasm-desktop-vs-code) (M4-01/M4-10).
 
 ## Acceptance criteria
 - [ ] Generated `.d.ts` plus hand-written docs. Vitest tests in Node and in a browser.

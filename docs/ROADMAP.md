@@ -51,7 +51,7 @@ a working-directory file tree, `.dsnb` Markdown/DataScript notebooks (and `.ds` 
 inline diagnostics, completion, virtualized Arrow grids, ECharts visualizations for every render
 kind, and an on-demand right-hand Result Profiler & Source Schema inspector. Power-user workspace
 polish (`M4-05`), CLI/LSP `.dsnb` support (`M4-06`), and optional local output caching (`M4-07`)
-build cleanly on the v1 core (`M4-08`, `M4-01`–`M4-04`, `M4-09`).
+build cleanly on the v1 core (`M4-08`, `M4-01`, `M4-10`, `M4-02`, `M4-09`, `M4-03`, `M4-04`).
 
 **Done when (M4 v1):** a new user can `ds ui` in a folder of CSVs/Parquet files, preview a file in
 one click from the Scratchpad, inspect schemas from the file tree, author and reorder a multi-cell

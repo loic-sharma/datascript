@@ -24,14 +24,16 @@ Scope tabs follow in M4-05.)*
   - **Live Result Profile**: client-side profiling over loaded Arrow batches (distinct count, null
     %, distributions, search/sort, labelling `"of first {N} rows"` using the run's actual `rowLimit`
     when truncated per D-064).
-  - **Source Schema**: file/host-table columns & types plus **Insert `from '...'`**, **New preview
-    cell**, and **Describe** (once M2-23 lands).
+  - **Source Schema**: file/host-table columns & types plus **Insert `from '<rel>'`** (relative to
+    the active notebook's parent directory), **New preview cell**, and **Describe** (once M2-23
+    lands).
 
 ## Acceptance criteria
 - [ ] Completion, hover, and signature-help results match the LSP for the same text and cursor
       (shared test vectors), plus cross-cell `let` completion tests.
 - [ ] Vitest unit tests for the client-side Arrow column profiler (including dynamic truncation
-      labelling with both default and non-default `rowLimit`).
+      labelling with both default and non-default `rowLimit`) and subfolder-relative `Insert from`
+      paths.
 - [ ] Playwright tests verifying the right pane starts collapsed, opens on demand for Result
       Profile / Source Schema, updates across cells, and drives editor completion/hover.
 

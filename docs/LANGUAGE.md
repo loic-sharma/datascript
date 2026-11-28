@@ -160,13 +160,18 @@ rules as a single `.ds` program split into cells:
 - **Top-to-bottom `let` scope**: every DataScript cell sees all scalar and tabular `let`
   declarations from DataScript cells above it in document order. Re-declaring an existing `let`
   name in a lower cell is `DS1003`, matching `.ds` programs (D-007).
-- **Upstream queries are not in scope**: when running a single cell interactively, only `let`
-  statements from upstream cells are prepended ahead of the target cell; errors in upstream query
-  statements do not affect downstream cells.
+- **Interactive single-cell execution**: when running one cell interactively, only the upstream
+  `let` statements that the cell references (directly or transitively) are prepended ahead of the
+  target cell; errors in unreferenced upstream `let`s or upstream query statements do not block
+  running that cell (errors in a referenced upstream `let` or an upstream `let` cell that fails to
+  parse report `DS4061`).
 - **Relative paths**: file paths in any cell resolve against the `.dsnb` file's parent directory
   (or the workspace root for unsaved Scratchpads in `ds ui`).
-- **Whole-notebook runs** (`ds run notebook.dsnb`, or "Run all" in `ds ui`) execute every
-  DataScript cell's query statements top-to-bottom under one shared `now()` clock (D-015).
+- **`ds run` vs interactive "Run all"**: `ds run notebook.dsnb` checks the entire notebook as one
+  program upfront—any error in any cell refuses to run—and then runs every query statement
+  top-to-bottom under one shared `now()` clock (D-015). Interactive "Run all" in `ds ui` runs
+  cells sequentially under one shared `now()` clock and stops at the first failing cell so earlier
+  cells' outputs stay visible.
 
 ## 3. Tabular expressions
 

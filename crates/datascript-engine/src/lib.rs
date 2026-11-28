@@ -215,7 +215,7 @@ pub struct QueryResult {
     /// [`RunOutput::diagnostics`].
     pub diagnostics: Vec<Diagnostic>,
     /// Whether rows were left out because of [`ExecContext::row_limit`]. Frontends say so
-    /// (D-064, implemented in M4-01).
+    /// (D-064, implemented in M4-10).
     pub truncated: bool,
 }
 

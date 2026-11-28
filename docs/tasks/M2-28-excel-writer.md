@@ -20,7 +20,7 @@ workbooks, as DuckDB's excel extension does.
 - `datetime` and `timespan` columns get Excel number formats.
 - Values Excel cannot hold (a string over 32 767 characters, more than 1 048 576 rows) are an error
   from this task's block naming the limit, never silent truncation.
-- If M4-01 is done, its export (D-064) offers `.xlsx` through the same writer.
+- If M4-10 is done, its export (D-064) offers `.xlsx` through the same writer.
 
 ## Acceptance criteria
 - [ ] Golden `run` cases that write a workbook with `output` and read it back with `read_xlsx`

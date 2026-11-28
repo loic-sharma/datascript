@@ -15,8 +15,8 @@ inspector tabs, Cell Command Mode, Command Palette, and Quick Open.
   position, and undo history, with pinning and browser-safe `Alt+W`/`Alt+N` chords (matched on
   `KeyboardEvent.code`, outside text inputs).
 - **Safe file/folder management** (`datascript-server` + `web/`): add `POST /api/dir`,
-  `PATCH /api/file`, and `DELETE /api/file` following the symlink, atomic no-clobber rename, and
-  per-file+`rmdir` folder deletion rules in
+  `PATCH /api/file`, and `DELETE /api/file` following the symlink, atomic no-clobber rename (via
+  `rustix` on Unix and `MoveFileExW` on Windows), and per-file+`rmdir` folder deletion rules in
   [WEB_UI.md §4.1](../WEB_UI.md#41-left-pane--working-directory-tree--attached-tables).
 - **Outline & Scope inspector tabs** (`web/`, [WEB_UI.md §4.3](../WEB_UI.md#43-right-pane--contextual-inspector-collapsed-by-default)).
 - **Cell Command Mode, Command Palette (`Cmd/Ctrl+K` primary) & Quick Open (`Cmd/Ctrl+P`)**: full
