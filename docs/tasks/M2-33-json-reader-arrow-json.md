@@ -91,7 +91,7 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       |---|---|---|
       | `Boolean` | `true`, `false` | type mismatch (including the strings `"true"`/`"false"`) |
       | `Int64` | integers in the `i64` range, with no fraction or exponent | type mismatch (including `1.0`, `1.5`, `1e3` and integers outside `i64`) |
-      | `Float64` | any JSON number (integers converted; huge integers round to the nearest `f64`) | type mismatch |
+      | `Float64` | any JSON number except integers outside the `i64` range (in-range integers are converted) | type mismatch (including integers outside `i64`, which would otherwise be rounded silently; inference stores them as `arrow.json` for the same reason) |
       | `Utf8` (no extension) | strings | type mismatch (objects, arrays, numbers, booleans) |
       | `Utf8` + `arrow.json` | anything | — |
       `null` is accepted in every column.
@@ -106,6 +106,12 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       §3.1 (DuckDB behaves the same way).
     - Respect `batch_size`, fill missing keys with `null`, and ignore keys absent from the
       target schema.
+    - **Read each file whole, from byte 0:** override `FileSource::supports_repartitioning` to
+      return `false`. DataFusion's default (`true`) splits large uncompressed files into byte
+      ranges read in parallel; a range that starts inside a JSON array cannot be parsed, and a
+      reader that starts mid-file cannot know its 1-based line number, which the structured
+      error and [M2-34](M2-34-json-read-diagnostics.md) need. Parallelism across the files of a
+      glob is unaffected. Record this in DECISIONS.md.
     - Carry a structured error type through `DataFusionError::External` (recording the file's
       path, taken from the `PartitionedFile` being opened, 1-based line
       number, 1-based record index for JSON arrays, column name, and failure kind: syntax error,
@@ -135,8 +141,12 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
     - `Merged::Typed(_)` + `Merged::Json` → `Merged::Json`.
     - `Merged::Typed(a)` + `Merged::Typed(b)` → `Type::common(a, b)` when there is one (e.g.
       `long` + `real` → `real`), else `Merged::Json`, never `DS3005`. This matches what one file
-      holding both types infers, so how rows are split across files never changes whether a
-      glob reads, and adding a file never turns a failing read into a working one.
+      holding both types in its first `infer_rows` records infers. Merging only ever widens
+      (`long` → `real` → `arrow.json`) and every wider type accepts the narrower one's values,
+      so adding a file never turns a working read into a failing one (unless the new file is
+      itself malformed). The converse does not hold, because each file is sampled on its own:
+      a file whose column changes type past `infer_rows` fails alone but can read once another
+      file widens that column.
     - These are safe because the decoder reads every file into the merged schema and encodes
       scalars as JSON text (strings quoted), rather than casting a file's column after the read.
       Real globs (daily log files where one file holds only strings in a field and another holds
@@ -172,8 +182,11 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
     merging rules in [DECISIONS.md](../DECISIONS.md): mixed scalars → `arrow.json`, out-of-range
     integers → `arrow.json` (unlike `arrow-json`), all-null columns, top-level duplicate keys →
     last wins, whitespace-only normalization of nested values, the type-check table, type checks
-    only on projected columns, and the JSON glob merge rules (`Typed` + `arrow.json` and
-    `Typed(a)` + `Typed(b)` with no common type both → `arrow.json`, never `DS3005`).
+    only on projected columns, files read whole (no byte-range splitting), and the JSON glob
+    merge rules (`Typed` + `arrow.json` and `Typed(a)` + `Typed(b)` with no common type both →
+    `arrow.json`, never `DS3005`). Amend D-044, which says globs with differing schemas are read
+    file by file and combined with `UNION ALL`: from M2-33 that holds only for CSV and TSV, and
+    JSON globs are read by one table with the merged schema.
   - Update [M5-01](M5-01-wasm-build.md)'s carried-over bullet from M2-13 to remove `is_json_array`
     once it reads through `ObjectStore` (keeping "Test JSON, NDJSON and globs on wasm32").
   - Add a carried-over line to [M2-03](M2-03-dynamic-type.md): `(from M2-33) the JSON reader now
@@ -219,8 +232,10 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       duplicate keys last-wins, nested duplicate keys
       kept, whitespace removal outside strings only, missing/extra keys, keys first seen past
       `infer_rows` dropped, every row of the type-check table, decoding into a wider target
-      schema than the file's own, multi-batch streaming, streaming JSON array scanner, and
-      projection pushdown skipping unprojected columns).
+      schema than the file's own, multi-batch streaming, streaming JSON array scanner,
+      projection pushdown skipping unprojected columns, and a file larger than
+      `repartition_file_min_size` (or with that threshold lowered) read as one range, with
+      correct line numbers in errors past the first range's size).
 - [ ] `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
       `cargo test --workspace`,
       `cargo check -p datascript-syntax -p datascript-compiler --target wasm32-unknown-unknown`,
