@@ -3,7 +3,7 @@
 **Status:** todo
 **Depends on:** M2-33
 **Crates:** `datascript-compiler`, `datascript-datafusion`, `datascript-tests`
-**Diagnostic codes:** none new expected (reuses `DS3008`). If a new code is needed, reserve a block in [DIAGNOSTICS.md](../DIAGNOSTICS.md) first (D-018).
+**Diagnostic codes:** none new expected (reuses `DS3008`); DS3075–DS3079 if needed (D-018)
 
 ## Goal
 Give clear, actionable `DS3008` diagnostics when reading a JSON or NDJSON file fails during schema
@@ -17,6 +17,11 @@ format-dependent label ``this file is not valid {format}`` (for example `this fi
 NDJSON`, or `this file is not valid JSON` as in `tests/cases/sources/unreadable.dstest`), even
 when the file was valid NDJSON with a type conflict across rows, and runtime errors emitted raw
 Arrow/serde text without naming the column, location, or fix.
+
+M2-33 keeps its reader's runtime errors on `DS3008` with a minimal match in
+`crates/datascript-datafusion/src/errors.rs` (generic labels, a `read_json(..., infer_rows = n)`
+help, and the error's own text in the note). This task replaces that interim mapping with the
+structured diagnostics below.
 
 ## Scope
 - **Structured classification in `datascript-datafusion` and `datascript-compiler`:**
@@ -40,9 +45,10 @@ Arrow/serde text without naming the column, location, or fix.
        - Otherwise report which line/record is not a JSON object and what JSON kind was found
          (e.g. a string, number, boolean, or array).
     3. **Runtime type conflict past `infer_rows`:** when a top-level column inferred as a scalar
-       type in the first `infer_rows` rows encounters an incompatible value later (as defined in
-       [M2-33](M2-33-json-reader-arrow-json.md), including plain `Utf8` columns encountering an
-       object, array, number, or boolean):
+       type in the first `infer_rows` rows encounters an incompatible value later (as defined by
+       the type-check table in [M2-33](M2-33-json-reader-arrow-json.md), e.g. a plain `Utf8`
+       column seeing an object, array, number, or boolean, or an `Int64` column seeing `1.5` or
+       an integer outside `i64`):
        - Primary label: `"a value in this source does not match its column's type"` (matching
          CSV's `tests/cases/errors/runtime/ds3008_malformed_row.dstest`).
        - Note naming the column, location (line number, plus record index for JSON arrays),

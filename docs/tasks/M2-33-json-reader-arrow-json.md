@@ -2,7 +2,7 @@
 
 **Status:** todo
 **Depends on:** M1-13, M2-13
-**Crates:** `datascript-compiler`, `datascript-datafusion`, `datascript-tests`
+**Crates:** `datascript-compiler` (only the `read_json` entry in `READERS`; `arrow::from_arrow_source` stays unchanged, mapping `arrow.json` to `dynamic` is [M2-03](M2-03-dynamic-type.md)'s), `datascript-datafusion`, `datascript-tests`
 **Diagnostic codes:** none new (reuses `DS2041`, `DS3003`, `DS3005`, `DS3008`; richer JSON read diagnostics are in [M2-34](M2-34-json-read-diagnostics.md); D-018)
 
 ## Goal
@@ -35,7 +35,7 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
   `crates/datascript-datafusion/src/json.rs`):
   - **Top-level schema inference** over the first `infer_rows` records (default
     `DEFAULT_INFER_ROWS = 1000`):
-    - `Null` + any type `T` → `T` (all-null or absent in the sample infers `Null`).
+    - `Null` + any type `T` → `T`.
     - `Int64` + `Float64` → `Float64`.
     - Integers outside the `i64` range → `Float64` (matches `arrow-json` and avoids surprising
       `DS4003` errors on JSON numbers).
@@ -45,8 +45,16 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       well as scalar + object/array) is inferred as `Utf8` with extension type `arrow.json`
       (`datascript_compiler::arrow::JSON_EXTENSION`). Widening mixed scalars to `arrow.json`
       rather than plain `Utf8` preserves JSON types losslessly (`1` vs. `"1"`) for `dynamic`/KQL.
-    - Duplicate keys within one JSON object: **last wins** (matches `serde_json` and
-      `JSON.parse`).
+    - **All-null columns:** a key whose sampled values are all JSON `null` infers Arrow `Null` for
+      that file (so glob merging lets another file's type win, as for CSV, D-044). If no file of
+      the source gives it a type, the merged column is `Utf8` + `arrow.json` (not `string` as
+      for CSV), so any later value can be stored losslessly instead of failing the type check.
+    - **Keys first seen past `infer_rows`** are not in the schema and are dropped silently (as
+      `arrow-json` and DuckDB do). Document this in LANGUAGE.md §3.1 next to `infer_rows`.
+    - Duplicate keys within one **top-level** JSON object: **last wins** (matches `serde_json`
+      and `JSON.parse`). Nested objects are stored as written (see "Encoding" below), so
+      duplicate keys inside them are kept; resolving them is [M2-03](M2-03-dynamic-type.md)'s
+      job when it parses `dynamic` values.
     - Supports both NDJSON (`.ndjson`, `.jsonl`, `read_json(..., format = "ndjson")`, auto-detected
       `.json`) and JSON arrays (`[{...}, ...]`, `read_json(..., format = "array")`, auto-detected
       `.json`), plus compressed files (`.gz`, `.bz2`, `.xz`, `.zst` behind
@@ -59,55 +67,106 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
       `std::fs` (removing `is_json_array`'s `std::fs` call, which builds for `wasm32` but would
       fail at runtime in the browser; `single_file`/`glob_files` still use `std::fs` until
       [M5-01](M5-01-wasm-build.md)).
-  - **Streaming row decoding and projection pushdown:**
+  - **Schema-driven streaming decoder and projection pushdown:**
+    - The decoder decodes records into **any target schema it is given**, matching keys by name,
+      not only the schema it inferred for that file. `lower.rs::scan` passes the merged
+      (widened) schema for JSON sources, so every file of a glob is read by one table with one
+      schema and no post-read casts are needed. This also lets [M2-09](M2-09-schema-overrides.md)
+      plug a user-declared `schema = (...)` straight into the reader.
     - **Encoding inside `arrow.json` columns:** every non-null value—including scalars—is stored
-      verbatim as raw JSON text (a string row is stored with quotes, e.g. `"\"scripts.yaml\""`; a
-      number keeps its original JSON text; booleans as `"true"`/`"false"`; objects and arrays as
-      raw JSON slices). JSON `null` and missing keys become Arrow `null`.
-    - **Type changes past `infer_rows`:** every scalar-inferred column (including plain `Utf8`)
-      fails with a structured type-mismatch error if a later row past `infer_rows` contains an
-      incompatible JSON kind (for example, an object, array, number, or boolean in a `Utf8`
-      column) rather than silently coercing; `read_json(..., infer_rows = n)` is the escape hatch.
+      as its JSON text: a string row is stored with quotes (e.g. `"\"scripts.yaml\""`), a number
+      keeps its original JSON spelling, booleans are `true`/`false`, and objects and arrays are
+      raw JSON slices with **insignificant whitespace removed** (a cheap, string-aware byte pass,
+      so pretty-printed array files do not store newlines and indentation). Escapes, number
+      spelling, key order and nested duplicate keys are kept as written; the reader does not
+      parse nested values. JSON `null` and missing keys become Arrow `null`. Record this in
+      DECISIONS.md: `dynamic` equality and grouping in M2-03 must compare parsed values (or
+      canonicalize) rather than raw text, since `"é"` and `"é"` are stored differently.
+    - **Type checks past `infer_rows`** (the reader never coerces silently;
+      `read_json(..., infer_rows = n)` is the escape hatch). For each target column type:
+      | Target type | Accepted JSON values | Anything else |
+      |---|---|---|
+      | `Boolean` | `true`, `false` | type mismatch (including the strings `"true"`/`"false"`) |
+      | `Int64` | integers in the `i64` range, with no fraction or exponent | type mismatch (including `1.0`, `1.5`, `1e3` and integers outside `i64`) |
+      | `Float64` | any JSON number (integers converted; huge integers round to the nearest `f64`) | type mismatch |
+      | `Utf8` (no extension) | strings | type mismatch (objects, arrays, numbers, booleans) |
+      | `Utf8` + `arrow.json` | anything | — |
+      `null` is accepted in every column.
     - Parse only top-level keys per JSON object record (e.g. via `serde_json::value::RawValue` or
-      a lightweight streaming scanner), slicing nested objects/arrays verbatim for `arrow.json`
-      columns without recursing into nested keys.
+      a lightweight streaming scanner), slicing nested objects/arrays for `arrow.json` columns
+      without recursing into nested keys.
     - Implement `FileSource::try_pushdown_projection` so unprojected columns (including large
       nested JSON blobs) are skipped during scanning.
     - Respect `batch_size`, fill missing keys with `null`, and ignore keys absent from the
-      inferred schema.
+      target schema.
     - Carry a structured error type through `DataFusionError::External` (recording 1-based line
       number, 1-based record index for JSON arrays, column name, and failure kind: syntax error,
-      non-object record, or type mismatch) so [M2-34](M2-34-json-read-diagnostics.md) can render
-      plain-language `DS3008` diagnostics without parsing error strings.
-- **Preserve field metadata in schema merging (`crates/datascript-datafusion/src/sources.rs`):**
+      non-object record, or type mismatch with the target type and the JSON kind found) so
+      [M2-34](M2-34-json-read-diagnostics.md) can render plain-language `DS3008` diagnostics
+      without parsing error strings.
+  - **Keep `DS3008` working until M2-34 lands.** `errors.rs::read_problem` only recognizes
+    `ArrowError::{CsvError, JsonError, ParseError}` and Parquet errors; anything else falls
+    through to `DS4002 "the query failed while running"`. Add a minimal match for the new error
+    type in `crates/datascript-datafusion/src/errors.rs` so runtime JSON errors stay `DS3008` at
+    the scan: label `a value in this source is not valid JSON` for syntax and non-object errors,
+    and `a value in this source does not match its column's type` for type mismatches, with a
+    help that names `read_json(..., infer_rows = n)` (not `read_csv`). The note may still carry
+    the error's own text; M2-34 replaces it with structured notes.
+- **Schema merging (`crates/datascript-datafusion/src/sources.rs`):**
   - `Merged::Arrow` currently stores only `DataType` and strips field metadata in `Merged::field`.
     Preserve field metadata (in particular `arrow.json`) across `Merged::of`, `Merged::merge` and
     `Merged::field` so `Utf8` + `arrow.json` columns do not silently degrade into `Type::String`.
-  - **Glob merging (`Typed` vs. `arrow.json`):** keep `Merged::Typed(_)` vs.
-    `Merged::Arrow(Utf8, arrow.json)` across different files in a glob as a `DS3005` conflict
-    (a plain Arrow `Utf8` → `Utf8` cast would leave scalar strings unquoted and produce invalid
-    JSON), while `Merged::Null` + `Merged::Arrow(Utf8, arrow.json)` merges to `arrow.json`.
+  - **Glob merging for JSON sources:**
+    - `Merged::Null` + `arrow.json` → `arrow.json`.
+    - `Merged::Typed(_)` + `arrow.json` → `arrow.json`. This is safe because the decoder reads
+      every file into the merged schema and encodes scalars as JSON text (strings quoted), rather
+      than casting a file's `Utf8` column after the read. Real globs (daily log files where one
+      file happens to hold only strings in a field another file holds objects in) then work
+      instead of failing with `DS3005`.
+    - `Merged::Typed(a)` + `Merged::Typed(b)` keeps today's rule (`Type::common`, else `DS3005`).
+    - `Merged::Null` with no other type → `arrow.json` (see "All-null columns").
+    - CSV, TSV and Parquet merging is unchanged.
+  - With one schema for all JSON files, `Resolved::uniform` / the per-file `UNION ALL` path in
+    `lower.rs::scan` is no longer needed for JSON sources (keep it for CSV).
   - Until [M2-03](M2-03-dynamic-type.md) lands, `from_arrow_source` continues to report `Utf8`
     with `arrow.json` as an unsupported pass-through type (`DS2008` when used in expressions;
     allowed in `project`, `project-away`, `take`, etc.).
 - **`infer_rows` option on `read_json`:**
   - Add `infer_rows` (positive `long`, default 1,000, matching `read_csv`) to `read_json` in
     `crates/datascript-compiler/src/source.rs` (`READERS`), wire it into `Reader::Json` in
-    `crates/datascript-datafusion/src/sources.rs`, and update any reader-option tests/completions.
+    `crates/datascript-datafusion/src/sources.rs`, and update the reader-option tests and
+    completions.
+  - Fix the doc comment on `DEFAULT_INFER_ROWS` in `sources.rs`, which says it is only
+    `read_csv`'s default.
 - **Docs, hand-offs, and existing tests:**
-  - Update `tests/cases/sources/glob_schema.dstest` (where `props` in `events/*.ndjson` now
-    reports `Utf8 (extension type \`arrow.json\`)` instead of `Struct(...)`), and verify existing
-    JSON tests (`glob_ndjson_run.dstest`, `reader_json.dstest`, `path_formats.dstest`,
-    `path_formats_run.dstest`, `host_table_real.dstest`).
-  - Update [LANGUAGE.md](../LANGUAGE.md) (§3.1 `read_json` options, §5.1 JSON nested/mixed
-    columns) and record the top-level `arrow.json` inference rules (including mixed scalars →
-    `arrow.json`, out-of-range integers → `Float64`, duplicate keys → last wins, and glob
-    `DS3005`) in [DECISIONS.md](../DECISIONS.md).
+  - Update `tests/cases/sources/glob_schema.dstest`: `props` in `events/*.ndjson` now reports
+    `Utf8 (extension type \`arrow.json\`)` instead of `Struct(...)`; also update the header comment
+    ("`props` is a JSON object…") and check the DS2008 note ("nested, JSON and GUID columns…")
+    still reads right.
+  - Add `infer_rows` cases to `tests/cases/sources/reader_options.dstest` (where the `read_json`
+    option errors live).
+  - Re-bless `tests/cases/sources/unreadable.dstest` (`broken.json`), whose note text changes
+    with the new reader.
+  - Verify the other existing JSON tests: `glob_ndjson_run.dstest`, `reader_json.dstest`,
+    `path_formats.dstest`, `path_formats_run.dstest`, `host_table_real.dstest`, and
+    `tests/cases/operators/join/run_multi_key.dstest` (reads `events/*.ndjson`).
+  - Update [LANGUAGE.md](../LANGUAGE.md) (§3.1 `read_json` options, including `infer_rows` and
+    dropped late keys; §5.1 JSON nested/mixed columns) and record the inference, encoding and
+    merging rules in [DECISIONS.md](../DECISIONS.md): mixed scalars → `arrow.json`, out-of-range
+    integers → `Float64`, all-null columns, top-level duplicate keys → last wins, whitespace-only
+    normalization of nested values, the type-check table, and `Typed` + `arrow.json` →
+    `arrow.json` in globs.
   - Update [M5-01](M5-01-wasm-build.md)'s carried-over bullet from M2-13 to remove `is_json_array`
     once it reads through `ObjectStore` (keeping "Test JSON, NDJSON and globs on wasm32").
   - Add a carried-over line to [M2-03](M2-03-dynamic-type.md): `(from M2-33) the JSON reader now
-    produces Utf8 + arrow.json for nested and mixed columns, never Struct/List; mapping
-    arrow.json to dynamic covers JSON sources`.
+    produces Utf8 + arrow.json for nested and mixed columns, never Struct/List (Parquet still
+    produces Struct/List, so mapping those stays in scope); nested values are stored as written
+    minus whitespace, so dynamic equality, grouping and duplicate-key handling must work on parsed
+    values (see M2-33's DECISIONS.md entry)`.
+  - Add a carried-over line to [M2-09](M2-09-schema-overrides.md): `(from M2-33) the JSON reader
+    decodes into any target schema by key name; pass the declared schema to it for read_json
+    rather than casting after the read, and use the M2-33 type-check table for values that do not
+    match a declared type`.
 
 ## Acceptance criteria
 - [ ] Golden `check` and `run` cases covering:
@@ -116,17 +175,24 @@ directly with DataScript's `dynamic` representation ([LANGUAGE.md](../LANGUAGE.m
         verify strings are stored quoted as raw JSON text—scalar vs. array, int vs. float, and
         mixed scalars like int vs. string → `arrow.json`),
       - JSON array (`[{...}, ...]`) with nested and heterogeneous fields (including a minified
-        single-line array),
-      - glob merging: `Null` + `arrow.json` merges cleanly, and `string` vs. `arrow.json` across
-        files reports `DS3005`,
-      - compressed `.ndjson.gz` (gated by `#[cfg(feature = "compression")]`) and existing JSON
-        tests (`glob_schema.dstest`, `glob_ndjson_run.dstest`, `reader_json.dstest`,
-        `path_formats.dstest`, `path_formats_run.dstest`),
+        single-line array and a pretty-printed multi-line array, whose nested values come out
+        without whitespace),
+      - glob merging: `Null` + `arrow.json` and `string` + `arrow.json` both merge to
+        `arrow.json` (with the `string` file's values quoted in the output), and `long` vs.
+        `string` across files still reports `DS3005`,
+      - a column that is all `null` in the sample and holds an object past `infer_rows`
+        (stored as `arrow.json`),
+      - a runtime type mismatch past `infer_rows` reported as `DS3008` (not `DS4002`) with the
+        `read_json(..., infer_rows = n)` help,
+      - compressed `.ndjson.gz` (gated by `#[cfg(feature = "compression")]`) and the existing
+        JSON tests listed above,
       - `read_json(..., infer_rows = n)` happy path and invalid option values (`DS2041`).
 - [ ] Unit tests for the custom JSON schema inference and streaming decoder (empty files, blank
-      lines, integers outside `i64`, duplicate keys last-wins, missing/extra keys, type change
-      past `infer_rows` on `Utf8` and other scalar columns, multi-batch streaming, streaming JSON
-      array scanner, and projection pushdown skipping unprojected columns).
+      lines, integers outside `i64`, top-level duplicate keys last-wins, nested duplicate keys
+      kept, whitespace removal outside strings only, missing/extra keys, keys first seen past
+      `infer_rows` dropped, every row of the type-check table, decoding into a wider target
+      schema than the file's own, multi-batch streaming, streaming JSON array scanner, and
+      projection pushdown skipping unprojected columns).
 - [ ] `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`,
       `cargo test --workspace`,
       `cargo check -p datascript-syntax -p datascript-compiler --target wasm32-unknown-unknown`,
